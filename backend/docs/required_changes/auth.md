@@ -1,0 +1,2 @@
+1. once user signup will be as admin will have basic funcationality all the funcationality, after signup -> onboarding process kyc details 
+    In tenant table add, website(optional), employee range(0-10, 10-20, 20-50, 50-100, 100-500). validity, tenannt filetr will awlays check the validity  

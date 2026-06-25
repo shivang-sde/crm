@@ -1,0 +1,1 @@
+don't expose all 15 tenant fields in the provisioning modal yet. Keep onboarding simple, then create a dedicated Tenant Settings/Profile page where company details, branding, timezone, language, and subscription settings can be edited later. That gives a much cleaner UX.

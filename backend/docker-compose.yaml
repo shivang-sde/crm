@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: 'postgres:latest'
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DB=crm
+    ports:
+      - '5432:5432'
+
+  rabbitmq:
+    image: 'rabbitmq:latest'
+    env_file:
+      - .env
+    ports:
+      - '5672:5672'
+      
+  redis:
+    image: 'redis:latest'
+    ports:
+      - '6379:6379'
