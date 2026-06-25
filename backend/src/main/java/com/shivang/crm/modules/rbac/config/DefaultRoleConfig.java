@@ -25,6 +25,10 @@ public class DefaultRoleConfig {
         public static final Set<String> EMPLOYEE_ACTIONS = Set.of(
                         "read", "write");
 
+        // New modules: task, call, meeting - included in default roles
+        public static final Set<String> ACTIVITY_MODULES = Set.of(
+                        "task", "call", "meeting");
+
         // Helper methods for permission checking
         public boolean isAdminPermission(Permission p) {
                 return ADMIN_MODULES.contains(p.getModule());
@@ -38,5 +42,12 @@ public class DefaultRoleConfig {
         public boolean isEmployeePermission(Permission p) {
                 return EMPLOYEE_MODULES.contains(p.getModule())
                                 && EMPLOYEE_ACTIONS.contains(p.getAction());
+        }
+
+        /**
+         * Check if permission belongs to activity modules (task, call, meeting)
+         */
+        public boolean isActivityModulePermission(Permission p) {
+                return ACTIVITY_MODULES.contains(p.getModule());
         }
 }
