@@ -17,6 +17,7 @@ import com.shivang.crm.modules.rbac.repository.PermissionRepository;
 import com.shivang.crm.modules.rbac.repository.RolePermissionRepository;
 import com.shivang.crm.modules.rbac.repository.UserRoleRepository;
 import com.shivang.crm.shared.exception.BusinessException;
+import com.shivang.crm.shared.model.OwnershipScope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,7 @@ public class PermissionEvaluatorService {
     private final RolePermissionRepository rolePermissionRepository;
     private final UserRoleRepository userRoleRepository;
     private final UserRepository userRepository;
-    private final PermissionRepository permissionRepository; // Add this
+    private final PermissionRepository permissionRepository;
 
     @Transactional
     @Cacheable(value = "userPermissions", key = "#userId + ':' + #tenantId")
@@ -106,6 +107,19 @@ public class PermissionEvaluatorService {
         }
     }
 
+    /**
+     * Convenience method for checking permission with "module:action" format
+     */
+    @Transactional(readOnly = true)
+    public boolean hasPermission(UUID tenantId, UUID userId, String permission) {
+        if (permission == null || !permission.contains(":")) {
+            log.warn("Invalid permission format: {}", permission);
+            return false;
+        }
+        String[] parts = permission.split(":", 2);
+        return hasPermission(userId, tenantId, parts[0], parts[1]);
+    }
+
     @Transactional(readOnly = true)
     public String getAccessScope(UUID userId, UUID tenantId, String module, String action) {
         // If permission doesn't exist, return ALL (full access)
@@ -125,6 +139,60 @@ public class PermissionEvaluatorService {
         } catch (BusinessException e) {
             return "NONE";
         }
+    }
+
+    /**
+     * Get ownership scope for a specific module
+     */
+    @Transactional(readOnly = true)
+    public OwnershipScope getOwnershipScope(UUID tenantId, UUID userId, String module) {
+        try {
+            UserPermissionContext ctx = getUserPermissions(userId, tenantId);
+            
+            // Check for write permission scope
+            String writeKey = module + ":write";
+            if (ctx.getPermissions().containsKey(writeKey)) {
+                String scope = ctx.getPermissions().get(writeKey);
+                return OwnershipScope.fromString(scope);
+            }
+            
+            // Check for read permission scope as fallback
+            String readKey = module + ":read";
+            if (ctx.getPermissions().containsKey(readKey)) {
+                String scope = ctx.getPermissions().get(readKey);
+                return OwnershipScope.fromString(scope);
+            }
+            
+            return OwnershipScope.OWN;
+        } catch (BusinessException e) {
+            return OwnershipScope.OWN;
+        }
+    }
+
+    /**
+     * Get all ownership scopes for user's permissions
+     */
+    @Transactional(readOnly = true)
+    public List<OwnershipScope> getUserOwnershipScopes(UUID tenantId, UUID userId) {
+        try {
+            UserPermissionContext ctx = getUserPermissions(userId, tenantId);
+            return ctx.getPermissions().values().stream()
+                    .map(OwnershipScope::fromString)
+                    .distinct()
+                    .toList();
+        } catch (BusinessException e) {
+            return List.of(OwnershipScope.OWN);
+        }
+    }
+
+    /**
+     * Check if two users are in the same team
+     */
+    @Transactional(readOnly = true)
+    public boolean isInSameTeam(UUID tenantId, UUID user1Id, UUID user2Id) {
+        // Get team members for user1
+        List<UUID> teamMembers = getTeamUserIds(user1Id, tenantId);
+        return teamMembers.contains(user2Id);
     }
 
     /**

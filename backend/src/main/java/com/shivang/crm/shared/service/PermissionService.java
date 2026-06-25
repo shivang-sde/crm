@@ -25,9 +25,8 @@ public class PermissionService {
     }
 
     public List<OwnershipScope> getUserOwnershipScopes(UUID tenantId) {
-        // This would typically come from user's role permissions
-        // For now, returning a default list - implementation depends on RBAC structure
-        return List.of(OwnershipScope.OWN);
+        UUID userId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
+        return permissionEvaluatorService.getUserOwnershipScopes(tenantId, userId);
     }
 
     public boolean isInSameTeam(UUID tenantId, UUID user1Id, UUID user2Id) {

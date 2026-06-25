@@ -1,16 +1,16 @@
 package com.shivang.crm.modules.meeting.service;
 
-import com.shivang.crm.exception.NotFoundException;
-import com.shivang.crm.exception.PermissionDeniedException;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.modules.meeting.dto.MeetingCreateRequest;
 import com.shivang.crm.modules.meeting.dto.MeetingResponse;
 import com.shivang.crm.modules.meeting.dto.MeetingUpdateRequest;
 import com.shivang.crm.modules.meeting.entity.Meeting;
 import com.shivang.crm.modules.meeting.repository.MeetingRepository;
 import com.shivang.crm.modules.meeting.repository.MeetingSpecifications;
+import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.model.OwnershipScope;
 import com.shivang.crm.shared.service.EntityResolverService;
-import com.shivang.crm.shared.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,12 +29,12 @@ import java.util.UUID;
 public class MeetingService {
 
     private final MeetingRepository meetingRepository;
-    private final PermissionService permissionService;
+    private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
 
     public MeetingResponse createMeeting(UUID tenantId, UUID userId, MeetingCreateRequest request) {
         // Validate permissions
-        if (!permissionService.hasPermission(tenantId, userId, "meeting:write")) {
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, "meeting:write")) {
             throw new PermissionDeniedException("No permission to create meetings");
         }
 
@@ -97,11 +97,10 @@ public class MeetingService {
         }
 
         // Apply ownership scope filtering
-        List<OwnershipScope> userScopes = permissionService.getUserOwnershipScopes(tenantId);
+        UUID currentUserId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
+        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
         if (!userScopes.contains(OwnershipScope.ALL)) {
-            spec = spec.and(MeetingSpecifications.hasOwnerOrAssignedTo(
-                com.shivang.crm.shared.security.UserContext.getCurrentUserId()
-            ));
+            spec = spec.and(MeetingSpecifications.hasOwnerOrAssignedTo(currentUserId));
         }
 
         Page<Meeting> meetingPage = meetingRepository.findAll(spec, pageable);
@@ -187,7 +186,7 @@ public class MeetingService {
         Meeting meeting = findMeetingByIdAndTenant(id, tenantId);
 
         // Check delete permission
-        if (!permissionService.hasPermission(tenantId, userId, "meeting:delete")) {
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, "meeting:delete")) {
             throw new PermissionDeniedException("No permission to delete meetings");
         }
 
@@ -203,15 +202,15 @@ public class MeetingService {
     }
 
     private boolean hasWritePermission(Meeting meeting, UUID userId, UUID tenantId) {
-        if (permissionService.hasPermission(tenantId, userId, "meeting:write")) {
-            OwnershipScope scope = permissionService.getOwnershipScope(tenantId, userId, "meeting");
+        if (permissionEvaluatorService.hasPermission(tenantId, userId, "meeting:write")) {
+            OwnershipScope scope = permissionEvaluatorService.getOwnershipScope(tenantId, userId, "meeting");
             
             if (scope == OwnershipScope.ALL) {
                 return true;
             }
             
             if (scope == OwnershipScope.TEAM) {
-                return permissionService.isInSameTeam(tenantId, userId, meeting.getCreatedBy());
+                return permissionEvaluatorService.isInSameTeam(tenantId, userId, meeting.getCreatedBy());
             }
             
             if (scope == OwnershipScope.OWN) {

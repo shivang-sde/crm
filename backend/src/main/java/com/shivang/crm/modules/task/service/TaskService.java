@@ -1,16 +1,16 @@
 package com.shivang.crm.modules.task.service;
 
-import com.shivang.crm.exception.NotFoundException;
-import com.shivang.crm.exception.PermissionDeniedException;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.modules.task.dto.TaskCreateRequest;
 import com.shivang.crm.modules.task.dto.TaskResponse;
 import com.shivang.crm.modules.task.dto.TaskUpdateRequest;
 import com.shivang.crm.modules.task.entity.Task;
 import com.shivang.crm.modules.task.repository.TaskRepository;
 import com.shivang.crm.modules.task.specification.TaskSpecification;
+import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.model.OwnershipScope;
 import com.shivang.crm.shared.service.EntityResolverService;
-import com.shivang.crm.shared.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -30,12 +30,12 @@ import java.util.UUID;
 public class TaskService {
 
     private final TaskRepository taskRepository;
-    private final PermissionService permissionService;
+    private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
 
     public TaskResponse createTask(UUID tenantId, UUID userId, TaskCreateRequest request) {
         // Validate permissions
-        if (!permissionService.hasPermission(tenantId, userId, "task:write")) {
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, "task:write")) {
             throw new PermissionDeniedException("No permission to create tasks");
         }
 
@@ -97,7 +97,8 @@ public class TaskService {
         }
 
         // Apply ownership scope filtering
-        List<OwnershipScope> userScopes = permissionService.getUserOwnershipScopes(tenantId);
+        UUID currentUserId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
+        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
         if (!userScopes.contains(OwnershipScope.ALL)) {
             spec = spec.and(TaskSpecification.hasOwnershipScope(userScopes));
         }
@@ -180,7 +181,7 @@ public class TaskService {
         Task task = findTaskByIdAndTenant(id, tenantId);
 
         // Check delete permission
-        if (!permissionService.hasPermission(tenantId, userId, "task:delete")) {
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, "task:delete")) {
             throw new PermissionDeniedException("No permission to delete tasks");
         }
 
@@ -226,8 +227,8 @@ public class TaskService {
     }
 
     private boolean hasWritePermission(Task task, UUID userId, UUID tenantId) {
-        if (permissionService.hasPermission(tenantId, userId, "task:write")) {
-            OwnershipScope scope = permissionService.getOwnershipScope(tenantId, userId, "task");
+        if (permissionEvaluatorService.hasPermission(tenantId, userId, "task:write")) {
+            OwnershipScope scope = permissionEvaluatorService.getOwnershipScope(tenantId, userId, "task");
             
             if (scope == OwnershipScope.ALL) {
                 return true;
@@ -235,7 +236,7 @@ public class TaskService {
             
             if (scope == OwnershipScope.TEAM) {
                 // Check if user is in the same team as task owner
-                return permissionService.isInSameTeam(tenantId, userId, task.getCreatedBy());
+                return permissionEvaluatorService.isInSameTeam(tenantId, userId, task.getCreatedBy());
             }
             
             if (scope == OwnershipScope.OWN) {

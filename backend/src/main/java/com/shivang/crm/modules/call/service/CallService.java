@@ -1,16 +1,16 @@
 package com.shivang.crm.modules.call.service;
 
-import com.shivang.crm.exception.NotFoundException;
-import com.shivang.crm.exception.PermissionDeniedException;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.modules.call.dto.CallCreateRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.CallUpdateRequest;
 import com.shivang.crm.modules.call.entity.Call;
 import com.shivang.crm.modules.call.repository.CallRepository;
 import com.shivang.crm.modules.call.repository.CallSpecifications;
+import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.model.OwnershipScope;
 import com.shivang.crm.shared.service.EntityResolverService;
-import com.shivang.crm.shared.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,12 +29,12 @@ import java.util.UUID;
 public class CallService {
 
     private final CallRepository callRepository;
-    private final PermissionService permissionService;
+    private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
 
     public CallResponse createCall(UUID tenantId, UUID userId, CallCreateRequest request) {
         // Validate permissions
-        if (!permissionService.hasPermission(tenantId, userId, "call:write")) {
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, "call:write")) {
             throw new PermissionDeniedException("No permission to create calls");
         }
 
@@ -95,11 +95,10 @@ public class CallService {
         }
 
         // Apply ownership scope filtering
-        List<OwnershipScope> userScopes = permissionService.getUserOwnershipScopes(tenantId);
+        UUID currentUserId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
+        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
         if (!userScopes.contains(OwnershipScope.ALL)) {
-            spec = spec.and(CallSpecifications.hasOwnerOrAssignedTo(
-                com.shivang.crm.shared.security.UserContext.getCurrentUserId()
-            ));
+            spec = spec.and(CallSpecifications.hasOwnerOrAssignedTo(currentUserId));
         }
 
         Page<Call> callPage = callRepository.findAll(spec, pageable);
@@ -179,7 +178,7 @@ public class CallService {
         Call call = findCallByIdAndTenant(id, tenantId);
 
         // Check delete permission
-        if (!permissionService.hasPermission(tenantId, userId, "call:delete")) {
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, "call:delete")) {
             throw new PermissionDeniedException("No permission to delete calls");
         }
 
@@ -195,15 +194,15 @@ public class CallService {
     }
 
     private boolean hasWritePermission(Call call, UUID userId, UUID tenantId) {
-        if (permissionService.hasPermission(tenantId, userId, "call:write")) {
-            OwnershipScope scope = permissionService.getOwnershipScope(tenantId, userId, "call");
+        if (permissionEvaluatorService.hasPermission(tenantId, userId, "call:write")) {
+            OwnershipScope scope = permissionEvaluatorService.getOwnershipScope(tenantId, userId, "call");
             
             if (scope == OwnershipScope.ALL) {
                 return true;
             }
             
             if (scope == OwnershipScope.TEAM) {
-                return permissionService.isInSameTeam(tenantId, userId, call.getCreatedBy());
+                return permissionEvaluatorService.isInSameTeam(tenantId, userId, call.getCreatedBy());
             }
             
             if (scope == OwnershipScope.OWN) {
