@@ -1,41 +1,55 @@
 ```
-# Java/Maven
-target/
-*.class
-*.jar
-*.war
-*.ear
-*.zip
-.DS_Store
-Thumbs.db
+# Dependencies
+node_modules/
 
-# IDE
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.*
+
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Environment
-.env
-.env.local
-*.env.*
-
 # Logs
 *.log
 
+# Temporary files
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
 # Coverage
 coverage/
-htmlcov/
-.coverage
-
-# Temp files
-*.tmp
-*.temp
-
-# Build artifacts
-dist/
-build/
-*.o
-*.obj
-*.out
 ```
