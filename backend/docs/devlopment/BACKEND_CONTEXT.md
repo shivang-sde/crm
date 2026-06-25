@@ -44,13 +44,15 @@ Avoid unnecessary refactoring of existing production-ready modules.
 * Accounts
 * Contacts
 * Activities
+* Deals
 
 ---
 
 # Planned Modules
 
-* Deals / Opportunities
 * Tasks / Tickets
+* Call
+* Meetings
 * Calendar
 * Workflow
 * Integrations
