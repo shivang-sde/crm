@@ -4,6 +4,9 @@ import {
   Shield,
   Users,
   Target,
+  Phone,
+  Calendar,
+  CheckSquare,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -25,9 +28,9 @@ const dashboardRoutes: Record<string, string> = {
 const roleRoutePrefixes: Record<string, string[]> = {
   SUPERADMIN: ["/users", "/roles", "/tenants", "/superadmin", "/reseller"],
   RESELLER: ["/tenants", "/reseller",],
-  ADMIN: ["/users", "/roles", "/admin/dashboard", "/leads", "/accounts", "/contacts", "/deals"],
-  MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals"],
-  EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals"],
+  ADMIN: ["/users", "/roles", "/admin/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
+  MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
+  EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
 };
 
 const publicRoutes = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/"];
@@ -110,6 +113,12 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
 
   const canViewDeals = permissions?.has("deal:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
 
+  const canViewTasks = permissions?.has("task:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
+
+  const canViewCalls = permissions?.has("call:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
+
+  const canViewMeetings = permissions?.has("meeting:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
+
 
   return [
     ...baseItems,
@@ -117,6 +126,9 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
     ...(canViewLeads ? [{ name: "Leads", href: "/leads", icon: Target, show: true }] : []),
     ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),
     ...(canViewContacts ? [{ name: "Contacts", href: "/contacts", icon: Users, show: true }] : []),
+    ...(canViewTasks ? [{ name: "Tasks", href: "/tasks", icon: CheckSquare, show: true }] : []),
+    ...(canViewCalls ? [{ name: "Calls", href: "/calls", icon: Phone, show: true }] : []),
+    ...(canViewMeetings ? [{ name: "Meetings", href: "/meetings", icon: Calendar, show: true }] : []),
     ...(canManageUsers ? [{ name: "Users", href: "/users", icon: Users, show: true }] : []),
     ...(canManageRoles ? [{ name: "Roles", href: "/roles", icon: Shield, show: true }] : []),
     ...(canManageTenants ? [{ name: "Tenants", href: "/tenants", icon: Building, show: true }] : []),
