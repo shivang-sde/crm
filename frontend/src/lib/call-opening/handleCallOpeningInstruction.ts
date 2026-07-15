@@ -71,12 +71,19 @@ function openPage(router: AppRouter, instruction: CallOpeningInstruction, route?
 }
 
 function openCallLayout(router: AppRouter, instruction: CallOpeningInstruction, route?: string | null): boolean {
+  // Prefer navigating to the active call layout when a callId is present.
+  if (instruction.callId) {
+    router.push(`/calls/active/${instruction.callId}`);
+    return true;
+  }
+
   const normalizedRoute = route ?? undefined;
   const destination = normalizedRoute ?? getEntityRoute(instruction.entityType, instruction.entityId) ?? undefined;
   if (destination) {
     router.push(destination);
     return true;
   }
+
   return openUnknownCallerFallback(instruction);
 }
 

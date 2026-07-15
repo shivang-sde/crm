@@ -59,6 +59,24 @@ export function CallOpeningProvider() {
     }
 
     if (actionType === "OPEN_CALL_LAYOUT") {
+      if (instruction.callId) {
+        try {
+          router.push(`/calls/active/${instruction.callId}`);
+          const delivered = await markDelivered(event.id);
+          if (!delivered) {
+            toast.error("Call event could not be marked delivered. It may appear again.");
+            processedEventIdsRef.current.delete(event.id);
+          }
+        } catch (error) {
+          console.error("Failed navigating to active call", error);
+          toast.error("Unable to open active call.");
+        } finally {
+          setVisibleInstruction(null);
+          setActiveEvent(null);
+        }
+        return;
+      }
+
       setIsSheetOpen(true);
       return;
     }
@@ -265,3 +283,4 @@ export function CallOpeningProvider() {
     </>
   );
 }
+
