@@ -6,10 +6,16 @@ import { callOpeningApi } from "@/lib/api/call-opening";
 import { useAuthStore } from "@/lib/store/authStore";
 import { handleCallOpeningInstruction } from "@/lib/call-opening/handleCallOpeningInstruction";
 import { toast } from "sonner";
+import type { CallOpeningEvent } from "@/types/call-opening";
 
 const POLL_INTERVAL_MS = 4000;
 
-export function useCallOpeningEvents() {
+interface UseCallOpeningEventsOptions {
+  onEvent?: (event: CallOpeningEvent) => Promise<void>;
+}
+
+export function useCallOpeningEvents(options: UseCallOpeningEventsOptions = {}) {
+  const { onEvent } = options;
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const router = useRouter();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -30,6 +36,11 @@ export function useCallOpeningEvents() {
 
         await Promise.all(
           events.map(async (event) => {
+            if (onEvent) {
+              await onEvent(event);
+              return;
+            }
+
             const handled = await handleCallOpeningInstruction(router, event.instruction);
             if (handled) {
               await callOpeningApi.markOpeningEventDelivered(event.id);
@@ -57,5 +68,5 @@ export function useCallOpeningEvents() {
         pollingRef.current = null;
       }
     };
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, onEvent, router]);
 }

@@ -12,7 +12,7 @@ import { getNavigationItems } from "@/lib/constants/navigation";
 import { Footer } from "./Footer";
 import { Header, type BreadcrumbItem } from "./Header";
 import { Sidebar } from "./Sidebar";
-import { useCallOpeningEvents } from "@/lib/hooks/useCallOpeningEvents";
+import { CallOpeningProvider } from "@/components/call-opening/CallOpeningProvider";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -156,8 +156,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const userName = `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim();
   const roleLabel = user?.roleName ?? userRole?.toLowerCase().replace(/_/g, " ");
 
-  useCallOpeningEvents();
-
   if (!hydrated || !bootstrapComplete) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -197,6 +195,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
           </main>
 
+          <CallOpeningProvider />
           <Footer />
         </div>
       </div>
