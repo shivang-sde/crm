@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import type { LeadCreateRequest } from "@/types/leads";
 import type { ContactCreateRequest } from "@/types/contacts";
 import type { CallLinkRequest } from "@/types/calls";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 
 interface UnknownCallerWorkflowProps {
   callId: string;
@@ -39,6 +40,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
   const createLead = useCreateLead();
   const createContact = useCreateContact();
   const linkCallEntity = useLinkCallEntity();
+  const { canEditCalls } = usePermissions();
 
   async function handleLink(entityType: "LEAD" | "CONTACT" | "ACCOUNT" | "DEAL", entityId: string) {
     try {
@@ -118,7 +120,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setOpen(true)}>Search CRM / Create</Button>
+            <Button variant="secondary" onClick={() => setOpen(true)} disabled={!canEditCalls}>Search CRM / Create</Button>
           </div>
         </CardContent>
       </Card>
@@ -145,7 +147,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
                       <div className="text-sm text-muted-foreground">{l.phone} {l.email ? `· ${l.email}` : ''}</div>
                     </div>
                     <div>
-                      <Button variant="ghost" onClick={() => handleLink("LEAD", l.id)}>Link to call</Button>
+                      <Button variant="ghost" onClick={() => handleLink("LEAD", l.id)} disabled={!canEditCalls}>Link to call</Button>
                     </div>
                   </div>
                 ))}
@@ -162,7 +164,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
                       <div className="text-sm text-muted-foreground">{c.phone} {c.email ? `· ${c.email}` : ''}</div>
                     </div>
                     <div>
-                      <Button variant="ghost" onClick={() => handleLink("CONTACT", c.id)}>Link to call</Button>
+                      <Button variant="ghost" onClick={() => handleLink("CONTACT", c.id)} disabled={!canEditCalls}>Link to call</Button>
                     </div>
                   </div>
                 ))}
@@ -179,7 +181,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
                       <div className="text-sm text-muted-foreground">{a.phone} {a.email ? `· ${a.email}` : ''}</div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="ghost" onClick={() => handleLink("ACCOUNT", a.id)}>Link to call</Button>
+                      <Button variant="ghost" onClick={() => handleLink("ACCOUNT", a.id)} disabled={!canEditCalls}>Link to call</Button>
                       <Button variant={selectedAccountId === a.id ? "secondary" : "outline"} onClick={() => setSelectedAccountId(a.id)}>
                         {selectedAccountId === a.id ? "Selected" : "Select"}
                       </Button>
@@ -206,7 +208,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
                     <Input name="lastName" placeholder="Last name" />
                     <Input name="email" placeholder="Email" />
                     <div className="flex justify-end">
-                      <Button type="submit">Create & Link</Button>
+                      <Button type="submit" disabled={!canEditCalls}>Create & Link</Button>
                     </div>
                   </div>
                 </form>
@@ -236,7 +238,7 @@ export function UnknownCallerWorkflow({ callId, phone }: UnknownCallerWorkflowPr
                     <Input name="lastName" placeholder="Last name" />
                     <Input name="email" placeholder="Email" />
                     <div className="flex justify-end">
-                      <Button type="submit" disabled={!selectedAccountId}>Create & Link</Button>
+                      <Button type="submit" disabled={!canEditCalls || !selectedAccountId}>Create & Link</Button>
                     </div>
                   </div>
                 </form>

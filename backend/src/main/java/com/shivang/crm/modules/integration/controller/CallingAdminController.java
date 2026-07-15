@@ -41,10 +41,13 @@ import com.shivang.crm.modules.integration.service.ProviderRegistryService;
 import com.shivang.crm.shared.exception.BusinessException;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
+@Slf4j
+@org.springframework.security.access.prepost.PreAuthorize("hasPermission('admin', 'settings')")
 public class CallingAdminController {
 
     private final TenantContext tenantContext;
@@ -214,6 +217,7 @@ public class CallingAdminController {
             config.setVerificationSecret(UUID.randomUUID().toString());
         }
         ConnectorWebhookConfig saved = connectorWebhookConfigService.save(config);
+        log.info("Webhook config updated tenant={} connector={} active={} verificationMode={}", tenantId, id, Boolean.TRUE.equals(saved.getIsActive()), saved.getVerificationMode());
         return ResponseEntity.ok(new WebhookConfigResponse(saved.getId(), buildWebhookUrl(instance, "call-connect"), buildWebhookUrl(instance, "cdr"), saved.getTargetUrl(), Boolean.TRUE.equals(saved.getIsActive()), saved.getVerificationMode(), saved.getVerificationSecret() != null && !saved.getVerificationSecret().isBlank(), saved.getWebhookName()));
     }
 
@@ -222,6 +226,7 @@ public class CallingAdminController {
     public ResponseEntity<Map<String, Object>> regenerateSecret(@PathVariable UUID id) {
         UUID tenantId = requireTenantId();
         String secret = connectorWebhookConfigService.regenerateSecret(tenantId, id);
+        log.info("Webhook secret regenerated tenant={} connector={} configured=true", tenantId, id);
         return ResponseEntity.ok(Map.of("secret", secret, "configured", true));
     }
 

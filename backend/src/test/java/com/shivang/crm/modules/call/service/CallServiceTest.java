@@ -26,6 +26,7 @@ import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.enums.OwnershipScope;
 import com.shivang.crm.shared.exception.BusinessException;
 import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.service.EntityResolverService;
 
 class CallServiceTest {
@@ -107,6 +108,7 @@ class CallServiceTest {
         Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).build();
         when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(permissionEvaluatorService.hasPermission(tenantId, userId, "lead:read")).thenReturn(true);
 
         CallLinkRequest request = new CallLinkRequest();
         request.setEntityType("LEAD");
@@ -125,6 +127,7 @@ class CallServiceTest {
         Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).build();
         when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(permissionEvaluatorService.hasPermission(tenantId, userId, "contact:read")).thenReturn(true);
 
         CallLinkRequest request = new CallLinkRequest();
         request.setEntityType("CONTACT");
@@ -159,6 +162,19 @@ class CallServiceTest {
         request.setEntityId(UUID.randomUUID());
 
         assertThrows(BusinessException.class, () -> callService.linkCallEntity(callId, tenantId, userId, request));
+    }
+
+    @Test
+    void linkCallToEntityWithoutReadPermissionIsRejected() {
+        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).build();
+        when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
+        when(permissionEvaluatorService.hasPermission(tenantId, userId, "lead:read")).thenReturn(false);
+
+        CallLinkRequest request = new CallLinkRequest();
+        request.setEntityType("LEAD");
+        request.setEntityId(UUID.randomUUID());
+
+        assertThrows(PermissionDeniedException.class, () -> callService.linkCallEntity(callId, tenantId, userId, request));
     }
 
     @Test

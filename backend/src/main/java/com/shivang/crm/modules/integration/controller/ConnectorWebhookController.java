@@ -32,10 +32,12 @@ import org.springframework.web.bind.annotation.RestController;
 import jakarta.servlet.http.HttpServletRequest;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/v1/webhooks/connectors")
 @RequiredArgsConstructor
+@Slf4j
 public class ConnectorWebhookController {
 
     private final ConnectorInstanceService connectorInstanceService;
@@ -109,6 +111,9 @@ public class ConnectorWebhookController {
         } catch (Exception ex) {
             // fallback
         }
+
+        log.info("Webhook received tenant={} connector={} trigger={} verificationStatus={} payloadKeys={} headerKeys={}",
+                instance.getTenantId(), instance.getId(), triggerKey, verificationStatus, payloadMap.keySet(), sanitizedHeaders.keySet());
 
         ConnectorWebhookEvent event = ConnectorWebhookEvent.builder()
                 .tenantId(instance.getTenantId())

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 
 interface ProviderSummary {
   id: string;
@@ -109,6 +110,9 @@ export default function CallingSettingsPage() {
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({ displayMode: "PAGE", active: true, showEntityDetails: true, showCallHistory: true, showNotes: true, showDisposition: true });
   const [loading, setLoading] = useState(true);
   const [savingInstance, setSavingInstance] = useState(false);
+  const { hasPermission } = usePermissions();
+  const canManageCallingSettings = hasPermission("call", "write");
+  const canViewCallingSettings = hasPermission("call", "read");
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [savingTrigger, setSavingTrigger] = useState(false);
@@ -451,6 +455,10 @@ export default function CallingSettingsPage() {
     return <p className="text-sm text-muted-foreground">Loading calling settings…</p>;
   }
 
+  if (!canViewCallingSettings) {
+    return <p className="text-sm text-muted-foreground">You do not have permission to view calling settings.</p>;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -534,9 +542,9 @@ export default function CallingSettingsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={savingInstance}>{savingInstance ? "Saving…" : selectedInstance ? "Update instance" : "Create instance"}</Button>
+                  <Button type="submit" disabled={savingInstance || !canManageCallingSettings}>{savingInstance ? "Saving…" : selectedInstance ? "Update instance" : "Create instance"}</Button>
                   {selectedInstance && (
-                    <Button type="button" variant="outline" onClick={() => handleToggleInstance(selectedInstance.id, !selectedInstance.active)}>
+                    <Button type="button" variant="outline" onClick={() => handleToggleInstance(selectedInstance.id, !selectedInstance.active)} disabled={!canManageCallingSettings}>
                       {selectedInstance.active ? "Deactivate" : "Activate"}
                     </Button>
                   )}
@@ -574,7 +582,7 @@ export default function CallingSettingsPage() {
                     ))}
                   </div>
 
-                  <Button type="submit" disabled={savingCredentials}>{savingCredentials ? "Saving…" : "Save credentials"}</Button>
+                  <Button type="submit" disabled={savingCredentials || !canManageCallingSettings}>{savingCredentials ? "Saving…" : "Save credentials"}</Button>
                 </form>
               ) : (
                 <p className="text-sm text-muted-foreground">Select a connector instance to configure credentials.</p>
@@ -644,8 +652,8 @@ export default function CallingSettingsPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button type="submit" disabled={savingWebhook}>{savingWebhook ? "Saving…" : "Save webhook config"}</Button>
-                      <Button type="button" variant="outline" onClick={handleRegenerateSecret}>
+                      <Button type="submit" disabled={savingWebhook || !canManageCallingSettings}>{savingWebhook ? "Saving…" : "Save webhook config"}</Button>
+                      <Button type="button" variant="outline" onClick={handleRegenerateSecret} disabled={!canManageCallingSettings}>
                         <RefreshCw className="mr-2 h-4 w-4" /> Regenerate secret
                       </Button>
                     </div>
@@ -739,8 +747,8 @@ export default function CallingSettingsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <Button type="submit" disabled={savingTrigger}>{savingTrigger ? "Saving…" : editingTriggerId ? "Update rule" : "Create rule"}</Button>
-                  <Button type="button" variant="outline" onClick={resetTriggerForm}>Reset</Button>
+                  <Button type="submit" disabled={savingTrigger || !canManageCallingSettings}>{savingTrigger ? "Saving…" : editingTriggerId ? "Update rule" : "Create rule"}</Button>
+                  <Button type="button" variant="outline" onClick={resetTriggerForm} disabled={!canManageCallingSettings}>Reset</Button>
                 </div>
               </form>
 
@@ -753,7 +761,7 @@ export default function CallingSettingsPage() {
                         <p className="text-sm text-muted-foreground">{trigger.triggerKey} • {trigger.direction}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Switch checked={trigger.active} onCheckedChange={(value) => void handleToggleTrigger(trigger.id, value)} />
+                        <Switch checked={trigger.active} onCheckedChange={(value) => void handleToggleTrigger(trigger.id, value)} disabled={!canManageCallingSettings} />
                         <Button type="button" variant="outline" onClick={() => {
                           setEditingTriggerId(trigger.id);
                           setTriggerForm({
@@ -769,7 +777,7 @@ export default function CallingSettingsPage() {
                             active: trigger.active,
                           });
                         }}>Edit</Button>
-                        <Button type="button" variant="outline" onClick={() => void handleDeleteTrigger(trigger.id)}>Delete</Button>
+                        <Button type="button" variant="outline" onClick={() => void handleDeleteTrigger(trigger.id)} disabled={!canManageCallingSettings}>Delete</Button>
                       </div>
                     </div>
                   </div>
@@ -823,7 +831,7 @@ export default function CallingSettingsPage() {
                   ))}
                 </div>
 
-                <Button type="submit" disabled={savingLayout}>{savingLayout ? "Saving…" : "Save layout defaults"}</Button>
+                <Button type="submit" disabled={savingLayout || !canManageCallingSettings}>{savingLayout ? "Saving…" : "Save layout defaults"}</Button>
               </form>
             </CardContent>
           </Card>

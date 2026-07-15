@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.call.service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -49,6 +50,7 @@ public class CallService {
 
         // Validate linked entity if provided
         if (request.getEntityType() != null && request.getEntityId() != null) {
+            validateEntityAccess(request.getEntityType(), tenantId, userId, "read");
             entityResolverService.validateEntityExists(
                 request.getEntityType(), 
                 request.getEntityId(), 
@@ -91,6 +93,11 @@ public class CallService {
         Call.CallStatus status,
         Pageable pageable
     ) {
+        UUID currentUserId = tenantContext.getUserId();
+        if (!permissionEvaluatorService.hasPermission(tenantId, currentUserId, "call:read")) {
+            throw new PermissionDeniedException("No permission to view calls");
+        }
+
         Specification<Call> spec = Specification.where(CallSpecifications.hasTenant(tenantId))
             .and(CallSpecifications.notDeleted());
 
@@ -103,7 +110,6 @@ public class CallService {
         }
 
         // Apply ownership scope filtering
-        UUID currentUserId = tenantContext.getUserId();
         List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
         if (!userScopes.contains(OwnershipScope.ALL)) {
             spec = spec.and(CallSpecifications.hasOwnerOrAssignedTo(currentUserId));
@@ -115,6 +121,11 @@ public class CallService {
 
     @Transactional(readOnly = true)
     public CallResponse getCall(UUID id, UUID tenantId) {
+        UUID currentUserId = tenantContext.getUserId();
+        if (!permissionEvaluatorService.hasPermission(tenantId, currentUserId, "call:read")) {
+            throw new PermissionDeniedException("No permission to view this call");
+        }
+
         Call call = findCallByIdAndTenant(id, tenantId);
         return toResponse(call);
     }
@@ -131,6 +142,7 @@ public class CallService {
         if (request.getEntityType() != null && request.getEntityId() != null) {
             if (!request.getEntityType().equals(call.getEntityType()) || 
                 !request.getEntityId().equals(call.getEntityId())) {
+                validateEntityAccess(request.getEntityType(), tenantId, userId, "read");
                 entityResolverService.validateEntityExists(
                     request.getEntityType(), 
                     request.getEntityId(), 
@@ -184,6 +196,7 @@ public class CallService {
             throw new PermissionDeniedException("No permission to link this call");
         }
 
+        validateEntityAccess(request.getEntityType(), tenantId, userId, "read");
         entityResolverService.validateEntityExists(request.getEntityType(), request.getEntityId(), tenantId);
 
         call.setEntityType(request.getEntityType());
@@ -276,6 +289,28 @@ public class CallService {
     private Call findCallByIdAndTenant(UUID id, UUID tenantId) {
         return callRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new NotFoundException("Call not found with id: " + id));
+    }
+
+    private void validateEntityAccess(String entityType, UUID tenantId, UUID userId, String action) {
+        if (entityType == null || userId == null) {
+            return;
+        }
+
+        String module = switch (entityType.toUpperCase(Locale.ROOT)) {
+            case "LEAD" -> "lead";
+            case "CONTACT" -> "contact";
+            case "ACCOUNT" -> "account";
+            case "DEAL" -> "deal";
+            default -> null;
+        };
+
+        if (module == null) {
+            return;
+        }
+
+        if (!permissionEvaluatorService.hasPermission(tenantId, userId, module + ":" + action)) {
+            throw new PermissionDeniedException("No permission to access " + module + " records");
+        }
     }
 
     private boolean hasWritePermission(Call call, UUID userId, UUID tenantId) {

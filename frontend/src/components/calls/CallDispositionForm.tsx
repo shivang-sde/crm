@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useSaveCallDisposition } from "@/lib/hooks/calls";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { CallDispositionRequest, CallResponse } from "@/types/calls";
 import { toast } from "sonner";
 
@@ -31,6 +32,7 @@ export function CallDispositionForm({ call, onSaved }: CallDispositionFormProps)
   const [disposition, setDisposition] = React.useState(call.disposition ?? "");
   const [notes, setNotes] = React.useState(call.notes ?? "");
   const saveDisposition = useSaveCallDisposition();
+  const { canEditCalls } = usePermissions();
 
   const isCompletedCall = call.status === "HELD" || call.status === "NOT_HELD" || Boolean(call.endTime);
 
@@ -63,16 +65,18 @@ export function CallDispositionForm({ call, onSaved }: CallDispositionFormProps)
         <CardTitle>Disposition</CardTitle>
         <CardDescription>
           {isCompletedCall
-            ? "Capture the outcome of the call after it has ended."
+            ? canEditCalls
+              ? "Capture the outcome of the call after it has ended."
+              : "You do not have permission to save call dispositions."
             : "Disposition will be available after the call ends."}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {isCompletedCall ? (
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={canEditCalls ? handleSubmit : (event) => event.preventDefault()}>
             <div className="space-y-2">
               <label className="text-sm font-medium">Disposition</label>
-              <Select value={disposition} onValueChange={setDisposition}>
+              <Select value={disposition} onValueChange={setDisposition} disabled={!canEditCalls}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a disposition" />
                 </SelectTrigger>
@@ -93,6 +97,7 @@ export function CallDispositionForm({ call, onSaved }: CallDispositionFormProps)
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add any notes about the call outcome"
+                disabled={!canEditCalls}
               />
             </div>
 
@@ -104,7 +109,7 @@ export function CallDispositionForm({ call, onSaved }: CallDispositionFormProps)
             ) : null}
 
             <div className="flex justify-end">
-              <Button type="submit" disabled={saveDisposition.isPending}>
+              <Button type="submit" disabled={!canEditCalls || saveDisposition.isPending}>
                 {saveDisposition.isPending ? "Saving..." : "Save disposition"}
               </Button>
             </div>
