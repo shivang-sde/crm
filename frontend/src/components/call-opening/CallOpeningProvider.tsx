@@ -221,6 +221,13 @@ export function CallOpeningProvider() {
       return;
     }
 
+    // If we have an active callId, open the unknown-caller workflow dialog.
+    if (visibleInstruction.callId) {
+      // Navigate to the active call page and request the unknown-caller dialog open.
+      router.push(`/calls/active/${visibleInstruction.callId}?openUnknown=1`);
+      return;
+    }
+
     if (SEARCH_ROUTE_AVAILABLE) {
       router.push(`${GLOBAL_SEARCH_ROUTE}?query=${encodeURIComponent(phoneNumber)}`);
       return;
@@ -252,6 +259,7 @@ export function CallOpeningProvider() {
         onDismiss={handleDismiss}
         onSearchCRM={handleSearchCRM}
       />
+      {/* Unknown caller workflow is available on the active call page */}
       {visibleInstruction && activeEvent && activeEvent.instruction.actionType === "OPEN_PAGE" && isToastOpen ? (
         <div className="fixed bottom-6 right-6 z-50 w-full max-w-sm rounded-2xl border bg-popover p-4 shadow-xl shadow-black/10">
           <div className="flex items-start gap-3">

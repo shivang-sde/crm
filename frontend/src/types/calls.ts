@@ -13,13 +13,16 @@ export interface CallResponse {
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
+  externalCallId?: string;
+  providerName?: string;
+  recordingUrl?: string;
   status: CallStatus;
   entityType?: EntityType;
   entityId?: string;
   entityName?: string;
   remindAt?: string;
   recurrence?: Recurrence;
-  customData?: Record<string, any>;
+  customData?: Record<string, unknown>;
   assignedTo?: {
     id: string;
     name: string;
@@ -46,7 +49,7 @@ export interface CallCreateRequest {
   entityId?: string;
   remindAt?: string;
   recurrence?: Recurrence;
-  customData?: Record<string, any>;
+  customData?: Record<string, unknown>;
   assignedToId?: string;
 }
 
@@ -60,6 +63,13 @@ export interface CallUpdateRequest {
   status?: CallStatus;
   remindAt?: string;
   recurrence?: Recurrence;
-  customData?: Record<string, any>;
+  customData?: Record<string, unknown>;
   assignedToId?: string;
+  entityType?: EntityType;
+  entityId?: string;
+}
+
+export interface CallLinkRequest {
+  entityType: EntityType;
+  entityId: string;
 }

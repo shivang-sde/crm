@@ -1,19 +1,7 @@
 package com.shivang.crm.modules.call.service;
 
-import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
-import com.shivang.crm.modules.call.dto.CallCreateRequest;
-import com.shivang.crm.modules.call.dto.CallResponse;
-import com.shivang.crm.modules.call.dto.CallUpdateRequest;
-import com.shivang.crm.modules.call.entity.Call;
-import com.shivang.crm.modules.call.repository.CallRepository;
-import com.shivang.crm.modules.call.repository.CallSpecifications;
-import com.shivang.crm.shared.exception.NotFoundException;
-import com.shivang.crm.shared.exception.PermissionDeniedException;
-import com.shivang.crm.shared.service.EntityResolverService;
-import com.shivang.crm.modules.auth.security.TenantContext;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,10 +9,23 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.UUID;
-
+import com.shivang.crm.modules.activity.service.ActivityService;
+import com.shivang.crm.modules.auth.security.TenantContext;
+import com.shivang.crm.modules.call.dto.CallCreateRequest;
+import com.shivang.crm.modules.call.dto.CallLinkRequest;
+import com.shivang.crm.modules.call.dto.CallResponse;
+import com.shivang.crm.modules.call.dto.CallUpdateRequest;
+import com.shivang.crm.modules.call.entity.Call;
+import com.shivang.crm.modules.call.repository.CallRepository;
+import com.shivang.crm.modules.call.repository.CallSpecifications;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.enums.OwnershipScope;
+import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
+import com.shivang.crm.shared.service.EntityResolverService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +36,7 @@ public class CallService {
     private final CallRepository callRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
+    private final ActivityService activityService;
 
     private final TenantContext tenantContext;
 
@@ -171,6 +173,38 @@ public class CallService {
         Call updatedCall = callRepository.save(call);
         log.info("Updated call {} for tenant {}", id, tenantId);
 
+        return toResponse(updatedCall);
+    }
+
+    public CallResponse linkCallEntity(UUID id, UUID tenantId, UUID userId, CallLinkRequest request) {
+        Call call = findCallByIdAndTenant(id, tenantId);
+
+        if (!hasWritePermission(call, userId, tenantId)) {
+            throw new PermissionDeniedException("No permission to link this call");
+        }
+
+        entityResolverService.validateEntityExists(request.getEntityType(), request.getEntityId(), tenantId);
+
+        call.setEntityType(request.getEntityType());
+        call.setEntityId(request.getEntityId());
+        call.setUpdatedBy(userId);
+
+        Call updatedCall = callRepository.save(call);
+        activityService.logActivity(
+            tenantId,
+            updatedCall.getId(),
+            "CALL",
+            "CALL_LINKED",
+            String.format("Call linked to %s %s", request.getEntityType(), request.getEntityId()),
+            userId,
+            java.util.Map.of(
+                "subType", "CALL_LINKED_TO_ENTITY",
+                "linkedEntityType", request.getEntityType(),
+                "linkedEntityId", request.getEntityId().toString()
+            )
+        );
+
+        log.info("Linked call {} to {} {} for tenant {}", id, request.getEntityType(), request.getEntityId(), tenantId);
         return toResponse(updatedCall);
     }
 

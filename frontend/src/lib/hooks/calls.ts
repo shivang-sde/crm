@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { callApi, type CallListParams } from '@/lib/api/calls';
-import type { CallCreateRequest, CallUpdateRequest } from '@/types/calls';
+import type { CallCreateRequest, CallLinkRequest, CallUpdateRequest } from '@/types/calls';
 
 export function useCalls(params?: CallListParams) {
   return useQuery({
@@ -34,6 +34,19 @@ export function useUpdateCall() {
   return useMutation({
     mutationFn: ({ id, request }: { id: string; request: CallUpdateRequest }) =>
       callApi.updateCall(id, request),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
+      queryClient.invalidateQueries({ queryKey: ['call', id] });
+    },
+  });
+}
+
+export function useLinkCallEntity() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, request }: { id: string; request: CallLinkRequest }) =>
+      callApi.linkCallEntity(id, request),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['calls'] });
       queryClient.invalidateQueries({ queryKey: ['call', id] });

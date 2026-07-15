@@ -3,6 +3,7 @@ import type {
   CallResponse,
   CallCreateRequest,
   CallUpdateRequest,
+  CallLinkRequest,
 } from '../../types/calls';
 import type { ListResponse } from '../../types/common';
 
@@ -36,6 +37,11 @@ export const callApi = {
 
   updateCall: async (id: string, request: CallUpdateRequest): Promise<CallResponse> => {
     const response = await api.put(`/calls/${id}`, request);
+    return response.data;
+  },
+
+  linkCallEntity: async (id: string, request: CallLinkRequest): Promise<CallResponse> => {
+    const response = await api.patch(`/calls/${id}/link-entity`, request);
     return response.data;
   },
 

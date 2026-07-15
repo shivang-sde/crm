@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { ArrowLeft, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import UnknownCallerWorkflow from "@/components/calls/UnknownCallerWorkflow";
 
 export default function ActiveCallPage() {
   const router = useRouter();
@@ -160,11 +161,7 @@ export default function ActiveCallPage() {
                   <Button variant="link" onClick={() => router.push(`/${call.entityType?.toLowerCase()}/${call.entityId}`)}>Open entity</Button>
                 </div>
               ) : (
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Unknown caller</p>
-                  <p className="text-sm">{call.phoneNumber || 'Unknown'}</p>
-                  <p className="text-sm text-muted-foreground mt-2">Create/link workflow will be added in Phase 9C.</p>
-                </div>
+                <UnknownCallerWorkflow callId={call.id} phone={call.phoneNumber} />
               )}
             </CardContent>
           </Card>

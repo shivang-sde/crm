@@ -1,12 +1,14 @@
 package com.shivang.crm.modules.call.controller;
 
 import com.shivang.crm.modules.call.dto.CallCreateRequest;
+import com.shivang.crm.modules.call.dto.CallLinkRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.CallUpdateRequest;
 import com.shivang.crm.modules.call.entity.Call;
 import com.shivang.crm.modules.call.service.CallService;
 import com.shivang.crm.modules.auth.security.TenantContext;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.domain.Page;
@@ -60,6 +62,17 @@ public class CallController {
         UUID tenantId = tenantContext.getTenantId();
         UUID userId = tenantContext.getUserId();
         CallResponse response = callService.updateCall(id, tenantId, userId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/{id}/link-entity")
+    public ResponseEntity<CallResponse> linkCallEntity(
+        @PathVariable UUID id,
+        @Valid @RequestBody CallLinkRequest request
+    ) {
+        UUID tenantId = tenantContext.getTenantId();
+        UUID userId = tenantContext.getUserId();
+        CallResponse response = callService.linkCallEntity(id, tenantId, userId, request);
         return ResponseEntity.ok(response);
     }
 
