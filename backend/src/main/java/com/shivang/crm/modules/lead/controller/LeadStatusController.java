@@ -110,10 +110,6 @@ public class LeadStatusController {
     }
 
     private UUID currentTenantId() {
-        String tenantId = tenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
-            throw new IllegalStateException("Tenant context is not available");
-        }
-        return UUID.fromString(tenantId);
+        return tenantContext.getTenantId();
     }
 }

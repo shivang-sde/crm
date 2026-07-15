@@ -83,7 +83,7 @@ public class RbacFilter extends OncePerRequestFilter {
             UUID tenantId = null;
 
             if (tenantContext.getTenantId() != null) {
-                tenantId = UUID.fromString(tenantContext.getTenantId());
+                tenantId = tenantContext.getTenantId();
             }
 
             // Check permission

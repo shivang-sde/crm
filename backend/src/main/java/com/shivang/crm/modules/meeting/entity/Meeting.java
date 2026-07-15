@@ -75,12 +75,17 @@ public class Meeting extends TenantOwnedEntity {
     // Status
     @Enumerated(EnumType.STRING)
     @Column(length = 50, nullable = false)
-    @Builder.Default
     private MeetingStatus status = MeetingStatus.PLANNED;
 
     // Reminder
     @Column(name = "remind_at")
     private Instant remindAt;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
+
+    @Column(name = "assigned_to")
+    private UUID assignedTo;
 
     // Recurrence (stored as JSONB)
     @JdbcTypeCode(SqlTypes.JSON)
@@ -93,21 +98,53 @@ public class Meeting extends TenantOwnedEntity {
     private Map<String, Object> customData;
 
     // Helper methods
-    public void markAsHeld() {
+    public void markAsHeld(UUID userId) {
         this.status = MeetingStatus.HELD;
+        this.updatedBy = userId;
     }
 
-    public void markAsNotHeld() {
+    public void markAsNotHeld(UUID userId) {
         this.status = MeetingStatus.NOT_HELD;
+        this.updatedBy = userId;
     }
 
-    public void cancel() {
+    public void cancel(UUID userId) {
         this.status = MeetingStatus.CANCELLED;
+        this.updatedBy = userId;
     }
 
     public boolean isCompleted() {
         return this.status == MeetingStatus.HELD || this.status == MeetingStatus.NOT_HELD;
     }
+
+    public boolean isScheduled() {
+        return this.status == MeetingStatus.PLANNED;
+    }
+
+    public boolean isInProgress() {
+        if (this.startTime == null || this.endTime == null) {
+            return false;
+        }
+        Instant now = Instant.now();
+        return now.isAfter(this.startTime) && now.isBefore(this.endTime);
+    }
+
+     public boolean isAssignedTo(UUID userId) {
+        return this.assignedTo != null && this.assignedTo.equals(userId);
+    }
+
+        // Optional: Add to each entity if you want entity-specific soft delete
+    @Override
+    public void softDelete(UUID deletedBy) {
+        super.softDelete(deletedBy);
+        this.updatedBy = deletedBy;
+    }
+
+    public void assignTo(UUID userId, UUID assigneeId) {
+        this.assignedTo = assigneeId;
+        this.updatedBy = userId;
+    }
+
 
     public enum MeetingType {
         IN_PERSON, VIDEO, PHONE

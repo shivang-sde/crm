@@ -115,7 +115,7 @@ export function UnifiedActivityTimeline({ entityType, entityId, limit = 10 }: Un
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Activity Timeline</h3>
       <div className="relative border-l-2 border-gray-200 ml-4 space-y-6">
-        {data.content.map((activity) => (
+        {data.content.map((activity: UnifiedActivity) => (
           <div key={`${activity.type}-${activity.id}`} className="ml-6 relative">
             {/* Timeline dot */}
             <div

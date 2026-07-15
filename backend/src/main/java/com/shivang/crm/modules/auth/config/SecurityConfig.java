@@ -54,6 +54,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/forgot-password",
+                                "/api/v1/webhooks/connectors/**",
                                 "/actuator/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

@@ -13,8 +13,9 @@ import { useDeleteMeeting } from '@/lib/hooks/meetings';
 
 export default function MeetingDetailPage() {
   const router = useRouter();
-  const params = useParams();
-  const id = params.id as string;
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === 'string' ? rawId : rawId?.[0] ?? '';
   const { canEditMeetings, canDeleteMeetings } = usePermissions();
   const { data: meeting, isLoading } = useMeeting(id);
   const deleteMeeting = useDeleteMeeting();
@@ -107,7 +108,7 @@ export default function MeetingDetailPage() {
                   Attendees ({meeting.attendees.length})
                 </p>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {meeting.attendees.map((attendee, idx) => (
+                  {meeting.attendees.map((attendee: { name?: string; email?: string }, idx: number) => (
                     <Badge key={idx} variant="outline">
                       {attendee.name || attendee.email || 'Unnamed'}
                     </Badge>

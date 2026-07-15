@@ -46,12 +46,10 @@ public class Task extends TenantOwnedEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(length = 50, nullable = false)
-    @Builder.Default
     private TaskStatus status = TaskStatus.NOT_STARTED;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    @Builder.Default
     private TaskPriority priority = TaskPriority.MEDIUM;
 
     // Polymorphic linking to any entity
@@ -75,12 +73,15 @@ public class Task extends TenantOwnedEntity {
     private Instant completedAt;
 
     @Column(name = "is_closed")
-    @Builder.Default
     private Boolean isClosed = false;
 
     // Assigned user
     @Column(name = "assigned_to")
     private UUID assignedTo;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
+
 
     // Custom data (JSONB for extensibility)
     @JdbcTypeCode(SqlTypes.JSON)
@@ -88,17 +89,27 @@ public class Task extends TenantOwnedEntity {
     private Map<String, Object> customData;
 
     // Helper methods
-    public void complete() {
+    public void complete(UUID userId) {
         this.status = TaskStatus.COMPLETED;
         this.isClosed = true;
         this.completedAt = Instant.now();
+        this.updatedBy = userId;
     }
 
-    public void reopen() {
+     public void reopen(UUID userId) {
         this.status = TaskStatus.NOT_STARTED;
         this.isClosed = false;
         this.completedAt = null;
+        this.updatedBy = userId;
     }
+
+    @Override
+    public void softDelete(UUID deletedBy) {
+        super.softDelete(deletedBy); // Call BaseEntity's softDelete
+        this.updatedBy = deletedBy;
+    }
+
+    // Optional: Add to each entity if you want entity-specific soft delete
 
     public boolean isOverdue() {
         if (this.isClosed || this.dueDate == null) {
@@ -106,4 +117,17 @@ public class Task extends TenantOwnedEntity {
         }
         return Instant.now().isAfter(this.dueDate);
     }
+    public boolean isCompleted() {
+        return this.status == TaskStatus.COMPLETED;
+    }
+
+    public static boolean isStatusClosed(TaskStatus status) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    // getter setter
+    public UUID getCreatedBy(){
+        return this.getCreatedBy();
+    }
+
 }

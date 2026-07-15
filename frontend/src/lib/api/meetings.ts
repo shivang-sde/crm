@@ -3,8 +3,8 @@ import type {
   MeetingResponse,
   MeetingCreateRequest,
   MeetingUpdateRequest,
-} from '../types/meetings';
-import type { ListResponse } from '../types/common';
+} from '../../types/meetings';
+import type { ListResponse } from '../../types/common';
 
 export interface MeetingListParams {
   entityType?: string;

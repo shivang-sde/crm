@@ -7,8 +7,9 @@ import { DealDetail } from "@/components/deals/DealDetail/DealDetail";
 import { useDeal } from "@/lib/hooks/deals";
 
 function DealDetailPageContent() {
-  const params = useParams();
-  const id = typeof params.id === "string" ? params.id : params.id?.[0];
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === "string" ? rawId : rawId?.[0];
   const { data: deal, isLoading, isError } = useDeal(id);
 
   if (isLoading) {

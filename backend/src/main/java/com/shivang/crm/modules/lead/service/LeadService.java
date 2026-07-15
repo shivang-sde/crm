@@ -22,8 +22,8 @@ import com.shivang.crm.modules.auth.repository.UserRepository;
 import com.shivang.crm.modules.contact.dto.ContactCreateRequest;
 import com.shivang.crm.modules.contact.dto.ContactResponse;
 import com.shivang.crm.modules.contact.service.ContactService;
-import com.shivang.crm.modules.lead.dto.LeadConvertResponse;
 import com.shivang.crm.modules.lead.dto.LeadConvertRequest;
+import com.shivang.crm.modules.lead.dto.LeadConvertResponse;
 import com.shivang.crm.modules.lead.dto.LeadCreateRequest;
 import com.shivang.crm.modules.lead.dto.LeadResponse;
 import com.shivang.crm.modules.lead.dto.LeadUpdateRequest;
@@ -299,9 +299,6 @@ public class LeadService {
     public LeadConvertResponse convertLead(UUID id, UUID tenantId, UUID userId, LeadConvertRequest request) {
         log.info("Converting lead: {} for tenant: {}", id, tenantId);
 
-        if (!permissionEvaluatorService.hasPermission(userId, tenantId, "lead", "convert")) {
-            throw new BusinessException("FORBIDDEN", "User does not have permission to convert leads");
-        }
 
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));

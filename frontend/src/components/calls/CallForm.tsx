@@ -41,7 +41,7 @@ export function CallForm({ call, entityType, entityId, onSuccess, onCancel }: Ca
       phoneNumber: call?.phoneNumber || '',
       startTime: call?.startTime ? call.startTime.split('T')[0] : '',
       status: call?.status || 'PLANNED',
-      entityType: call?.entityType || entityType,
+      entityType: (call?.entityType || entityType || 'LEAD') as 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'DEAL' | 'OPPORTUNITY',
       entityId: call?.entityId || entityId,
       remindAt: call?.remindAt,
       recurrence: call?.recurrence,

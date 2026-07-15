@@ -168,6 +168,7 @@ CREATE TABLE meetings (
     owner_user_id UUID,
     created_by UUID NOT NULL,
     updated_by UUID,
+    assigned_to UUID,
 
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -179,7 +180,8 @@ CREATE TABLE meetings (
     CONSTRAINT fk_meetings_tenant_id FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     CONSTRAINT fk_meetings_owner_user_id FOREIGN KEY (owner_user_id) REFERENCES users(id),
     CONSTRAINT fk_meetings_created_by FOREIGN KEY (created_by) REFERENCES users(id),
-    CONSTRAINT fk_meetings_updated_by FOREIGN KEY (updated_by) REFERENCES users(id)
+    CONSTRAINT fk_meetings_updated_by FOREIGN KEY (updated_by) REFERENCES users(id),
+    CONSTRAINT fk_meetings_assigned_to FOREIGN KEY (assigned_to) REFERENCES users(id);
 );
 
 CREATE INDEX idx_meetings_tenant ON meetings(tenant_id);

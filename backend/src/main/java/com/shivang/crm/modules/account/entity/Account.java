@@ -15,7 +15,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import jakarta.persistence.Index;
-import lombok.AllArgsConstructor;
+import lombok.AllArgsConstructor;         
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

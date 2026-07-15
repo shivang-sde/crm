@@ -1,11 +1,13 @@
 package com.shivang.crm.modules.task.specification;
 
-import com.shivang.crm.modules.task.entity.Task;
-import com.shivang.crm.shared.model.OwnershipScope;
-import org.springframework.data.jpa.domain.Specification;
-
 import java.util.List;
 import java.util.UUID;
+
+import org.springframework.data.jpa.domain.Specification;
+
+import com.shivang.crm.modules.task.entity.Task;
+import com.shivang.crm.modules.task.entity.TaskStatus;
+import com.shivang.crm.shared.enums.OwnershipScope;
 
 public class TaskSpecification {
 
@@ -24,7 +26,7 @@ public class TaskSpecification {
         );
     }
 
-    public static Specification<Task> hasStatus(Task.TaskStatus status) {
+    public static Specification<Task> hasStatus(TaskStatus status) {
         return (root, query, cb) -> cb.equal(root.get("status"), status);
     }
 

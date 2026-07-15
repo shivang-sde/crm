@@ -6,8 +6,9 @@ import { useContact } from "@/lib/hooks/contacts";
 import { ContactDetail } from "@/components/contacts/ContactDetail/ContactDetail";
 
 function ContactDetailPageContent() {
-  const params = useParams();
-  const id = typeof params.id === "string" ? params.id : params.id?.[0];
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === "string" ? rawId : rawId?.[0];
   const { data: contact, isLoading } = useContact(id);
 
   if (isLoading) {

@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { Pencil, Trash2, CheckCircle, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
+import type { TaskResponse } from '@/types/tasks';
 
 interface TaskListProps {
   entityType?: string;
@@ -137,7 +138,7 @@ export function TaskList({ entityType, entityId }: TaskListProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.content.map((task) => (
+          {data?.content.map((task: TaskResponse) => (
             <TableRow key={task.id}>
               <TableCell className="font-medium">{task.subject}</TableCell>
               <TableCell>

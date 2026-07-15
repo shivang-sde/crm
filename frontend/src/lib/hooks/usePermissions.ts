@@ -1,9 +1,35 @@
 import { useAuthStore } from "@/lib/store/authStore";
 
 export const usePermissions = () => {
-  const hasPermission = useAuthStore((state) => state.hasPermission);
-  const getAccessScope = useAuthStore((state) => state.getAccessScope);
+  const authHasPermission = useAuthStore((state) => state.hasPermission);
+  const authGetAccessScope = useAuthStore((state) => state.getAccessScope);
   const permissions = useAuthStore((state) => state.permissions);
+
+  const hasPermission = (module: string, action?: string) => {
+    if (action) {
+      return authHasPermission(module, action);
+    }
+
+    const [permissionModule, permissionAction] = module.split(':');
+    if (!permissionAction) {
+      return false;
+    }
+
+    return authHasPermission(permissionModule, permissionAction);
+  };
+
+  const getAccessScope = (module: string, action?: string) => {
+    if (action) {
+      return authGetAccessScope(module, action);
+    }
+
+    const [permissionModule, permissionAction] = module.split(':');
+    if (!permissionAction) {
+      return 'NONE';
+    }
+
+    return authGetAccessScope(permissionModule, permissionAction);
+  };
 
   const canViewUsers = hasPermission('admin', 'user_manage');
   const canManageRoles = hasPermission('admin', 'role_manage');

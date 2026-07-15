@@ -65,6 +65,10 @@ jwt:
   access-token-expiry-ms: 36000000 # 15 minutes
   refresh-token-expiry-days: 7 # 7 days
 
+integration:
+  security:
+    encryption-key: ${INTEGRATION_ENCRYPTION_KEY:}
+
 # ── Server ──
 server:
   port: 8080

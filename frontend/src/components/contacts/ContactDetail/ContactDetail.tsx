@@ -21,6 +21,7 @@ import { usePermissions } from "@/lib/hooks/usePermissions";
 import { ContactResponse } from "@/types/contacts";
 import { ContactTimeline } from "./ContactTimeline";
 import { ContactNotes } from "./ContactNotes";
+import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 
 interface ContactDetailProps {
   contact: ContactResponse;
@@ -43,7 +44,17 @@ export function ContactDetail({ contact }: ContactDetailProps) {
             Back to contacts
           </Link>
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {contact.phone && (
+            <ClickToCallButton
+              entityType="contact"
+              entityId={contact.id}
+              phoneNumber={contact.phone}
+              label="Call contact"
+              variant="outline"
+              size="sm"
+            />
+          )}
           {canEditContacts && (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/contacts/${contact.id}/edit`}>

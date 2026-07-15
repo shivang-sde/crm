@@ -3,8 +3,8 @@ import type {
   TaskResponse,
   TaskCreateRequest,
   TaskUpdateRequest,
-} from '../types/tasks';
-import type { ListResponse } from '../types/common';
+} from '../../types/tasks';
+import type { ListResponse } from '../../types/common';
 
 export interface TaskListParams {
   entityType?: string;

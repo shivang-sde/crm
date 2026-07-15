@@ -14,6 +14,8 @@ public interface ContactRepository extends JpaRepository<Contact, UUID>, JpaSpec
 
     Optional<Contact> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    boolean existsByIdAndTenantId(UUID entityId, UUID tenantId);
+
     Optional<Contact> findByTenantIdAndEmailIgnoreCaseAndDeletedFalse(UUID tenantId, String email);
 
     Optional<Contact> findByTenantIdAndPhoneAndDeletedFalse(UUID tenantId, String phone);

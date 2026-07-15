@@ -21,6 +21,7 @@ import { AccountResponse } from "@/types/accounts";
 import { AccountContacts } from "./AccountContacts";
 import { AccountTimeline } from "./AccountTimeline";
 import { AccountNotes } from "./AccountNotes";
+import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 
 interface AccountDetailProps {
   account: AccountResponse;
@@ -41,7 +42,17 @@ export function AccountDetail({ account }: AccountDetailProps) {
             Back to accounts
           </Link>
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {account.phone && (
+            <ClickToCallButton
+              entityType="account"
+              entityId={account.id}
+              phoneNumber={account.phone}
+              label="Call account"
+              variant="outline"
+              size="sm"
+            />
+          )}
           {canEditAccounts && (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/accounts/${account.id}/edit`}>

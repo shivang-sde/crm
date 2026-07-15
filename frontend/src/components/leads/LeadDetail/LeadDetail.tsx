@@ -24,6 +24,7 @@ import { LeadCustomFields } from "./LeadCustomFields";
 import { LeadTimeline } from "./LeadTimeline";
 import { LeadNotes } from "./LeadNotes";
 import { LeadAssignment } from "./LeadAssignment";
+import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 
 interface LeadDetailProps {
   lead: LeadResponse;
@@ -44,7 +45,17 @@ export function LeadDetail({ lead }: LeadDetailProps) {
             Back to leads
           </Link>
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {lead.phone && (
+            <ClickToCallButton
+              entityType="lead"
+              entityId={lead.id}
+              phoneNumber={lead.phone}
+              label="Call lead"
+              variant="outline"
+              size="sm"
+            />
+          )}
           {canEditLeads && !lead.isConverted && (
             <LeadConvertDialog triggerLabel="Convert" lead={lead} />
           )}

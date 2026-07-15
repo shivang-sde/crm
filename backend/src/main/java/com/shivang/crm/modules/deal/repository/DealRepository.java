@@ -17,6 +17,8 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
 
     Optional<Deal> findByTenantIdAndName(UUID tenantId, String name);
 
+     boolean existsByIdAndTenantId(UUID entityId, UUID tenantId);
+
     @Query("SELECT COUNT(d) FROM Deal d WHERE d.tenantId = :tenantId AND d.stage.id = :stageId AND d.deleted = false")
     Integer countByStageId(@Param("tenantId") UUID tenantId, @Param("stageId") UUID stageId);
 

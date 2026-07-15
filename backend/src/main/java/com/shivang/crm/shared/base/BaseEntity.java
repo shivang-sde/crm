@@ -55,4 +55,53 @@ public abstract class BaseEntity {
     protected void onUpdate() {
         this.updatedAt = Instant.now();
     }
+
+
+    // ========== Explicit Setter Methods for Soft Delete ==========
+    
+    /**
+     * Set deleted status
+     */
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    /**
+     * Set deleted at timestamp
+     */
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    /**
+     * Set deleted by user
+     */
+    public void setDeletedBy(UUID deletedBy) {
+        this.deletedBy = deletedBy;
+    }
+
+    /**
+     * Soft delete this entity
+     */
+    public void softDelete(UUID deletedBy) {
+        this.deleted = true;
+        this.deletedAt = Instant.now();
+        this.deletedBy = deletedBy;
+    }
+
+    /**
+     * Restore a soft-deleted entity
+     */
+    public void restore() {
+        this.deleted = false;
+        this.deletedAt = null;
+        this.deletedBy = null;
+    }
+
+    /**
+     * Check if entity is deleted
+     */
+    public boolean isDeleted() {
+        return Boolean.TRUE.equals(deleted);
+    }
 }

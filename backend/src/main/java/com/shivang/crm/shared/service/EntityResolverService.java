@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.shivang.crm.modules.account.entity.Account;
 import com.shivang.crm.modules.account.repository.AccountRepository;
+import com.shivang.crm.modules.auth.repository.UserRepository;
 import com.shivang.crm.modules.contact.entity.Contact;
 import com.shivang.crm.modules.contact.repository.ContactRepository;
 import com.shivang.crm.modules.deal.entity.Deal;
@@ -15,6 +16,8 @@ import com.shivang.crm.modules.deal.repository.DealRepository;
 import com.shivang.crm.modules.lead.entity.Lead;
 import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.shared.exception.BusinessException;
+
+import com.shivang.crm.modules.auth.entity.User;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class EntityResolverService {
 
+      private final UserRepository userRepository;
     private final LeadRepository leadRepository;
     private final ContactRepository contactRepository;
     private final AccountRepository accountRepository;
@@ -151,12 +155,13 @@ public class EntityResolverService {
         return dealOpt.map(Deal::getName).orElse(null);
     }
 
-    /**
-     * Resolves a user's full name by ID.
-     */
+   /**
+    * Resolves a user's full name by ID.
+    */
     public String resolveUserName(UUID userId) {
-        // This would typically call a UserService or UserRepository
-        // For now, returning null as user resolution may require different handling
-        return null;
+        return userRepository.findById(userId)
+            .map(User::getDisplayName)
+            .orElse(null);
     }
+
 }

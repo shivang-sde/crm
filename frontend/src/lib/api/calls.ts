@@ -3,8 +3,8 @@ import type {
   CallResponse,
   CallCreateRequest,
   CallUpdateRequest,
-} from '../types/calls';
-import type { ListResponse } from '../types/common';
+} from '../../types/calls';
+import type { ListResponse } from '../../types/common';
 
 export interface CallListParams {
   entityType?: string;

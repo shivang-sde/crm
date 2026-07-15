@@ -12,6 +12,7 @@ import { getNavigationItems } from "@/lib/constants/navigation";
 import { Footer } from "./Footer";
 import { Header, type BreadcrumbItem } from "./Header";
 import { Sidebar } from "./Sidebar";
+import { useCallOpeningEvents } from "@/lib/hooks/useCallOpeningEvents";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -62,31 +63,31 @@ export default function AppLayout({ children }: AppLayoutProps) {
         }
 
         setPermissions(permMap);
-      } catch (error) {
-        console.error("Failed to load permissions", error);
-    
-    // Fallback: Set default permissions based on role name
-    if (userRole === 'RESELLER') {
-      const defaultPerms = new Map<string, string>();
-      // Tenant permissions
-      defaultPerms.set('tenant:read', 'ALL');
-      defaultPerms.set('tenant:write', 'ALL');
-      defaultPerms.set('tenant:delete', 'ALL');
-      // User permissions  
-      defaultPerms.set('user:read', 'ALL');
-      defaultPerms.set('user:write', 'ALL');
-      defaultPerms.set('user:delete', 'ALL');
-      // Report permissions
-      defaultPerms.set('report:read', 'ALL');
-      defaultPerms.set('report:export', 'ALL');
-      
-      setPermissions(defaultPerms);
-    } else if (userRole === 'SUPERADMIN') {
-      // SUPERADMIN should have all permissions, but since we can't load,
-      // we'll set a flag or handle differently
-      console.warn('SUPERADMIN permissions failed to load');
-    }
-      } 
+      } catch {
+        console.error("Failed to load permissions");
+
+        // Fallback: Set default permissions based on role name
+        if (userRole === "RESELLER") {
+          const defaultPerms = new Map<string, string>();
+          // Tenant permissions
+          defaultPerms.set("tenant:read", "ALL");
+          defaultPerms.set("tenant:write", "ALL");
+          defaultPerms.set("tenant:delete", "ALL");
+          // User permissions
+          defaultPerms.set("user:read", "ALL");
+          defaultPerms.set("user:write", "ALL");
+          defaultPerms.set("user:delete", "ALL");
+          // Report permissions
+          defaultPerms.set("report:read", "ALL");
+          defaultPerms.set("report:export", "ALL");
+
+          setPermissions(defaultPerms);
+        } else if (userRole === "SUPERADMIN") {
+          // SUPERADMIN should have all permissions, but since we can't load,
+          // we'll set a flag or handle differently
+          console.warn("SUPERADMIN permissions failed to load");
+        }
+      }
     };
 
     const initializeAuth = async () => {
@@ -105,7 +106,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         if (auth.user.roleId) {
           await loadPermissions(auth.user.roleId);
         }
-      } catch (error) {
+      } catch {
         logout();
         router.replace("/sign-in");
       } finally {
@@ -114,7 +115,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     };
 
     initializeAuth();
-  }, [hydrated, bootstrapComplete, user, accessToken, setAuth, setPermissions, logout, router]);
+  }, [hydrated, bootstrapComplete, user, accessToken, setAuth, setPermissions, logout, router, userRole]);
 
   React.useEffect(() => {
     if (!hydrated || !bootstrapComplete) {
@@ -155,6 +156,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const userName = `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim();
   const roleLabel = user?.roleName ?? userRole?.toLowerCase().replace(/_/g, " ");
 
+  useCallOpeningEvents();
+
   if (!hydrated || !bootstrapComplete) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -174,7 +177,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           tenantName={tenant?.name}
           roleLabel={roleLabel ?? undefined}
           navigationItems={navigationItems}
-          activePathname={pathname}
+          activePathname={pathname ?? '/'}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />

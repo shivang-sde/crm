@@ -1,27 +1,32 @@
 package com.shivang.crm.modules.task.service;
 
-import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
-import com.shivang.crm.modules.task.dto.TaskCreateRequest;
-import com.shivang.crm.modules.task.dto.TaskResponse;
-import com.shivang.crm.modules.task.dto.TaskUpdateRequest;
-import com.shivang.crm.modules.task.entity.Task;
-import com.shivang.crm.modules.task.repository.TaskRepository;
-import com.shivang.crm.modules.task.specification.TaskSpecification;
-import com.shivang.crm.shared.exception.NotFoundException;
-import com.shivang.crm.shared.exception.PermissionDeniedException;
-import com.shivang.crm.shared.model.OwnershipScope;
-import com.shivang.crm.shared.service.EntityResolverService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
+import com.shivang.crm.modules.auth.security.TenantContext;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.modules.task.dto.TaskCreateRequest;
+import com.shivang.crm.modules.task.dto.TaskResponse;
+import com.shivang.crm.modules.task.dto.TaskUpdateRequest;
+import com.shivang.crm.modules.task.entity.Task;
+import com.shivang.crm.modules.task.entity.TaskPriority;
+import com.shivang.crm.modules.task.entity.TaskStatus;
+import com.shivang.crm.modules.task.repository.TaskRepository;
+import com.shivang.crm.modules.task.specification.TaskSpecification;
+import com.shivang.crm.shared.enums.OwnershipScope;
+import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
+import com.shivang.crm.shared.service.EntityResolverService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +37,8 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
+
+    private final TenantContext tenantContext;
 
     public TaskResponse createTask(UUID tenantId, UUID userId, TaskCreateRequest request) {
         // Validate permissions
@@ -60,8 +67,8 @@ public class TaskService {
             .subject(request.getSubject())
             .description(request.getDescription())
             .dueDate(request.getDueDate())
-            .status(request.getStatus() != null ? request.getStatus() : Task.TaskStatus.NOT_STARTED)
-            .priority(request.getPriority() != null ? request.getPriority() : Task.TaskPriority.MEDIUM)
+            .status(request.getStatus() != null ? request.getStatus() : TaskStatus.NOT_STARTED)
+            .priority(request.getPriority() != null ? request.getPriority() : TaskPriority.MEDIUM)
             .entityType(request.getEntityType())
             .entityId(request.getEntityId())
             .remindAt(request.getRemindAt())
@@ -82,7 +89,7 @@ public class TaskService {
         UUID tenantId,
         String entityType,
         UUID entityId,
-        Task.TaskStatus status,
+        TaskStatus status,
         Pageable pageable
     ) {
         Specification<Task> spec = Specification.where(TaskSpecification.hasTenant(tenantId))
@@ -97,8 +104,7 @@ public class TaskService {
         }
 
         // Apply ownership scope filtering
-        UUID currentUserId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
-        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
+        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, tenantContext.getUserId());
         if (!userScopes.contains(OwnershipScope.ALL)) {
             spec = spec.and(TaskSpecification.hasOwnershipScope(userScopes));
         }
@@ -198,8 +204,7 @@ public class TaskService {
             throw new PermissionDeniedException("No permission to complete this task");
         }
 
-        task.complete();
-        task.setUpdatedBy(userId);
+        task.complete(userId);
         Task completedTask = taskRepository.save(task);
         log.info("Completed task {} for tenant {}", id, tenantId);
 
@@ -213,8 +218,7 @@ public class TaskService {
             throw new PermissionDeniedException("No permission to reopen this task");
         }
 
-        task.reopen();
-        task.setUpdatedBy(userId);
+        task.reopen(userId);
         Task reopenedTask = taskRepository.save(task);
         log.info("Reopened task {} for tenant {}", id, tenantId);
 

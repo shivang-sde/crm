@@ -5,8 +5,6 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -62,18 +60,10 @@ public class LeadActivityController {
     }
 
     private UUID currentTenantId() {
-        String tenantId = tenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
+        
+        if (tenantContext.hasTenant()) {
             throw new IllegalStateException("Tenant context is not available");
         }
-        return UUID.fromString(tenantId);
-    }
-
-    private UUID currentUserId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getPrincipal() == null) {
-            throw new IllegalStateException("User authentication is not available");
-        }
-        return UUID.fromString(authentication.getPrincipal().toString());
+        return tenantContext.getTenantId();
     }
 }

@@ -1,4 +1,3 @@
-```
 # Java/Maven specific
 target/
 *.class
@@ -28,10 +27,11 @@ node_modules/
 .env.local
 *.env.*
 
+.vscode
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Testing
 test-results/
-```

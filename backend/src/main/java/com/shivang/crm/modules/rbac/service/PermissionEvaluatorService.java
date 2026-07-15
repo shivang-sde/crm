@@ -16,8 +16,8 @@ import com.shivang.crm.modules.rbac.entity.UserRole;
 import com.shivang.crm.modules.rbac.repository.PermissionRepository;
 import com.shivang.crm.modules.rbac.repository.RolePermissionRepository;
 import com.shivang.crm.modules.rbac.repository.UserRoleRepository;
+import com.shivang.crm.shared.enums.OwnershipScope;
 import com.shivang.crm.shared.exception.BusinessException;
-import com.shivang.crm.shared.model.OwnershipScope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

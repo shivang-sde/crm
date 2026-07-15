@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.call.entity;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
 
@@ -44,7 +45,6 @@ public class Call extends TenantOwnedEntity {
     // Call details
     @Enumerated(EnumType.STRING)
     @Column(length = 20, nullable = false)
-    @Builder.Default
     private CallType callType = CallType.OUTGOING;
 
     @Column(name = "phone_number", length = 50)
@@ -69,12 +69,14 @@ public class Call extends TenantOwnedEntity {
     // Status
     @Enumerated(EnumType.STRING)
     @Column(length = 50, nullable = false)
-    @Builder.Default
     private CallStatus status = CallStatus.PLANNED;
 
     // Reminder
     @Column(name = "remind_at")
     private Instant remindAt;
+
+     @Column(name = "updated_by")
+    private UUID updatedBy;
 
     // Recurrence (stored as JSONB)
     @JdbcTypeCode(SqlTypes.JSON)
@@ -87,25 +89,41 @@ public class Call extends TenantOwnedEntity {
     private Map<String, Object> customData;
 
     // Helper methods
-    public void markAsHeld() {
+    public void markAsHeld(UUID userId) {
         this.status = CallStatus.HELD;
+        this.updatedBy = userId;
         if (this.startTime != null && this.endTime != null) {
-            long diffMillis = this.endTime.toEpochMilli() - this.startTime.toEpochMilli();
-            this.durationMinutes = (int) (diffMillis / 60000);
+            this.durationMinutes = (int) ChronoUnit.MINUTES.between(startTime, endTime);
         }
     }
 
-    public void markAsNotHeld() {
+    public void markAsNotHeld(UUID userId) {
         this.status = CallStatus.NOT_HELD;
+        this.updatedBy = userId;
     }
 
-    public void cancel() {
+    public void cancel(UUID userId) {
         this.status = CallStatus.CANCELLED;
+        this.updatedBy = userId;
     }
 
     public boolean isCompleted() {
         return this.status == CallStatus.HELD || this.status == CallStatus.NOT_HELD;
     }
+
+    public boolean isScheduled() {
+        return this.status == CallStatus.PLANNED;
+    }
+
+    // Optional: Add to each entity if you want entity-specific soft delete
+    @Override
+    public void softDelete(UUID deletedBy) {
+        this.setDeleted(true);
+        this.setDeletedAt(Instant.now());
+        this.setDeletedBy(deletedBy);
+        this.updatedBy = deletedBy;
+    }
+
 
     public enum CallType {
         INCOMING, OUTGOING

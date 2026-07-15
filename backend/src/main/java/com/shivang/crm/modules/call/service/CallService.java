@@ -9,10 +9,12 @@ import com.shivang.crm.modules.call.repository.CallRepository;
 import com.shivang.crm.modules.call.repository.CallSpecifications;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
-import com.shivang.crm.shared.model.OwnershipScope;
 import com.shivang.crm.shared.service.EntityResolverService;
+import com.shivang.crm.modules.auth.security.TenantContext;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+
+import com.shivang.crm.shared.enums.OwnershipScope;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +35,8 @@ public class CallService {
     private final CallRepository callRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
+
+    private final TenantContext tenantContext;
 
     public CallResponse createCall(UUID tenantId, UUID userId, CallCreateRequest request) {
         // Validate permissions
@@ -55,7 +61,6 @@ public class CallService {
         Call call = Call.builder()
             .tenantId(tenantId)
             .createdBy(userId)
-            .updatedBy(userId)
             .subject(request.getSubject())
             .description(request.getDescription())
             .callType(request.getCallType() != null ? request.getCallType() : Call.CallType.OUTGOING)
@@ -95,7 +100,7 @@ public class CallService {
         }
 
         // Apply ownership scope filtering
-        UUID currentUserId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
+        UUID currentUserId = tenantContext.getUserId();
         List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
         if (!userScopes.contains(OwnershipScope.ALL)) {
             spec = spec.and(CallSpecifications.hasOwnerOrAssignedTo(currentUserId));
@@ -162,12 +167,7 @@ public class CallService {
         if (request.getCustomData() != null) {
             call.setCustomData(request.getCustomData());
         }
-        if (request.getAssignedTo() != null) {
-            entityResolverService.resolveUserName(request.getAssignedTo());
-            call.setAssignedTo(request.getAssignedTo());
-        }
 
-        call.setUpdatedBy(userId);
         Call updatedCall = callRepository.save(call);
         log.info("Updated call {} for tenant {}", id, tenantId);
 
@@ -183,7 +183,6 @@ public class CallService {
         }
 
         call.setDeleted(true);
-        call.setUpdatedBy(userId);
         callRepository.save(call);
         log.info("Soft deleted call {} for tenant {}", id, tenantId);
     }
@@ -229,8 +228,6 @@ public class CallService {
             .remindAt(call.getRemindAt())
             .recurrence(call.getRecurrence())
             .customData(call.getCustomData())
-            .assignedTo(call.getAssignedTo())
-            .assigneeName(resolveUserName(call.getAssignedTo()))
             .createdAt(call.getCreatedAt())
             .updatedAt(call.getUpdatedAt())
             .createdBy(call.getCreatedBy())
@@ -246,14 +243,14 @@ public class CallService {
         return entityResolverService.resolveEntityName(entityType, entityId);
     }
 
-    private String resolveUserName(UUID userId) {
-        if (userId == null) {
-            return null;
-        }
-        try {
-            return entityResolverService.resolveUserName(userId);
-        } catch (Exception e) {
-            return "Unknown User";
-        }
-    }
+    // private String resolveUserName(UUID userId) {
+    //     if (userId == null) {
+    //         return null;
+    //     }
+    //     try {
+    //         return entityResolverService.resolveUserName(userId);
+    //     } catch (Exception e) {
+    //         return "Unknown User";
+    //     }
+    // }
 }

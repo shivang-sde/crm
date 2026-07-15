@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.meeting.service;
 
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.meeting.dto.MeetingCreateRequest;
 import com.shivang.crm.modules.meeting.dto.MeetingResponse;
 import com.shivang.crm.modules.meeting.dto.MeetingUpdateRequest;
@@ -9,10 +10,11 @@ import com.shivang.crm.modules.meeting.repository.MeetingRepository;
 import com.shivang.crm.modules.meeting.repository.MeetingSpecifications;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
-import com.shivang.crm.shared.model.OwnershipScope;
 import com.shivang.crm.shared.service.EntityResolverService;
+import com.shivang.crm.shared.enums.OwnershipScope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -31,6 +33,8 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
+
+    private final TenantContext tenantContext;
 
     public MeetingResponse createMeeting(UUID tenantId, UUID userId, MeetingCreateRequest request) {
         // Validate permissions
@@ -55,7 +59,6 @@ public class MeetingService {
         Meeting meeting = Meeting.builder()
             .tenantId(tenantId)
             .createdBy(userId)
-            .updatedBy(userId)
             .subject(request.getSubject())
             .description(request.getDescription())
             .agenda(request.getAgenda())
@@ -97,10 +100,9 @@ public class MeetingService {
         }
 
         // Apply ownership scope filtering
-        UUID currentUserId = com.shivang.crm.shared.security.UserContext.getCurrentUserId();
-        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, currentUserId);
+        List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, tenantContext.getUserId());
         if (!userScopes.contains(OwnershipScope.ALL)) {
-            spec = spec.and(MeetingSpecifications.hasOwnerOrAssignedTo(currentUserId));
+            spec = spec.and(MeetingSpecifications.hasOwnerOrAssignedTo(tenantContext.getUserId()));
         }
 
         Page<Meeting> meetingPage = meetingRepository.findAll(spec, pageable);

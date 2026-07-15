@@ -14,6 +14,7 @@ import { SourceBadge } from "../shared/SourceBadge";
 import { LeadConvertDialog } from "../LeadConvertDialog";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { LeadResponse } from "@/types/leads";
+import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 
 interface LeadTableProps {
   leads: LeadResponse[];
@@ -26,7 +27,6 @@ function formatName(lead: LeadResponse) {
 export function LeadTable({ leads }: LeadTableProps) {
   const { canEditLeads } = usePermissions();
 
-  console.log("Rendering LeadTable with leads:", leads);
   return (
     <Table>
       <TableHeader>
@@ -78,7 +78,17 @@ export function LeadTable({ leads }: LeadTableProps) {
             <TableCell className="text-sm text-muted-foreground">
               {new Date(lead.createdAt).toLocaleDateString()}
             </TableCell>
-            <TableCell>
+            <TableCell className="space-y-2">
+              {lead.phone && (
+                <ClickToCallButton
+                  entityType="lead"
+                  entityId={lead.id}
+                  phoneNumber={lead.phone}
+                  label="Call"
+                  variant="ghost"
+                  size="icon"
+                />
+              )}
               {lead.isConverted ? (
                 <span className="text-muted-foreground text-sm">Converted</span>
               ) : canEditLeads ? (

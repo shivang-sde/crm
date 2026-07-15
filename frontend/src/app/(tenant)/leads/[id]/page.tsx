@@ -7,8 +7,9 @@ import { LeadDetail } from "@/components/leads/LeadDetail/LeadDetail";
 import { useLead } from "@/lib/hooks/leads";
 
 function LeadDetailPageContent() {
-  const params = useParams();
-  const id = typeof params.id === "string" ? params.id : params.id?.[0];
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === "string" ? rawId : rawId?.[0];
   const { data: lead, isLoading, isError } = useLead(id);
 
   if (isLoading) {

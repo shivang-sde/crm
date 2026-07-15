@@ -1,6 +1,8 @@
 import api from './api';
-import type { UnifiedActivity, UnifiedActivitiesFilters } from '../types/activity';
-import type { ListResponse } from '../types/common';
+import type { UnifiedActivity, UnifiedActivitiesFilters } from '../../types/activity';
+import type { ListResponse } from '../../types/common';
+
+export type { UnifiedActivitiesFilters } from '../../types/activity';
 
 export const activityApi = {
   getUnifiedActivities: async (filters?: UnifiedActivitiesFilters): Promise<ListResponse<UnifiedActivity>> => {

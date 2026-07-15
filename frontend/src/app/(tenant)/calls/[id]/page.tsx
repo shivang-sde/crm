@@ -13,8 +13,9 @@ import { useDeleteCall } from '@/lib/hooks/calls';
 
 export default function CallDetailPage() {
   const router = useRouter();
-  const params = useParams();
-  const id = params.id as string;
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === 'string' ? rawId : rawId?.[0] ?? '';
   const { canEditCalls, canDeleteCalls } = usePermissions();
   const { data: call, isLoading } = useCall(id);
   const deleteCall = useDeleteCall();

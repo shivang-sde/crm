@@ -20,11 +20,12 @@ import {
 } from '@/components/ui/select';
 import { useCreateMeeting, useUpdateMeeting } from '@/hooks/tasks/useMeetings';
 import type { MeetingCreateRequest, MeetingUpdateRequest, MeetingResponse, MeetingAttendee } from '@/types/meetings';
+import type { EntityType } from '@/types/tasks';
 import { Plus, X } from 'lucide-react';
 
 interface MeetingFormProps {
   meeting?: MeetingResponse;
-  entityType?: string;
+  entityType?: EntityType;
   entityId?: string;
   onSuccess?: () => void;
   onCancel?: () => void;

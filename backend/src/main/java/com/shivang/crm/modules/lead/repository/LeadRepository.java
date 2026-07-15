@@ -56,4 +56,6 @@ Optional<Lead> findByTenantIdAndPhoneAndIdNot(
         UUID tenantId,
         Pageable pageable
     );
+
+    public boolean existsByIdAndTenantId(UUID entityId, UUID tenantId);
 }

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { useMeetings } from '@/hooks/tasks/useMeetings';
 import type { MeetingListParams } from '@/lib/api/meetings';
+import type { MeetingResponse } from '@/types/meetings';
 import { format } from 'date-fns';
 import { Pencil, Trash2, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -108,7 +109,7 @@ export function MeetingList({ entityType, entityId }: MeetingListProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.content.map((meeting) => (
+          {data?.content.map((meeting: MeetingResponse) => (
             <TableRow key={meeting.id}>
               <TableCell className="font-medium">{meeting.subject}</TableCell>
               <TableCell>

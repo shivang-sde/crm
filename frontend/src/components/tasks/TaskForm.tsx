@@ -20,12 +20,13 @@ import {
 } from '@/components/ui/select';
 import { useCreateTask, useUpdateTask } from '@/hooks/tasks/useTasks';
 import type { TaskCreateRequest, TaskUpdateRequest, TaskResponse } from '@/types/tasks';
+import type { EntityType } from '@/types/tasks';
 import { RecurrencePicker } from './RecurrencePicker';
 import { ReminderPicker } from './ReminderPicker';
 
 interface TaskFormProps {
   task?: TaskResponse;
-  entityType?: string;
+  entityType?: EntityType;
   entityId?: string;
   onSuccess?: () => void;
   onCancel?: () => void;

@@ -76,4 +76,20 @@ public class User extends BaseEntity {
     @OneToMany(mappedBy = "reseller", fetch = FetchType.LAZY)
     private Set<Tenant> managedTenants = new HashSet<>();
 
+    /*resolved username  */
+    public String getDisplayName() {
+    if (firstName != null && !firstName.isBlank() &&
+        lastName != null && !lastName.isBlank()) {
+        return firstName + " " + lastName;
+    }
+    if (firstName != null && !firstName.isBlank()) {
+        return firstName;
+    }
+    if (lastName != null && !lastName.isBlank()) {
+        return lastName;
+    }
+    return email; // fallback
+}
+
+
 }

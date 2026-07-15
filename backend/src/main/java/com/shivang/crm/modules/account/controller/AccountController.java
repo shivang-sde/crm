@@ -22,10 +22,10 @@ import com.shivang.crm.modules.account.dto.AccountCreateRequest;
 import com.shivang.crm.modules.account.dto.AccountResponse;
 import com.shivang.crm.modules.account.dto.AccountUpdateRequest;
 import com.shivang.crm.modules.account.service.AccountService;
-import com.shivang.crm.modules.auth.security.TenantContext;
-import com.shivang.crm.modules.contact.dto.ContactResponse;
 import com.shivang.crm.modules.activity.dto.ActivityResponse;
 import com.shivang.crm.modules.activity.service.ActivityService;
+import com.shivang.crm.modules.auth.security.TenantContext;
+import com.shivang.crm.modules.contact.dto.ContactResponse;
 import com.shivang.crm.modules.lead.service.EntityNoteService;
 import com.shivang.crm.shared.dto.ApiResponse;
 
@@ -220,11 +220,7 @@ public class AccountController {
     }
 
     private UUID currentTenantId() {
-        String tenantId = tenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
-            throw new IllegalStateException("Tenant context is not available");
-        }
-        return UUID.fromString(tenantId);
+        return tenantContext.getTenantId();
     }
 
     private UUID currentUserId() {

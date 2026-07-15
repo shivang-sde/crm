@@ -146,12 +146,8 @@ public class LeadEntityController {
         return ResponseEntity.ok(ApiResponse.success("Note deleted successfully"));
     }
 
-    private UUID currentTenantId() {
-        String tenantId = tenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
-            throw new IllegalStateException("Tenant context is not available");
-        }
-        return UUID.fromString(tenantId);
+    private UUID currentTenantId(){
+        return tenantContext.getTenantId();
     }
 
     private UUID currentUserId() {

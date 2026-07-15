@@ -1,6 +1,5 @@
 package com.shivang.crm.modules.tenant.entity;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 

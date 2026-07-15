@@ -26,9 +26,9 @@ const dashboardRoutes: Record<string, string> = {
 };
 
 const roleRoutePrefixes: Record<string, string[]> = {
-  SUPERADMIN: ["/users", "/roles", "/tenants", "/superadmin", "/reseller"],
+  SUPERADMIN: ["/users", "/roles", "/tenants", "/superadmin", "/reseller", "/admin"],
   RESELLER: ["/tenants", "/reseller",],
-  ADMIN: ["/users", "/roles", "/admin/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
+  ADMIN: ["/users", "/roles", "/admin/dashboard", "/admin/settings", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
   MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
   EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
 };

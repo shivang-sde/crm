@@ -9,8 +9,9 @@ import { useContact } from "@/lib/hooks/contacts";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 
 function EditContactPageContent() {
-  const params = useParams();
-  const id = typeof params.id === "string" ? params.id : params.id?.[0];
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === "string" ? rawId : rawId?.[0];
   const router = useRouter();
   const { data: contact, isLoading } = useContact(id);
   const { canEditContacts } = usePermissions();

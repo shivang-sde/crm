@@ -40,8 +40,9 @@ type UpdateRoleFormValues = z.infer<typeof updateRoleSchema>;
 
 function RoleDetailContent() {
   const router = useRouter();
-  const params = useParams();
-  const roleId = params.roleId as string;
+  const params = useParams<{ roleId?: string | string[] }>();
+  const rawRoleId = params?.roleId;
+  const roleId = typeof rawRoleId === 'string' ? rawRoleId : rawRoleId?.[0] ?? '';
   const queryClient = useQueryClient();
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);

@@ -43,21 +43,8 @@ public class RoleManagementService {
 
 
     public RoleResponse getRole(UUID roleId) {
+        UUID tenantId = tenantContext.getTenantId();
 
-        String tenantIdStr = tenantContext.getTenantId();
-        UUID tenantId = null;
-
-
-        // Only parse if tenantIdStr is not null and is a valid UUID
-        if (tenantIdStr != null && !tenantIdStr.isEmpty()) {
-            try {
-                tenantId = UUID.fromString(tenantIdStr);
-            } catch (IllegalArgumentException e) {
-                log.warn("Invalid tenant ID format: {}", tenantIdStr);
-                tenantId = null;
-            }
-        }
-        
            Role role = roleRepository.findById(roleId)
         .orElseThrow(() -> new ResourceNotFoundException("Role", roleId.toString()));
     
@@ -276,11 +263,6 @@ public class RoleManagementService {
     }
 
     private UUID parseTenantId() {
-        String tenantId = tenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
-            return null;
-        }
-
-        return UUID.fromString(tenantId);
+        return tenantContext.getTenantId();
     }
 }

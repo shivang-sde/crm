@@ -26,7 +26,7 @@ const taskSchema = z.object({
   dueDate: z.string().optional(),
   status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'WAITING', 'COMPLETED', 'CANCELLED']).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  entityType: z.enum(['LEAD', 'CONTACT', 'ACCOUNT', 'DEAL']).optional(),
+  entityType: z.enum(['LEAD', 'CONTACT', 'ACCOUNT', 'DEAL', 'OPPORTUNITY']).optional(),
   entityId: z.string().optional(),
   remindAt: z.string().optional(),
   assignedToId: z.string().optional(),
@@ -36,8 +36,9 @@ type TaskFormData = z.infer<typeof taskSchema>;
 
 export default function EditTaskPage() {
   const router = useRouter();
-  const params = useParams();
-  const id = params.id as string;
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === 'string' ? rawId : rawId?.[0] ?? '';
   const { canEditTasks } = usePermissions();
   const { data: task, isLoading } = useTask(id);
   const updateTask = useUpdateTask();

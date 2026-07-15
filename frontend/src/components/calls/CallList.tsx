@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { useCalls } from '@/hooks/tasks/useCalls';
 import type { CallListParams } from '@/lib/api/calls';
+import type { CallResponse } from '@/types/calls';
 import { format } from 'date-fns';
 import { Pencil, Trash2, Phone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -126,7 +127,7 @@ export function CallList({ entityType, entityId }: CallListProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data?.content.map((call) => (
+          {(data?.content ?? []).map((call: CallResponse) => (
             <TableRow key={call.id}>
               <TableCell className="font-medium">{call.subject}</TableCell>
               <TableCell>

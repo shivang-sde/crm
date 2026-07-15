@@ -29,8 +29,9 @@ type UpdateUserFormValues = z.infer<typeof updateUserSchema>;
 
 function EditUserForm() {
   const router = useRouter();
-  const params = useParams();
-  const userId = params.userId as string;
+  const params = useParams<{ userId?: string | string[] }>();
+  const rawUserId = params?.userId;
+  const userId = typeof rawUserId === 'string' ? rawUserId : rawUserId?.[0] ?? '';
   const queryClient = useQueryClient();
 
   const { data: user, isLoading: userLoading } = useQuery({

@@ -13,8 +13,9 @@ import { useCompleteTask, useReopenTask, useDeleteTask } from '@/lib/hooks/tasks
 
 export default function TaskDetailPage() {
   const router = useRouter();
-  const params = useParams();
-  const id = params.id as string;
+  const params = useParams<{ id?: string | string[] }>();
+  const rawId = params?.id;
+  const id = typeof rawId === 'string' ? rawId : rawId?.[0] ?? '';
   const { canEditTasks, canDeleteTasks } = usePermissions();
   const { data: task, isLoading } = useTask(id);
   const completeTask = useCompleteTask();

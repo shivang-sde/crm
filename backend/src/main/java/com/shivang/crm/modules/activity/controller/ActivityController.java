@@ -2,7 +2,7 @@ package com.shivang.crm.modules.activity.controller;
 
 import com.shivang.crm.modules.activity.dto.ActivityResponse;
 import com.shivang.crm.modules.activity.service.ActivityService;
-import com.shivang.crm.shared.security.TenantContext;
+import com.shivang.crm.modules.auth.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +17,7 @@ import java.util.UUID;
 public class ActivityController {
 
     private final ActivityService activityService;
+    private final TenantContext tenantContext;
 
     @GetMapping
     public ResponseEntity<Page<ActivityResponse>> getUnifiedActivities(
@@ -25,7 +26,7 @@ public class ActivityController {
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
+        UUID tenantId = tenantContext.getTenantId();
         
         if (entityType == null || entityId == null) {
             // Return all activities for the tenant (may need pagination optimization)
@@ -43,7 +44,7 @@ public class ActivityController {
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
+        UUID tenantId = tenantContext.getTenantId();
         Page<ActivityResponse> activities = activityService.getEntityActivities(entityId, entityType, tenantId, page, size);
         return ResponseEntity.ok(activities);
     }
@@ -54,7 +55,7 @@ public class ActivityController {
         @PathVariable UUID entityId,
         @RequestParam(required = false) List<String> activityTypes
     ) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
+        UUID tenantId = tenantContext.getTenantId();
         
         if (activityTypes == null || activityTypes.isEmpty()) {
             activityTypes = List.of("TASK", "CALL", "MEETING", "NOTE", "EMAIL");

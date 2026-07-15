@@ -75,20 +75,19 @@ public class UserManagementService {
 
         } else {
 
-            String tenantIdStr = tenantContext.getTenantId();
 
-            if (tenantIdStr == null) {
+            if (!tenantContext.hasTenant()) {
                 return Page.empty(pageable);
             }
 
-            UUID tenantId = UUID.fromString(tenantIdStr);
+        
 
             users = search == null || search.isBlank()
                     ? userRepository.findByTenantId(
-                            tenantId,
+                            tenantContext.getTenantId(),
                             pageable)
                     : userRepository.findByTenantIdAndEmailContainingIgnoreCase(
-                            tenantId,
+                            tenantContext.getTenantId(),
                             search,
                             pageable);
         }
@@ -297,11 +296,11 @@ public class UserManagementService {
     }
 
     private Optional<UUID> parseTenantId() {
-        String tenantId = tenantContext.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
+        
+        if (!tenantContext.hasTenant()) {
             return Optional.empty();
         }
-        return Optional.of(UUID.fromString(tenantId));
+        return Optional.of(tenantContext.getTenantId());
     }
 
     private boolean isTenantAdmin(UserRole currentUserRole) {

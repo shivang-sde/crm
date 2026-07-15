@@ -47,10 +47,9 @@ public class TenantService {
         } else {
             log.info("TENANT USER branch");
 
-            String tenantIdStr = tenantContext.getTenantId();
+            UUID tenantId = tenantContext.getTenantId();
 
-            if (tenantIdStr != null) {
-                UUID tenantId = UUID.fromString(tenantIdStr);
+            if (tenantId != null) {
                 Tenant tenant = tenantRepository.findById(tenantId)
                         .orElseThrow(() -> new BusinessException("NOT_FOUND", "Tenant not found"));
 
@@ -81,9 +80,7 @@ public class TenantService {
                 throw new BusinessException("FORBIDDEN", "You don't have access to this tenant");
             }
         } else {
-            // Regular user can only access their own tenant
-            String tenantIdStr = tenantContext.getTenantId();
-            if (tenantIdStr == null || !tenantIdStr.equals(tenantId.toString())) {
+            if (tenantId == null || !tenantId.equals(tenantContext.getTenantId())) {
                 throw new BusinessException("FORBIDDEN", "You don't have access to this tenant");
             }
         }
@@ -206,11 +203,11 @@ public class TenantService {
             return;
         }
 
-        String tenantIdStr = tenantContext.getTenantId();
+        UUID tenantId = tenantContext.getTenantId();
 
-        if (tenantIdStr == null ||
-                !tenantIdStr.equals(
-                        tenant.getId().toString())) {
+        if (tenantId == null ||
+                !tenantId.equals(
+                        tenant.getId())) {
 
             throw new BusinessException(
                     "FORBIDDEN",

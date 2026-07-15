@@ -5,9 +5,9 @@ import com.shivang.crm.modules.meeting.dto.MeetingResponse;
 import com.shivang.crm.modules.meeting.dto.MeetingUpdateRequest;
 import com.shivang.crm.modules.meeting.entity.Meeting;
 import com.shivang.crm.modules.meeting.service.MeetingService;
-import com.shivang.crm.shared.security.TenantContext;
-import com.shivang.crm.shared.security.UserContext;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -16,17 +16,20 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+import com.shivang.crm.modules.auth.security.TenantContext;
+
 @RestController
 @RequestMapping("/api/v1/meetings")
 @RequiredArgsConstructor
 public class MeetingController {
 
     private final MeetingService meetingService;
+    private final TenantContext tenantContext;
 
     @PostMapping
     public ResponseEntity<MeetingResponse> createMeeting(@RequestBody MeetingCreateRequest request) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
-        UUID userId = UserContext.getCurrentUserId();
+        UUID tenantId = tenantContext.getTenantId();
+        UUID userId = tenantContext.getUserId();
         MeetingResponse response = meetingService.createMeeting(tenantId, userId, request);
         return ResponseEntity.ok(response);
     }
@@ -38,14 +41,14 @@ public class MeetingController {
         @RequestParam(required = false) Meeting.MeetingStatus status,
         @PageableDefault(size = 20) Pageable pageable
     ) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
+        UUID tenantId = tenantContext.getTenantId();
         Page<MeetingResponse> response = meetingService.listMeetings(tenantId, entityType, entityId, status, pageable);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<MeetingResponse> getMeeting(@PathVariable UUID id) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
+        UUID tenantId = tenantContext.getTenantId();
         MeetingResponse response = meetingService.getMeeting(id, tenantId);
         return ResponseEntity.ok(response);
     }
@@ -55,16 +58,16 @@ public class MeetingController {
         @PathVariable UUID id,
         @RequestBody MeetingUpdateRequest request
     ) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
-        UUID userId = UserContext.getCurrentUserId();
+        UUID tenantId = tenantContext.getTenantId();
+        UUID userId = tenantContext.getUserId();
         MeetingResponse response = meetingService.updateMeeting(id, tenantId, userId, request);
         return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteMeeting(@PathVariable UUID id) {
-        UUID tenantId = TenantContext.getCurrentTenantId();
-        UUID userId = UserContext.getCurrentUserId();
+        UUID tenantId = tenantContext.getTenantId();
+        UUID userId = tenantContext.getUserId();
         meetingService.deleteMeeting(id, tenantId, userId);
         return ResponseEntity.noContent().build();
     }
