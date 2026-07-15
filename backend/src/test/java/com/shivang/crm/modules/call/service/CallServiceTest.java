@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.modules.auth.security.TenantContext;
+import com.shivang.crm.modules.call.dto.CallDispositionRequest;
 import com.shivang.crm.modules.call.dto.CallLinkRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.entity.Call;
@@ -58,6 +59,47 @@ class CallServiceTest {
         when(permissionEvaluatorService.getOwnershipScope(tenantId, userId, "call")).thenReturn(OwnershipScope.ALL);
 
         callService = new CallService(callRepository, permissionEvaluatorService, entityResolverService, activityService, tenantContext);
+    }
+
+    @Test
+    void saveDispositionForCompletedCallSucceeds() {
+        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).status(Call.CallStatus.HELD).endTime(java.time.Instant.now()).build();
+        when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
+        when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CallDispositionRequest request = new CallDispositionRequest();
+        request.setDisposition("CONNECTED");
+        request.setNotes("Customer requested a callback.");
+        request.setNextAction("CALLBACK");
+        request.setFollowUpAt(java.time.Instant.now().plusSeconds(3600));
+
+        CallResponse response = callService.saveDisposition(callId, tenantId, userId, request);
+
+        assertEquals("CONNECTED", response.getDisposition());
+        assertEquals("Customer requested a callback.", response.getNotes());
+        assertEquals("CALLBACK", response.getNextAction());
+        verify(activityService, times(1)).logActivity(eq(tenantId), eq(callId), eq("CALL"), eq("CALL_DISPOSITION_SAVED"), any(), eq(userId), any());
+    }
+
+    @Test
+    void saveDispositionForActiveCallFails() {
+        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).status(Call.CallStatus.PLANNED).build();
+        when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
+
+        CallDispositionRequest request = new CallDispositionRequest();
+        request.setDisposition("CONNECTED");
+
+        assertThrows(BusinessException.class, () -> callService.saveDisposition(callId, tenantId, userId, request));
+    }
+
+    @Test
+    void missingCallIsRejectedForDisposition() {
+        when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.empty());
+
+        CallDispositionRequest request = new CallDispositionRequest();
+        request.setDisposition("CONNECTED");
+
+        assertThrows(NotFoundException.class, () -> callService.saveDisposition(callId, tenantId, userId, request));
     }
 
     @Test

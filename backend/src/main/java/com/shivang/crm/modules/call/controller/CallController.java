@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.call.controller;
 
 import com.shivang.crm.modules.call.dto.CallCreateRequest;
+import com.shivang.crm.modules.call.dto.CallDispositionRequest;
 import com.shivang.crm.modules.call.dto.CallLinkRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.CallUpdateRequest;
@@ -73,6 +74,17 @@ public class CallController {
         UUID tenantId = tenantContext.getTenantId();
         UUID userId = tenantContext.getUserId();
         CallResponse response = callService.linkCallEntity(id, tenantId, userId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/{id}/disposition")
+    public ResponseEntity<CallResponse> saveDisposition(
+        @PathVariable UUID id,
+        @Valid @RequestBody CallDispositionRequest request
+    ) {
+        UUID tenantId = tenantContext.getTenantId();
+        UUID userId = tenantContext.getUserId();
+        CallResponse response = callService.saveDisposition(id, tenantId, userId, request);
         return ResponseEntity.ok(response);
     }
 

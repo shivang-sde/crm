@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.call.dto.CallCreateRequest;
+import com.shivang.crm.modules.call.dto.CallDispositionRequest;
 import com.shivang.crm.modules.call.dto.CallLinkRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.CallUpdateRequest;
@@ -208,6 +209,57 @@ public class CallService {
         return toResponse(updatedCall);
     }
 
+    public CallResponse saveDisposition(UUID id, UUID tenantId, UUID userId, CallDispositionRequest request) {
+        Call call = findCallByIdAndTenant(id, tenantId);
+
+        if (!hasWritePermission(call, userId, tenantId)) {
+            throw new PermissionDeniedException("No permission to update this call");
+        }
+
+        if (!call.isCompleted() && (call.getEndTime() == null || call.getStatus() == null)) {
+            throw new com.shivang.crm.shared.exception.BusinessException("INVALID_REQUEST", "Disposition can only be saved for completed calls");
+        }
+
+        if (call.getEndTime() == null && call.getStatus() != null && call.getStatus() != Call.CallStatus.HELD && call.getStatus() != Call.CallStatus.NOT_HELD) {
+            throw new com.shivang.crm.shared.exception.BusinessException("INVALID_REQUEST", "Disposition can only be saved for completed calls");
+        }
+
+        if (request.getDisposition() != null) {
+            call.setDisposition(request.getDisposition().trim().toUpperCase());
+        }
+        if (request.getNotes() != null) {
+            call.setNotes(request.getNotes().trim());
+        }
+        if (request.getNextAction() != null) {
+            call.setNextAction(request.getNextAction().trim().toUpperCase());
+        }
+        if (request.getFollowUpAt() != null) {
+            call.setFollowUpAt(request.getFollowUpAt());
+        }
+        call.setUpdatedBy(userId);
+
+        Call updatedCall = callRepository.save(call);
+        java.util.Map<String, Object> metadata = new java.util.HashMap<>();
+        metadata.put("subType", "CALL_DISPOSITION_SAVED");
+        metadata.put("disposition", request.getDisposition());
+        metadata.put("callId", updatedCall.getId().toString());
+        metadata.put("entityType", updatedCall.getEntityType());
+        metadata.put("entityId", updatedCall.getEntityId() != null ? updatedCall.getEntityId().toString() : null);
+
+        activityService.logActivity(
+            tenantId,
+            updatedCall.getId(),
+            "CALL",
+            "CALL_DISPOSITION_SAVED",
+            String.format("Call disposition saved: %s", request.getDisposition()),
+            userId,
+            metadata
+        );
+
+        log.info("Saved disposition for call {} for tenant {}", id, tenantId);
+        return toResponse(updatedCall);
+    }
+
     public void deleteCall(UUID id, UUID tenantId, UUID userId) {
         Call call = findCallByIdAndTenant(id, tenantId);
 
@@ -255,6 +307,10 @@ public class CallService {
             .startTime(call.getStartTime())
             .endTime(call.getEndTime())
             .durationMinutes(call.getDurationMinutes())
+            .disposition(call.getDisposition())
+            .notes(call.getNotes())
+            .nextAction(call.getNextAction())
+            .followUpAt(call.getFollowUpAt())
             .entityType(call.getEntityType())
             .entityId(call.getEntityId())
             .entityName(resolveEntityName(call.getEntityType(), call.getEntityId()))

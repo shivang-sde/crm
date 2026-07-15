@@ -56,6 +56,20 @@ public class CallResponse {
     @JsonProperty("duration_minutes")
     private Integer durationMinutes;
 
+    @Schema(description = "Disposition captured after the call ended")
+    private String disposition;
+
+    @Schema(description = "Call notes captured with disposition")
+    private String notes;
+
+    @Schema(description = "Suggested next action")
+    @JsonProperty("next_action")
+    private String nextAction;
+
+    @Schema(description = "Follow-up timestamp")
+    @JsonProperty("follow_up_at")
+    private Instant followUpAt;
+
     @Schema(description = "Entity type this call is linked to")
     @JsonProperty("entity_type")
     private String entityType;

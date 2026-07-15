@@ -59,6 +59,18 @@ public class Call extends TenantOwnedEntity {
     @Column(name = "duration_minutes")
     private Integer durationMinutes;
 
+    @Column(length = 100)
+    private String disposition;
+
+    @Column(columnDefinition = "TEXT")
+    private String notes;
+
+    @Column(length = 100)
+    private String nextAction;
+
+    @Column(name = "follow_up_at")
+    private Instant followUpAt;
+
     // Polymorphic linking to any entity
     @Column(name = "entity_type", length = 50)
     private String entityType;

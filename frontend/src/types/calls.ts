@@ -13,6 +13,10 @@ export interface CallResponse {
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
+  disposition?: string;
+  notes?: string;
+  nextAction?: string;
+  followUpAt?: string;
   externalCallId?: string;
   providerName?: string;
   recordingUrl?: string;
@@ -72,4 +76,11 @@ export interface CallUpdateRequest {
 export interface CallLinkRequest {
   entityType: EntityType;
   entityId: string;
+}
+
+export interface CallDispositionRequest {
+  disposition: string;
+  notes?: string;
+  nextAction?: string;
+  followUpAt?: string;
 }

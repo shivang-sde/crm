@@ -10,13 +10,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { ArrowLeft, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import UnknownCallerWorkflow from "@/components/calls/UnknownCallerWorkflow";
+import { CallDispositionForm } from "@/components/calls/CallDispositionForm";
 
 export default function ActiveCallPage() {
   const router = useRouter();
   const params = useParams();
   const callId = params?.callId as string | undefined;
 
-  const { data: call, isLoading } = useCall(callId ?? "");
+  const { data: call, isLoading, refetch } = useCall(callId ?? "");
 
   if (isLoading) {
     return (
@@ -137,14 +138,7 @@ export default function ActiveCallPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Call notes and disposition will be added in Phase 9D.</p>
-            </CardContent>
-          </Card>
+          <CallDispositionForm call={call} onSaved={() => refetch()} />
         </div>
 
         <div className="space-y-6">
