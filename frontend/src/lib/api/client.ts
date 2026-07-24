@@ -2,7 +2,7 @@ import axios, { AxiosHeaders } from "axios";
 import { useAuthStore } from "../store/authStore";
 import { ApiResponse, AuthResponse } from "@/types/auth";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://103.117.50.251:8091/api/v1";
 
 export const api = axios.create({
   baseURL: BASE_URL,

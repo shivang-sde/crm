@@ -1,13 +1,5 @@
 package com.shivang.crm.modules.integration.controller;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
-
-import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -15,7 +7,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.integration.entity.ConnectorInstance;
@@ -26,21 +34,12 @@ import com.shivang.crm.modules.integration.service.ConnectorInstanceService;
 import com.shivang.crm.modules.integration.service.ConnectorWebhookConfigService;
 import com.shivang.crm.modules.integration.service.ConnectorWebhookService;
 import com.shivang.crm.modules.integration.service.WebhookMappingService;
+import com.shivang.crm.modules.integration.service.impl.CallWebhookMappingApplier;
 import com.shivang.crm.modules.integration.webhook.HeaderSanitizer;
 import com.shivang.crm.modules.integration.webhook.NormalizedCallWebhookEvent;
 import com.shivang.crm.modules.integration.webhook.NormalizedCallWebhookMapper;
 import com.shivang.crm.modules.integration.webhook.WebhookVerificationService;
-import com.shivang.crm.modules.integration.service.impl.CallWebhookMappingApplier;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpServletRequest;
-
-import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 
 public class ConnectorWebhookControllerTest {
@@ -129,8 +128,13 @@ public class ConnectorWebhookControllerTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+        instance.getId(),
+        "sellspark_voice",
+        "call-connect",
+        headers,
+        buildRequest(body, headers)
+);
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("received", ((Map) resp.getBody()).get("status"));
 
@@ -162,8 +166,13 @@ public class ConnectorWebhookControllerTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "cdr",
-                headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+        instance.getId(),
+        "sellspark_voice",
+        "cdr",
+        headers,
+        buildRequest(body, headers)
+);
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("received", ((Map) resp.getBody()).get("status"));
 
@@ -182,8 +191,13 @@ public class ConnectorWebhookControllerTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Signature", "bad");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+        instance.getId(),
+        "sellspark_voice",
+        "cdr",
+        headers,
+        buildRequest(body, headers)
+);
         assertEquals(401, resp.getStatusCode().value());
 
         verify(webhookMappingService, times(0)).loadActiveMappings(any(), any(), any());
@@ -203,8 +217,13 @@ public class ConnectorWebhookControllerTest {
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-4"));
         HttpHeaders headers = new HttpHeaders();
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+                instance.getId(),
+                "sellspark_voice",
+                "call-connect",
+                headers,
+                buildRequest(body, headers)
+        );
         assertEquals(401, resp.getStatusCode().value());
 
         verify(webhookMappingService, times(0)).loadActiveMappings(any(), any(), any());
@@ -222,8 +241,13 @@ public class ConnectorWebhookControllerTest {
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-5"));
         HttpHeaders headers = new HttpHeaders();
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+                instance.getId(),
+                "sellspark_voice",
+                "call-connect",
+                headers,
+                buildRequest(body, headers)
+        );
         assertEquals(403, resp.getStatusCode().value());
 
         verify(webhookMappingService, times(0)).loadActiveMappings(any(), any(), any());
@@ -256,8 +280,13 @@ public class ConnectorWebhookControllerTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+                instance.getId(),
+                "sellspark_voice",
+                "call-connect",
+                headers,
+                buildRequest(body, headers)
+        );
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("duplicate", ((Map) resp.getBody()).get("status"));
 
@@ -281,8 +310,13 @@ public class ConnectorWebhookControllerTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+                instance.getId(),
+                "sellspark_voice",
+                "call-connect",
+                headers,
+                buildRequest(body, headers)
+                                );
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("mapping_failed", ((Map) resp.getBody()).get("status"));
 
@@ -319,8 +353,13 @@ public class ConnectorWebhookControllerTest {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+                org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+        instance.getId(),
+        "sellspark_voice",
+        "call-connect",
+        headers,
+        buildRequest(body, headers)
+);
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("received", ((Map) resp.getBody()).get("status"));
 
@@ -359,8 +398,13 @@ public class ConnectorWebhookControllerTest {
         headers.add("X-Signature", "sig");
         headers.add("X-API-Key", "apikey");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
-                "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook(
+                instance.getId(),
+                "sellspark_voice",
+                "call-connect",
+                headers,
+                buildRequest(body, headers)
+                );
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("received", ((Map) resp.getBody()).get("status"));
 

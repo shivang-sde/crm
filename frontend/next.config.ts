@@ -1,18 +1,18 @@
 import type { NextConfig } from "next";
 
+const backendProxyUrl =
+  process.env.BACKEND_PROXY_URL ?? "http://localhost:8080";
+
 const nextConfig: NextConfig = {
   output: "standalone",
 
-  poweredByHeader: false,
-
-  // Only add this when using next/image with external domains.
-  images: {
-    remotePatterns: [
+  async rewrites() {
+    return [
       {
-        protocol: "https",
-        hostname: "**",
+        source: "/api/:path*",
+        destination: `${backendProxyUrl}/api/:path*`,
       },
-    ],
+    ];
   },
 };
 
