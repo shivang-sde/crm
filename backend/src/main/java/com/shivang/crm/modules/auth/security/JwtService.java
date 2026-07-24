@@ -126,4 +126,8 @@ public class JwtService {
     public long getAccessTokenExpiryMs() {
         return accessTokenExpiryMs;
     }
+
+    public String extractUserLevel(String token) {
+    return parseToken(token).get("level", String.class);
+    }
 }

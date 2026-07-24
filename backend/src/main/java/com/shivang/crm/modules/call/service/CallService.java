@@ -18,8 +18,10 @@ import com.shivang.crm.modules.call.dto.CallLinkRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.CallUpdateRequest;
 import com.shivang.crm.modules.call.entity.Call;
+import com.shivang.crm.modules.call.entity.Call.CallStatus;
 import com.shivang.crm.modules.call.repository.CallRepository;
 import com.shivang.crm.modules.call.repository.CallSpecifications;
+import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.enums.OwnershipScope;
 import com.shivang.crm.shared.exception.NotFoundException;
@@ -39,6 +41,7 @@ public class CallService {
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
     private final ActivityService activityService;
+    private final CallProviderLinkService callProviderLinkService;
 
     private final TenantContext tenantContext;
 
@@ -63,12 +66,17 @@ public class CallService {
             entityResolverService.resolveUserName(request.getAssignedTo());
         }
 
+        CallStatus status = request.getStatus() != null
+        ? request.getStatus()
+        : CallStatus.PLANNED;
+
         Call call = Call.builder()
             .tenantId(tenantId)
             .createdBy(userId)
             .subject(request.getSubject())
             .description(request.getDescription())
             .callType(request.getCallType() != null ? request.getCallType() : Call.CallType.OUTGOING)
+            .status(status)
             .phoneNumber(request.getPhoneNumber())
             .startTime(request.getStartTime())
             .endTime(request.getEndTime())
@@ -342,9 +350,11 @@ public class CallService {
             .startTime(call.getStartTime())
             .endTime(call.getEndTime())
             .durationMinutes(call.getDurationMinutes())
+            .durationSeconds(call.getDurationSeconds())
             .disposition(call.getDisposition())
             .notes(call.getNotes())
             .nextAction(call.getNextAction())
+            .recordingUrl(call.getRecordingUrl())
             .followUpAt(call.getFollowUpAt())
             .entityType(call.getEntityType())
             .entityId(call.getEntityId())
@@ -357,6 +367,20 @@ public class CallService {
             .updatedAt(call.getUpdatedAt())
             .createdBy(call.getCreatedBy())
             .build();
+
+        // Populate provider link data if available
+        try {
+            var linkOpt = callProviderLinkService.findByTenantIdAndCallIdAndDeletedFalse(call.getTenantId(), call.getId());
+            if (linkOpt.isPresent()) {
+                var link = linkOpt.get();
+                response.setExternalCallId(link.getExternalCallId());
+                if (link.getProvider() != null) {
+                    response.setProviderName(link.getProvider().getProviderName());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not load provider link for call {}: {}", call.getId(), e.getMessage());
+        }
 
         return response;
     }

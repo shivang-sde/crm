@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/v1/calls")
+@org.springframework.security.access.prepost.PreAuthorize("hasPermission('call', 'write')")
 @RequiredArgsConstructor
 public class ClickToCallController {
 

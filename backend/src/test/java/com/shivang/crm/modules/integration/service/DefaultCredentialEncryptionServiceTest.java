@@ -39,6 +39,20 @@ class DefaultCredentialEncryptionServiceTest {
     }
 
     @Test
+    void invalidBase64KeyThrowsCredentialEncryptionException() {
+        assertThatThrownBy(() -> new DefaultCredentialEncryptionService("not-base64!"))
+            .isInstanceOf(CredentialEncryptionException.class)
+            .hasMessageContaining("Base64-encoded 32-byte value");
+    }
+
+    @Test
+    void wrongLengthKeyThrowsCredentialEncryptionException() {
+        assertThatThrownBy(() -> new DefaultCredentialEncryptionService("AQIDBAU="))
+            .isInstanceOf(CredentialEncryptionException.class)
+            .hasMessageContaining("32-byte");
+    }
+
+    @Test
     void encryptionServiceDoesNotReturnPlaintext() {
         String original = "top-secret";
 

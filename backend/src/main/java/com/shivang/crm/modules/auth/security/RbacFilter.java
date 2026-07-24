@@ -31,7 +31,7 @@ public class RbacFilter extends OncePerRequestFilter {
     // List of modules that require RBAC checking (from your seed data)
     private static final Set<String> PROTECTED_MODULES = Set.of(
             "lead", "contact", "account", "deal", "activity",
-            "report", "workflow", "user", "tenant");
+            "report", "workflow", "user", "tenant", "call", "task", "meeting");
 
     // List of paths that should be excluded from RBAC (internal, public, etc.)
     private static final Set<String> EXCLUDED_PATHS = Set.of(
@@ -212,6 +212,9 @@ public class RbacFilter extends OncePerRequestFilter {
             case "accounts", "account" -> "account";
             case "deals", "deal" -> "deal";
             case "activities", "activity" -> "activity";
+            case "calls", "call" -> "call";
+            case "tasks", "task" -> "task";
+            case "meetings", "meeting" -> "meeting";
             case "reports", "report" -> "report";
             case "workflows", "workflow" -> "workflow";
             default -> {

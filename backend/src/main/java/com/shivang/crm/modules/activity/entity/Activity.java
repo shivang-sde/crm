@@ -19,14 +19,12 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "activities",
-    indexes = {
+@Table(name = "activities", indexes = {
         @Index(name = "idx_activity_tenant", columnList = "tenant_id"),
         @Index(name = "idx_activity_entity", columnList = "entity_type, entity_id"),
         @Index(name = "idx_activity_type", columnList = "activity_type"),
         @Index(name = "idx_activity_created_at", columnList = "created_at")
-    }
-)
+})
 @Getter
 @Setter
 @SuperBuilder
@@ -49,8 +47,14 @@ public class Activity extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "performed_by", nullable = false)
+    @Column(name = "performed_by")
     private UUID performedBy;
+
+    @Column(name = "actor_type", nullable = false, length = 30)
+    private String actorType = "USER";
+
+    @Column(name = "actor_source", length = 100)
+    private String actorSource;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

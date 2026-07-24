@@ -59,7 +59,7 @@ BEGIN
         INSERT INTO role_permissions (role_id, permission_id, access_scope)
         SELECT admin_role_id, p.id, 'ALL'
         FROM permissions p
-        WHERE p.module IN ('lead', 'contact', 'account', 'deal', 'activity', 
+        WHERE p.module IN ('lead', 'contact', 'account', 'deal', 'activity', 'task', 'call', 'meeting',
                           'report', 'workflow', 'admin')
         ON CONFLICT (role_id, permission_id) DO NOTHING;
         
@@ -67,7 +67,7 @@ BEGIN
         INSERT INTO role_permissions (role_id, permission_id, access_scope)
         SELECT manager_role_id, p.id, 'TEAM'
         FROM permissions p
-        WHERE p.module IN ('lead', 'contact', 'account', 'deal', 'activity', 'report')
+        WHERE p.module IN ('lead', 'contact', 'account', 'deal', 'activity', 'task', 'call', 'meeting', 'report')
           AND p.action IN ('read', 'write', 'assign', 'export')
         ON CONFLICT (role_id, permission_id) DO NOTHING;
         
@@ -75,7 +75,7 @@ BEGIN
         INSERT INTO role_permissions (role_id, permission_id, access_scope)
         SELECT employee_role_id, p.id, 'OWN'
         FROM permissions p
-        WHERE p.module IN ('lead', 'contact', 'account', 'deal', 'activity')
+        WHERE p.module IN ('lead', 'contact', 'account', 'deal', 'activity', 'task', 'call', 'meeting')
           AND p.action IN ('read', 'write')
         ON CONFLICT (role_id, permission_id) DO NOTHING;
         

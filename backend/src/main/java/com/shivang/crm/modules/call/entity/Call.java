@@ -59,6 +59,12 @@ public class Call extends TenantOwnedEntity {
     @Column(name = "duration_minutes")
     private Integer durationMinutes;
 
+    @Column(name = "duration_seconds")
+    private Integer durationSeconds;
+
+    @Column(name = "recording_url", columnDefinition = "TEXT")
+    private String recordingUrl;
+
     @Column(length = 100)
     private String disposition;
 

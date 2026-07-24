@@ -40,6 +40,7 @@ import com.shivang.crm.modules.integration.service.ConnectorWebhookConfigService
 import com.shivang.crm.modules.integration.service.ProviderRegistryService;
 import com.shivang.crm.shared.exception.BusinessException;
 
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -64,7 +65,6 @@ public class CallingAdminController {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @GetMapping("/integrations/providers")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<List<ProviderResponse>> listProviders(@RequestParam(required = false, defaultValue = "CALLING") String category) {
         requireTenantId();
         List<ProviderDefinition> providers = providerDefinitionRepository.findAll().stream()
@@ -79,7 +79,6 @@ public class CallingAdminController {
     }
 
     @GetMapping("/integrations/providers/{providerKey}")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<ProviderResponse> getProvider(@PathVariable String providerKey) {
         requireTenantId();
         ProviderDefinition provider = providerRegistryService.findByProviderKey(providerKey)
@@ -88,7 +87,6 @@ public class CallingAdminController {
     }
 
     @GetMapping("/integrations/connector-instances")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<List<ConnectorInstanceResponse>> listConnectorInstances(@RequestParam(required = false, defaultValue = "CALLING") String category) {
         UUID tenantId = requireTenantId();
         List<ConnectorInstanceResponse> response = connectorInstanceService.findByTenantId(tenantId).stream()
@@ -99,7 +97,6 @@ public class CallingAdminController {
     }
 
     @PostMapping("/integrations/connector-instances")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<ConnectorInstanceResponse> createConnectorInstance(@RequestBody ConnectorInstanceRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();
@@ -120,7 +117,6 @@ public class CallingAdminController {
     }
 
     @PutMapping("/integrations/connector-instances/{id}")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<ConnectorInstanceResponse> updateConnectorInstance(@PathVariable UUID id, @RequestBody ConnectorInstanceRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();
@@ -139,14 +135,12 @@ public class CallingAdminController {
     }
 
     @PatchMapping("/integrations/connector-instances/{id}/status")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<ConnectorInstanceResponse> updateConnectorStatus(@PathVariable UUID id, @RequestBody StatusRequest request) {
         UUID tenantId = requireTenantId();
         return ResponseEntity.ok(toConnectorInstanceResponse(connectorInstanceService.activate(tenantId, id, request.active())));
     }
 
     @GetMapping("/integrations/connector-instances/{id}/credentials")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<CredentialStatusResponse> getCredentialStatus(@PathVariable UUID id) {
         UUID tenantId = requireTenantId();
         Optional<ConnectorCredential> credential = connectorCredentialService.findByTenantId(tenantId).stream()
@@ -158,7 +152,6 @@ public class CallingAdminController {
     }
 
     @PutMapping("/integrations/connector-instances/{id}/credentials")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<Map<String, Object>> saveCredentials(@PathVariable UUID id, @RequestBody CredentialsRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();
@@ -182,7 +175,6 @@ public class CallingAdminController {
     }
 
     @GetMapping("/integrations/connector-instances/{id}/webhook-config")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<WebhookConfigResponse> getWebhookConfig(@PathVariable UUID id) {
         UUID tenantId = requireTenantId();
         ConnectorInstance instance = connectorInstanceService.findById(tenantId, id)
@@ -196,7 +188,6 @@ public class CallingAdminController {
     }
 
     @PutMapping("/integrations/connector-instances/{id}/webhook-config")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<WebhookConfigResponse> saveWebhookConfig(@PathVariable UUID id, @RequestBody WebhookConfigRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();
@@ -222,7 +213,6 @@ public class CallingAdminController {
     }
 
     @PostMapping("/integrations/connector-instances/{id}/webhook-config/regenerate-secret")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<Map<String, Object>> regenerateSecret(@PathVariable UUID id) {
         UUID tenantId = requireTenantId();
         String secret = connectorWebhookConfigService.regenerateSecret(tenantId, id);
@@ -231,14 +221,12 @@ public class CallingAdminController {
     }
 
     @GetMapping("/call-settings/connect-triggers")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<List<CallConnectTriggerResponse>> listConnectTriggers() {
         UUID tenantId = requireTenantId();
         return ResponseEntity.ok(callConnectTriggerService.findByTenantId(tenantId).stream().map(this::toTriggerResponse).toList());
     }
 
     @PostMapping("/call-settings/connect-triggers")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<CallConnectTriggerResponse> createConnectTrigger(@RequestBody ConnectTriggerRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();
@@ -260,7 +248,6 @@ public class CallingAdminController {
     }
 
     @PutMapping("/call-settings/connect-triggers/{id}")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<CallConnectTriggerResponse> updateConnectTrigger(@PathVariable UUID id, @RequestBody ConnectTriggerRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();
@@ -283,7 +270,6 @@ public class CallingAdminController {
     }
 
     @DeleteMapping("/call-settings/connect-triggers/{id}")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<Void> deleteConnectTrigger(@PathVariable UUID id) {
         UUID tenantId = requireTenantId();
         CallConnectTrigger trigger = callConnectTriggerService.findById(id)
@@ -296,7 +282,6 @@ public class CallingAdminController {
     }
 
     @GetMapping("/call-settings/layout-config")
-    @PreAuthorize("hasPermission('call', 'read')")
     public ResponseEntity<LayoutConfigResponse> getLayoutConfig() {
         UUID tenantId = requireTenantId();
         return callLayoutConfigService.findByTenantId(tenantId).stream().findFirst()
@@ -306,7 +291,6 @@ public class CallingAdminController {
     }
 
     @PutMapping("/call-settings/layout-config")
-    @PreAuthorize("hasPermission('call', 'write')")
     public ResponseEntity<LayoutConfigResponse> saveLayoutConfig(@RequestBody LayoutConfigRequest request) {
         UUID tenantId = requireTenantId();
         UUID userId = requireUserId();

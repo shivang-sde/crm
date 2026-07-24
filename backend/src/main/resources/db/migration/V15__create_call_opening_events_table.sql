@@ -11,8 +11,11 @@ CREATE TABLE IF NOT EXISTS call_opening_events (
     instruction JSONB,
     delivery_status VARCHAR(50) DEFAULT 'PENDING',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP,
     delivered_at TIMESTAMP,
-    deleted BOOLEAN NOT NULL DEFAULT FALSE
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMP,
+    deleted_by UUID 
 );
 
 CREATE INDEX IF NOT EXISTS idx_call_opening_events_tenant ON call_opening_events(tenant_id);

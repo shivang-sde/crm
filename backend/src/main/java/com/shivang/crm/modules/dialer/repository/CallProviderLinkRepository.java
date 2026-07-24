@@ -11,7 +11,22 @@ import com.shivang.crm.modules.dialer.entity.CallProviderLink;
 
 @Repository
 public interface CallProviderLinkRepository extends JpaRepository<CallProviderLink, UUID> {
-    List<CallProviderLink> findByTenantId(UUID tenantId);
-    Optional<CallProviderLink> findByCallId(UUID callId);
-    Optional<CallProviderLink> findByExternalCallId(String externalCallId);
+    List<CallProviderLink> findByTenantIdAndDeletedFalse(UUID tenantId);
+    Optional<CallProviderLink>
+    findByTenantIdAndCallIdAndDeletedFalse(
+            UUID tenantId,
+            UUID callId
+    );
+    Optional<CallProviderLink>
+    findByTenantIdAndExternalCallIdAndDeletedFalse(
+            UUID tenantId,
+            String externalCallId
+    );
+
+     Optional<CallProviderLink>
+    findByTenantIdAndCorrelationKeyAndDeletedFalse(
+            UUID tenantId,
+            String correlationKey
+    );
+
 }

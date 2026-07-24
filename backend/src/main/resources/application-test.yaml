@@ -1,0 +1,17 @@
+integration:
+  security:
+    encryption-key: "XKM1/RmCg8xvU/iYTEY81mZUgZDWeHxwH3Cpqwz1D2w="
+
+jwt:
+  secret: "nR9xjQEINW3WfCLmG9HSNIVmjiNcoAUdLe21ocKg6WxrNOqtmqY68wjwXVAYwfmS+j434IgZRM8gZ7N4DQXXiA=="
+
+# Use test database (optional but recommended)
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    hibernate:
+      ddl-auto: create-drop

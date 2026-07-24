@@ -11,7 +11,9 @@ import lombok.Data;
 public class NormalizedCallWebhookEvent {
     private String externalCallId;
     private String externalEventId;
+    private String correlationKey;
     private String agentId;
+    private String agentNumber;
     private String direction;
     private String callerNumber;
     private String calleeNumber;

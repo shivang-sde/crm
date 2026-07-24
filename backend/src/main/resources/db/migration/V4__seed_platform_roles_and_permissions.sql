@@ -84,7 +84,30 @@ INSERT INTO permissions (id, module, action, description) VALUES
     ('cccccccc-cccc-cccc-cccc-000000000038', 'tenant', 'write', 'Create and edit tenants'),
     ('cccccccc-cccc-cccc-cccc-000000000039', 'tenant', 'delete', 'Delete tenants'),
 
-    ('cccccccc-cccc-cccc-cccc-000000000040', 'admin', 'role_read', 'View role details') 
+    ('cccccccc-cccc-cccc-cccc-000000000040', 'admin', 'role_read', 'View role details'),
+
+    -- Task module
+('cccccccc-cccc-cccc-cccc-000000000041', 'task', 'read', 'View task records'),
+('cccccccc-cccc-cccc-cccc-000000000042', 'task', 'write', 'Create and edit tasks'),
+('cccccccc-cccc-cccc-cccc-000000000043', 'task', 'delete', 'Delete tasks'),
+('cccccccc-cccc-cccc-cccc-000000000044', 'task', 'assign', 'Assign task ownership'),
+('cccccccc-cccc-cccc-cccc-000000000045', 'task', 'export', 'Export task data'),
+
+-- Call module
+('cccccccc-cccc-cccc-cccc-000000000046', 'call', 'read', 'View call records'),
+('cccccccc-cccc-cccc-cccc-000000000047', 'call', 'write', 'Create and edit calls'),
+('cccccccc-cccc-cccc-cccc-000000000048', 'call', 'delete', 'Delete calls'),
+('cccccccc-cccc-cccc-cccc-000000000049', 'call', 'assign', 'Assign call ownership'),
+('cccccccc-cccc-cccc-cccc-000000000050', 'call', 'export', 'Export call data'),
+
+-- Meeting module
+('cccccccc-cccc-cccc-cccc-000000000051', 'meeting', 'read', 'View meeting records'),
+('cccccccc-cccc-cccc-cccc-000000000052', 'meeting', 'write', 'Create and edit meetings'),
+('cccccccc-cccc-cccc-cccc-000000000053', 'meeting', 'delete', 'Delete meetings'),
+('cccccccc-cccc-cccc-cccc-000000000054', 'meeting', 'assign', 'Assign meeting ownership'),
+('cccccccc-cccc-cccc-cccc-000000000055', 'meeting', 'export', 'Export meeting data') 
+
+
 ON CONFLICT DO NOTHING;
 
 -- Grant role_read to RESELLER

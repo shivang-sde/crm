@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.stereotype.Component;
+
+@Component 
 public class ConnectorAuditSanitizer {
 
     private static final Set<String> SENSITIVE_KEYS = Set.of(

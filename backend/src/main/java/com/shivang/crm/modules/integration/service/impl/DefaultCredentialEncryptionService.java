@@ -29,9 +29,14 @@ public class DefaultCredentialEncryptionService implements CredentialEncryptionS
         if (encryptionKey == null || encryptionKey.isBlank()) {
             throw new CredentialEncryptionException("Missing encryption key configuration: integration.security.encryption-key");
         }
-        byte[] keyBytes = Base64.getDecoder().decode(encryptionKey);
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(encryptionKey);
+        } catch (IllegalArgumentException ex) {
+            throw new CredentialEncryptionException("Encryption key must be a Base64-encoded 32-byte value", ex);
+        }
         if (keyBytes.length != 32) {
-            throw new CredentialEncryptionException("Encryption key must decode to 32 bytes for AES-256");
+            throw new CredentialEncryptionException("Encryption key must decode to a 32-byte value for AES-256");
         }
         this.secretKey = new SecretKeySpec(keyBytes, "AES");
     }

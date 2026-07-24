@@ -28,6 +28,7 @@ import com.shivang.crm.shared.exception.BusinessException;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.service.EntityResolverService;
+import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 
 class CallServiceTest {
 
@@ -37,6 +38,7 @@ class CallServiceTest {
     private ActivityService activityService;
     private TenantContext tenantContext;
     private CallService callService;
+    private CallProviderLinkService callProviderLinkService;
 
     private UUID tenantId;
     private UUID userId;
@@ -49,6 +51,7 @@ class CallServiceTest {
         entityResolverService = mock(EntityResolverService.class);
         activityService = mock(ActivityService.class);
         tenantContext = mock(TenantContext.class);
+        callProviderLinkService = mock(CallProviderLinkService.class);
 
         tenantId = UUID.randomUUID();
         userId = UUID.randomUUID();
@@ -59,12 +62,14 @@ class CallServiceTest {
         when(permissionEvaluatorService.hasPermission(tenantId, userId, "call:write")).thenReturn(true);
         when(permissionEvaluatorService.getOwnershipScope(tenantId, userId, "call")).thenReturn(OwnershipScope.ALL);
 
-        callService = new CallService(callRepository, permissionEvaluatorService, entityResolverService, activityService, tenantContext);
+        callService = new CallService(callRepository, permissionEvaluatorService, entityResolverService,
+                activityService, callProviderLinkService, tenantContext);
     }
 
     @Test
     void saveDispositionForCompletedCallSucceeds() {
-        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).status(Call.CallStatus.HELD).endTime(java.time.Instant.now()).build();
+        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).status(Call.CallStatus.HELD)
+                .endTime(java.time.Instant.now()).build();
         when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -79,12 +84,14 @@ class CallServiceTest {
         assertEquals("CONNECTED", response.getDisposition());
         assertEquals("Customer requested a callback.", response.getNotes());
         assertEquals("CALLBACK", response.getNextAction());
-        verify(activityService, times(1)).logActivity(eq(tenantId), eq(callId), eq("CALL"), eq("CALL_DISPOSITION_SAVED"), any(), eq(userId), any());
+        verify(activityService, times(1)).logActivity(eq(tenantId), eq(callId), eq("CALL"),
+                eq("CALL_DISPOSITION_SAVED"), any(), eq(userId), any());
     }
 
     @Test
     void saveDispositionForActiveCallFails() {
-        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).status(Call.CallStatus.PLANNED).build();
+        Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).status(Call.CallStatus.PLANNED)
+                .build();
         when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
 
         CallDispositionRequest request = new CallDispositionRequest();
@@ -118,8 +125,10 @@ class CallServiceTest {
 
         assertEquals(request.getEntityType(), response.getEntityType());
         assertEquals(request.getEntityId().toString(), response.getEntityId().toString());
-        verify(entityResolverService, times(1)).validateEntityExists(request.getEntityType(), request.getEntityId(), tenantId);
-        verify(activityService, times(1)).logActivity(eq(tenantId), eq(callId), eq("CALL"), eq("CALL_LINKED"), any(), eq(userId), any());
+        verify(entityResolverService, times(1)).validateEntityExists(request.getEntityType(), request.getEntityId(),
+                tenantId);
+        verify(activityService, times(1)).logActivity(eq(tenantId), eq(callId), eq("CALL"), eq("CALL_LINKED"), any(),
+                eq(userId), any());
     }
 
     @Test
@@ -137,7 +146,8 @@ class CallServiceTest {
 
         assertEquals(request.getEntityType(), response.getEntityType());
         assertEquals(request.getEntityId().toString(), response.getEntityId().toString());
-        verify(entityResolverService, times(1)).validateEntityExists(request.getEntityType(), request.getEntityId(), tenantId);
+        verify(entityResolverService, times(1)).validateEntityExists(request.getEntityType(), request.getEntityId(),
+                tenantId);
     }
 
     @Test
@@ -155,7 +165,8 @@ class CallServiceTest {
     void missingEntityIsRejected() {
         Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).build();
         when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
-        doThrow(new BusinessException("ENTITY_NOT_FOUND", "Not found")).when(entityResolverService).validateEntityExists(eq("LEAD"), any(UUID.class), eq(tenantId));
+        doThrow(new BusinessException("ENTITY_NOT_FOUND", "Not found")).when(entityResolverService)
+                .validateEntityExists(eq("LEAD"), any(UUID.class), eq(tenantId));
 
         CallLinkRequest request = new CallLinkRequest();
         request.setEntityType("LEAD");
@@ -174,14 +185,16 @@ class CallServiceTest {
         request.setEntityType("LEAD");
         request.setEntityId(UUID.randomUUID());
 
-        assertThrows(PermissionDeniedException.class, () -> callService.linkCallEntity(callId, tenantId, userId, request));
+        assertThrows(PermissionDeniedException.class,
+                () -> callService.linkCallEntity(callId, tenantId, userId, request));
     }
 
     @Test
     void crossTenantEntityLinkIsRejected() {
         Call call = Call.builder().id(callId).tenantId(tenantId).createdBy(userId).build();
         when(callRepository.findByIdAndTenantIdAndDeletedFalse(callId, tenantId)).thenReturn(Optional.of(call));
-        doThrow(new BusinessException("ENTITY_NOT_FOUND", "Not found")).when(entityResolverService).validateEntityExists(eq("ACCOUNT"), any(UUID.class), eq(tenantId));
+        doThrow(new BusinessException("ENTITY_NOT_FOUND", "Not found")).when(entityResolverService)
+                .validateEntityExists(eq("ACCOUNT"), any(UUID.class), eq(tenantId));
 
         CallLinkRequest request = new CallLinkRequest();
         request.setEntityType("ACCOUNT");

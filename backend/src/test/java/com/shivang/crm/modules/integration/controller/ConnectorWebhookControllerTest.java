@@ -1,6 +1,8 @@
 package com.shivang.crm.modules.integration.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.anyString;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.integration.entity.ConnectorInstance;
@@ -68,20 +72,23 @@ public class ConnectorWebhookControllerTest {
         normalizedCallWebhookMapper = mock(NormalizedCallWebhookMapper.class);
         callWebhookMappingApplier = mock(CallWebhookMappingApplier.class);
 
-        controller = new ConnectorWebhookController(connectorInstanceService, webhookConfigService, webhookService, verificationService, webhookMappingService, headerSanitizer, normalizedCallWebhookMapper, callWebhookMappingApplier);
+        controller = new ConnectorWebhookController(connectorInstanceService, webhookConfigService, webhookService,
+                verificationService, webhookMappingService, headerSanitizer, normalizedCallWebhookMapper,
+                callWebhookMappingApplier);
 
         ProviderDefinition provider = ProviderDefinition.builder().providerKey("sellspark_voice").build();
         instance = ConnectorInstance.builder()
-            .id(UUID.randomUUID())
-            .tenantId(UUID.randomUUID())
-            .provider(provider)
-            .connectorName("sellspark")
-            .isActive(true)
-            .build();
+                .id(UUID.randomUUID())
+                .tenantId(UUID.randomUUID())
+                .provider(provider)
+                .connectorName("sellspark")
+                .isActive(true)
+                .build();
 
         config = ConnectorWebhookConfig.builder().id(UUID.randomUUID()).isActive(true).build();
 
-        when(connectorInstanceService.findByProviderKeyAndTenantSlug(eq("sellspark_voice"), any())).thenReturn(Optional.of(instance));
+        when(connectorInstanceService.findByProviderKeyAndTenantSlug(eq("sellspark_voice"), any()))
+                .thenReturn(Optional.of(instance));
         when(headerSanitizer.sanitize(any())).thenAnswer(i -> Map.of("authorization", "***", "x-signature", "***"));
         when(webhookService.save(any())).thenAnswer(i -> i.getArgument(0));
     }
@@ -98,134 +105,172 @@ public class ConnectorWebhookControllerTest {
 
     @Test
     public void validCallConnectWebhook_processed() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(true);
 
         NormalizedCallWebhookEvent normalized = NormalizedCallWebhookEvent.builder()
-            .externalCallId("ext-1")
-            .externalEventId("evt-1")
-            .eventTimestamp(Instant.now())
-            .build();
+                .externalCallId("ext-1")
+                .externalEventId("evt-1")
+                .eventTimestamp(Instant.now())
+                .build();
 
         when(webhookMappingService.loadActiveMappings(any(), any(), eq("call-connect"))).thenReturn(List.of());
         when(normalizedCallWebhookMapper.map(any(), any())).thenReturn(normalized);
-        when(callWebhookMappingApplier.applyConnect(eq(normalized), any())).thenReturn("PROCESSED");
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-1"));
-        HttpHeaders headers = new HttpHeaders(); headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        when(callWebhookMappingApplier.applyConnect(
+                eq(instance.getTenantId()),
+                eq(normalized),
+                eq(body))).thenReturn("PROCESSED");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Signature", "sig");
+
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(200, resp.getStatusCode().value());
-        assertEquals("received", ((Map)resp.getBody()).get("status"));
+        assertEquals("received", ((Map) resp.getBody()).get("status"));
 
         verify(webhookService, atLeastOnce()).save(any(ConnectorWebhookEvent.class));
-        verify(callWebhookMappingApplier, times(1)).applyConnect(eq(normalized), any());
+        verify(callWebhookMappingApplier, times(1)).applyConnect(eq(instance.getTenantId()), eq(normalized), eq(body));
     }
 
     @Test
     public void validCdrWebhook_processed() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(true);
 
         NormalizedCallWebhookEvent normalized = NormalizedCallWebhookEvent.builder()
-            .externalCallId("ext-2")
-            .externalEventId("evt-2")
-            .eventTimestamp(Instant.now())
-            .build();
+                .externalCallId("ext-2")
+                .externalEventId("evt-2")
+                .eventTimestamp(Instant.now())
+                .build();
 
         when(webhookMappingService.loadActiveMappings(any(), any(), eq("cdr"))).thenReturn(List.of());
         when(normalizedCallWebhookMapper.map(any(), any())).thenReturn(normalized);
-        when(callWebhookMappingApplier.applyCdr(eq(normalized), any())).thenReturn("PROCESSED");
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-2"));
-        HttpHeaders headers = new HttpHeaders(); headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "cdr", headers, buildRequest(body, headers));
+        when(callWebhookMappingApplier.applyCdr(eq(instance.getTenantId()), eq(normalized), eq(body)))
+                .thenReturn("PROCESSED");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Signature", "sig");
+
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "cdr",
+                headers, buildRequest(body, headers));
         assertEquals(200, resp.getStatusCode().value());
-        assertEquals("received", ((Map)resp.getBody()).get("status"));
+        assertEquals("received", ((Map) resp.getBody()).get("status"));
 
         verify(webhookService, atLeastOnce()).save(any(ConnectorWebhookEvent.class));
-        verify(callWebhookMappingApplier, times(1)).applyCdr(eq(normalized), any());
+        verify(callWebhookMappingApplier, times(1)).applyCdr(eq(instance.getTenantId()), eq(normalized), eq(body));
     }
 
     @Test
     public void invalidSignature_blocksProcessing() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(false);
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-3"));
-        HttpHeaders headers = new HttpHeaders(); headers.add("X-Signature", "bad");
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Signature", "bad");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(401, resp.getStatusCode().value());
 
         verify(webhookMappingService, times(0)).loadActiveMappings(any(), any(), any());
-        verify(callWebhookMappingApplier, times(0)).applyConnect(any(), any());
+        verify(callWebhookMappingApplier, never()).applyConnect(
+                any(UUID.class),
+                any(NormalizedCallWebhookEvent.class),
+                anyString());
         verify(webhookService, atLeastOnce()).save(any(ConnectorWebhookEvent.class));
     }
 
     @Test
     public void missingSignature_blocksProcessing() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-4"));
         HttpHeaders headers = new HttpHeaders();
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(401, resp.getStatusCode().value());
 
         verify(webhookMappingService, times(0)).loadActiveMappings(any(), any(), any());
-        verify(callWebhookMappingApplier, times(0)).applyConnect(any(), any());
+        verify(callWebhookMappingApplier, never()).applyConnect(
+                any(UUID.class),
+                any(NormalizedCallWebhookEvent.class),
+                anyString());
     }
 
     @Test
     public void missingWebhookConfig_forActiveConnector_blocks() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.empty());
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.empty());
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "ext-5"));
         HttpHeaders headers = new HttpHeaders();
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(403, resp.getStatusCode().value());
 
         verify(webhookMappingService, times(0)).loadActiveMappings(any(), any(), any());
-        verify(callWebhookMappingApplier, times(0)).applyConnect(any(), any());
+        verify(callWebhookMappingApplier, never()).applyConnect(
+                any(UUID.class),
+                any(NormalizedCallWebhookEvent.class),
+                anyString());
     }
 
     @Test
     public void duplicateWebhook_skipsProcessing() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(true);
 
         NormalizedCallWebhookEvent normalized = NormalizedCallWebhookEvent.builder()
-            .externalCallId("dup-1")
-            .externalEventId(null)
-            .eventTimestamp(Instant.now())
-            .build();
+                .externalCallId("dup-1")
+                .externalEventId(null)
+                .eventTimestamp(Instant.now())
+                .build();
 
         when(webhookMappingService.loadActiveMappings(any(), any(), any())).thenReturn(List.of());
         when(normalizedCallWebhookMapper.map(any(), any())).thenReturn(normalized);
 
-        when(webhookService.findByConnectorInstanceIdAndIdempotencyKey(eq(instance.getId()), any())).thenReturn(Optional.of(ConnectorWebhookEvent.builder().id(UUID.randomUUID()).build()));
+        when(webhookService.findByConnectorInstanceIdAndIdempotencyKey(eq(instance.getId()), any()))
+                .thenReturn(Optional.of(ConnectorWebhookEvent.builder().id(UUID.randomUUID()).build()));
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "dup-1"));
-        HttpHeaders headers = new HttpHeaders(); headers.add("X-Signature", "sig");
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(200, resp.getStatusCode().value());
-        assertEquals("duplicate", ((Map)resp.getBody()).get("status"));
+        assertEquals("duplicate", ((Map) resp.getBody()).get("status"));
 
-        verify(callWebhookMappingApplier, times(0)).applyConnect(any(), any());
+        verify(callWebhookMappingApplier, never()).applyConnect(
+                any(UUID.class),
+                any(NormalizedCallWebhookEvent.class),
+                anyString());
     }
 
     @Test
     public void mappingFailure_marksMappingFailed() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(true);
 
@@ -233,70 +278,96 @@ public class ConnectorWebhookControllerTest {
         when(normalizedCallWebhookMapper.map(any(), any())).thenReturn(null);
 
         String body = objectMapper.writeValueAsString(Map.of("call_id", "mfail-1"));
-        HttpHeaders headers = new HttpHeaders(); headers.add("X-Signature", "sig");
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Signature", "sig");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(200, resp.getStatusCode().value());
-        assertEquals("mapping_failed", ((Map)resp.getBody()).get("status"));
+        assertEquals("mapping_failed", ((Map) resp.getBody()).get("status"));
 
-        verify(callWebhookMappingApplier, times(0)).applyConnect(any(), any());
+        verify(callWebhookMappingApplier, never()).applyConnect(
+                any(UUID.class),
+                any(NormalizedCallWebhookEvent.class),
+                anyString());
     }
 
     @Test
     public void unknownExternalCall_pendingCorrelation() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(true);
 
         NormalizedCallWebhookEvent normalized = NormalizedCallWebhookEvent.builder()
-            .externalCallId("unknown-1")
-            .externalEventId("ev-1")
-            .eventTimestamp(Instant.now())
-            .build();
+                .externalCallId("unknown-1")
+                .externalEventId("ev-1")
+                .eventTimestamp(Instant.now())
+                .build();
 
         when(webhookMappingService.loadActiveMappings(any(), any(), any())).thenReturn(List.of());
         when(normalizedCallWebhookMapper.map(any(), any())).thenReturn(normalized);
-        when(callWebhookMappingApplier.applyConnect(eq(normalized), any())).thenReturn("PENDING_CORRELATION");
 
-        String body = objectMapper.writeValueAsString(Map.of("call_id", "unknown-1"));
-        HttpHeaders headers = new HttpHeaders(); headers.add("X-Signature", "sig");
+        String body = objectMapper.writeValueAsString(
+                Map.of("call_id", "unknown-1"));
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        when(callWebhookMappingApplier.applyConnect(
+                eq(instance.getTenantId()),
+                eq(normalized),
+                eq(body))).thenReturn("PENDING_CORRELATION");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Signature", "sig");
+
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(200, resp.getStatusCode().value());
-        assertEquals("received", ((Map)resp.getBody()).get("status"));
+        assertEquals("received", ((Map) resp.getBody()).get("status"));
 
-        verify(callWebhookMappingApplier, times(1)).applyConnect(eq(normalized), any());
+        verify(callWebhookMappingApplier, times(1)).applyConnect(
+                eq(instance.getTenantId()),
+                eq(normalized),
+                eq(body));
     }
 
     @Test
     public void headersAreSanitizedAndTenantIsolation() throws Exception {
-        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId()))).thenReturn(Optional.of(config));
+        when(webhookConfigService.findByTenantAndConnector(eq(instance.getTenantId()), eq(instance.getId())))
+                .thenReturn(Optional.of(config));
         when(webhookConfigService.getDecryptedSecret(any())).thenReturn("secret");
         when(verificationService.verifyHmacSha256(any(), any(), any())).thenReturn(true);
 
         NormalizedCallWebhookEvent normalized = NormalizedCallWebhookEvent.builder()
-            .externalCallId("ext-9")
-            .eventTimestamp(Instant.now())
-            .build();
+                .externalCallId("ext-9")
+                .eventTimestamp(Instant.now())
+                .build();
 
         when(webhookMappingService.loadActiveMappings(any(), any(), any())).thenReturn(List.of());
         when(normalizedCallWebhookMapper.map(any(), any())).thenReturn(normalized);
-        when(callWebhookMappingApplier.applyConnect(eq(normalized), any())).thenReturn("PROCESSED");
-
-        // sanitized headers mock returns masked values
-        when(headerSanitizer.sanitize(any())).thenReturn(Map.of("authorization", "***", "x-signature", "***", "x-api-key", "***"));
 
         String body = objectMapper.writeValueAsString(Map.of("tenantId", "otherTenant", "call_id", "ext-9"));
+
+        when(callWebhookMappingApplier.applyConnect(eq(instance.getTenantId()), eq(normalized), eq(body)))
+                .thenReturn("PROCESSED");
+
+        // sanitized headers mock returns masked values
+        when(headerSanitizer.sanitize(any()))
+                .thenReturn(Map.of("authorization", "***", "x-signature", "***", "x-api-key", "***"));
+
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization", "Bearer secretvalue");
         headers.add("X-Signature", "sig");
         headers.add("X-API-Key", "apikey");
 
-        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice", "call-connect", headers, buildRequest(body, headers));
+        org.springframework.http.ResponseEntity<?> resp = controller.receiveWebhook("tenantA", "sellspark_voice",
+                "call-connect", headers, buildRequest(body, headers));
         assertEquals(200, resp.getStatusCode().value());
-        assertEquals("received", ((Map)resp.getBody()).get("status"));
+        assertEquals("received", ((Map) resp.getBody()).get("status"));
 
-        // verify saved event used instance tenant (tenant isolation) and headers were sanitized
-        verify(webhookService, atLeastOnce()).save(argThat(evt -> evt.getTenantId().equals(instance.getTenantId()) && evt.getEventHeaders() != null && evt.getEventHeaders().containsKey("authorization") && "***".equals(evt.getEventHeaders().get("authorization"))));
+        // verify saved event used instance tenant (tenant isolation) and headers were
+        // sanitized
+        verify(webhookService, atLeastOnce()).save(argThat(evt -> evt.getTenantId().equals(instance.getTenantId())
+                && evt.getEventHeaders() != null && evt.getEventHeaders().containsKey("authorization")
+                && "***".equals(evt.getEventHeaders().get("authorization"))));
     }
 }

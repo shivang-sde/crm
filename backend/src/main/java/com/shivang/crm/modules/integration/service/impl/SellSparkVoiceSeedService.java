@@ -37,19 +37,19 @@ public class SellSparkVoiceSeedService {
         ProviderDefinition provider = existingProvider.orElseGet(() -> providerRepository.save(ProviderDefinition.builder()
             .providerKey("sellspark_voice")
             .providerName("SellSpark Voice")
-            .category("COMMUNICATION")
+            .category("CALLING")
             .description("Provider-neutral seed for SellSpark Voice integration")
             .isActive(true)
             .defaultConfig(Map.of("baseUrl", "https://sellspark.com"))
             .build()));
 
-        upsertAction(provider, "CLICK_TO_CALL", "Click to Call", "POST",
-            Map.of("userId", "{{credential.username}}", "password", "{{credential.password}}", "number", "{{entity.phone}}", "leadId", "{{entity.id}}"));
+        upsertAction(provider, "CLICK_TO_CALL", "Click to Call", "POST", "/DialConnect/clicktocall",
+            Map.of("userId", "{{credential.userId}}", "password", "{{credential.password}}", "number", "{{input.phoneNumber}}", "leadId", "{{input.leadId}}"));
         upsertTrigger(provider, "CALL_CONNECT", "Call Connect");
         upsertTrigger(provider, "CDR", "Call Detail Record");
     }
 
-    private void upsertAction(ProviderDefinition provider, String actionKey, String actionName, String method,
+    private void upsertAction(ProviderDefinition provider, String actionKey, String actionName, String method, String endpointTemplate,
                               Map<String, Object> requestTemplate) {
         ProviderActionDefinition action = actionRepository.findByProviderIdAndActionKey(provider.getId(), actionKey)
             .orElseGet(ProviderActionDefinition::new);
@@ -58,7 +58,9 @@ public class SellSparkVoiceSeedService {
         action.setActionName(actionName);
         action.setDescription("Seeded action for " + provider.getProviderName());
         action.setIsActive(true);
-        action.setRequestTemplate(Map.of("method", method, "body", requestTemplate));
+        action.setEndpointTemplate(endpointTemplate);
+        action.setHttpMethod(method);
+        action.setRequestTemplate(requestTemplate);
         actionRepository.save(action);
     }
 

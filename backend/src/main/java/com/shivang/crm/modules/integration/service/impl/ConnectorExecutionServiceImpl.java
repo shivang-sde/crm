@@ -109,10 +109,34 @@ public class ConnectorExecutionServiceImpl implements ConnectorExecutionService 
     }
 
     private Map<String, Object> resolveCredentials(ConnectorExecutionRequest request, ConnectorInstance connectorInstance) {
+        // 1. Try to find a user-specific credential
+        java.util.List<com.shivang.crm.modules.integration.entity.ConnectorCredential> userCreds = credentialService.findByTenantIdAndConnectorInstanceIdAndCreatedByAndIsActiveTrue(request.getTenantId(), connectorInstance.getId(), request.getUserId());
+        
+        if (!userCreds.isEmpty()) {
+            return decryptCredentialValue(userCreds.get(0));
+        }
+        
+        // 2. Try to find a tenant-level credential (createdBy IS NULL)
+        java.util.List<com.shivang.crm.modules.integration.entity.ConnectorCredential> tenantCreds = credentialService.findByTenantIdAndConnectorInstanceIdAndCreatedByIsNullAndIsActiveTrue(request.getTenantId(), connectorInstance.getId());
+        
+        if (!tenantCreds.isEmpty()) {
+            return decryptCredentialValue(tenantCreds.get(0));
+        }
+        
+        throw new BusinessException("NO_CREDENTIALS", "No active credentials found for the connector instance (checked user and tenant levels).");
+    }
+
+    private Map<String, Object> decryptCredentialValue(com.shivang.crm.modules.integration.entity.ConnectorCredential cred) {
         Map<String, Object> credentials = new LinkedHashMap<>();
-        for (String credentialName : new String[] {"username", "password", "apiKey", "token"}) {
-            credentialService.resolveCredentialValue(request.getTenantId(), connectorInstance.getId(), request.getUserId(), credentialName)
-                .ifPresent(value -> credentials.put(credentialName, value));
+        String decrypted = credentialService.decryptValue(cred);
+        if (decrypted != null && !decrypted.isBlank()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(decrypted, Map.class);
+                credentials.putAll(parsed);
+            } catch (Exception e) {
+                // Fallback
+            }
         }
         return credentials;
     }

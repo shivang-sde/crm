@@ -49,6 +49,16 @@ public class ConnectorCredentialServiceImpl implements ConnectorCredentialServic
     }
 
     @Override
+    public List<ConnectorCredential> findByTenantIdAndConnectorInstanceIdAndCreatedByAndIsActiveTrue(UUID tenantId, UUID connectorInstanceId, UUID createdBy) {
+        return repository.findByTenantIdAndConnectorInstanceIdAndCreatedByAndIsActiveTrue(tenantId, connectorInstanceId, createdBy);
+    }
+
+    @Override
+    public List<ConnectorCredential> findByTenantIdAndConnectorInstanceIdAndCreatedByIsNullAndIsActiveTrue(UUID tenantId, UUID connectorInstanceId) {
+        return repository.findByTenantIdAndConnectorInstanceIdAndCreatedByIsNullAndIsActiveTrue(tenantId, connectorInstanceId);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Optional<String> resolveCredentialValue(UUID tenantId, UUID connectorInstanceId, UUID userId, String credentialName) {
         List<ConnectorCredential> credentials = repository.findByTenantIdAndConnectorInstanceIdAndIsActiveTrue(tenantId, connectorInstanceId);
@@ -77,6 +87,11 @@ public class ConnectorCredentialServiceImpl implements ConnectorCredentialServic
             return "*".repeat(value.length());
         }
         return "***" + value.substring(value.length() - 4);
+    }
+
+    @Override
+    public String decryptValue(ConnectorCredential credential) {
+        return decryptValue(credential.getEncryptedValue());
     }
 
     private String decryptValue(String encryptedValue) {

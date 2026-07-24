@@ -17,5 +17,6 @@ public class ClickToCallResponse {
     private java.util.UUID callId;
     private String externalCallId;
     private String status;
+    private String message;
     private CallResponse call;
 }

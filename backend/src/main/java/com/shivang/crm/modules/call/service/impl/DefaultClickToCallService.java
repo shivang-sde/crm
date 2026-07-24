@@ -1,29 +1,31 @@
 package com.shivang.crm.modules.call.service.impl;
 
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.shivang.crm.modules.activity.service.ActivityService;
+import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.call.dto.CallCreateRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.ClickToCallRequest;
 import com.shivang.crm.modules.call.dto.ClickToCallResponse;
+import com.shivang.crm.modules.call.entity.Call;
+import com.shivang.crm.modules.call.entity.Call.CallStatus;
+import com.shivang.crm.modules.call.entity.Call.CallType;
+import com.shivang.crm.modules.call.repository.CallRepository;
 import com.shivang.crm.modules.call.service.CallService;
 import com.shivang.crm.modules.call.service.ClickToCallService;
 import com.shivang.crm.modules.dialer.entity.CallProviderLink;
 import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
-import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionResult;
 import com.shivang.crm.modules.integration.entity.ConnectorExecution;
 import com.shivang.crm.modules.integration.service.ConnectorExecutionService;
 import com.shivang.crm.shared.service.EntityPhoneResolver;
-import com.shivang.crm.modules.auth.security.TenantContext;
-import com.shivang.crm.modules.call.repository.CallRepository;
-import com.shivang.crm.modules.call.entity.Call;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,13 +43,102 @@ public class DefaultClickToCallService implements ClickToCallService {
     private final CallRepository callRepository;
     private final ActivityService activityService;
 
+    /**
+     * Click-to-call orchestration.
+     *
+     * Transaction boundaries:
+     *   1. CRM Call creation → own transaction (via CallService.createCall)
+     *   2. Provider HTTP → NO active database transaction
+     *   3. CallProviderLink save → own transaction
+     *   4. Activity log → own call
+     *   5. On failure → update CRM Call status in separate transaction
+     *
+     * This avoids holding a Hikari connection open during the external HTTP call.
+     */
     @Override
-    @Transactional
     public ClickToCallResponse clickToCall(ClickToCallRequest request) {
         UUID tenantId = tenantContext.getTenantId();
         UUID userId = tenantContext.getUserId();
 
-        // Resolve phone
+        // ── Step 1: Resolve and normalize phone ──
+        String phone = resolveAndNormalizePhone(request, tenantId);
+
+        // ── Step 2: Create CRM Call FIRST (own transaction via CallService) ──
+        CallCreateRequest createReq = CallCreateRequest.builder()
+                .subject(request.getSubject() != null ? request.getSubject() : "Click-to-Call")
+                .callType(CallType.OUTGOING)
+                .status(CallStatus.PLANNED)
+                .phoneNumber(phone)
+                .entityType(request.getEntityType())
+                .entityId(request.getEntityId())
+                .build();
+
+        CallResponse callResponse = callService.createCall(tenantId, userId, createReq);
+        UUID callId = callResponse.getId();
+        log.info("Created CRM Call {} before provider execution for tenant {}", callId, tenantId);
+
+        // ── Step 3: Execute provider HTTP (outside database transaction) ──
+        ConnectorExecutionResult result;
+        try {
+            ConnectorExecutionRequest execRequest = new ConnectorExecutionRequest();
+            execRequest.setTenantId(tenantId);
+            execRequest.setUserId(userId);
+            execRequest.setProviderKey("sellspark_voice");
+            execRequest.setActionKey("CLICK_TO_CALL");
+            execRequest.setEntityType(request.getEntityType());
+            execRequest.setEntityId(request.getEntityId());
+            execRequest.setEntityData(Map.of("phone", phone, "id", request.getEntityId().toString()));
+            // Use CRM Call ID as leadId for correlation
+            execRequest.setInputData(Map.of("phoneNumber", phone, "leadId", callId.toString()));
+
+            result = connectorExecutionService.execute(execRequest);
+        } catch (Exception ex) {
+            // Provider execution threw — mark the CRM Call as failed
+            markCallFailed(callId, "Provider execution error: " + ex.getMessage());
+            throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_EXECUTION_FAILED", ex.getMessage());
+        }
+
+        // ── Step 4: Check provider execution success ──
+        if (!result.isSuccess()) {
+            String errorMsg = result.getErrorMessage() != null ? result.getErrorMessage() : "Provider execution failed";
+            markCallFailed(callId, errorMsg);
+            throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_EXECUTION_FAILED", errorMsg);
+        }
+
+        // Parse SellSpark response
+        String status = null;
+        String providerMessage = null;
+        if (result.getResponseBody() != null) {
+            Object st = result.getResponseBody().get("status");
+            Object resp = result.getResponseBody().get("response");
+            status = st != null ? st.toString() : null;
+            providerMessage = resp != null ? resp.toString() : null;
+        }
+
+        if (!"success".equalsIgnoreCase(status)) {
+            String failMsg = providerMessage != null ? providerMessage : "Provider did not return success status";
+            markCallFailed(callId, failMsg);
+            throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_CALL_FAILED", failMsg);
+        }
+
+        // ── Step 5: Save CallProviderLink (own transaction) ──
+        saveProviderLink(tenantId, userId, callId, result);
+
+        // ── Step 6: Log activity ──
+        logCallInitiatedActivity(tenantId, userId, callId, phone, request, result);
+
+        String message = providerMessage != null ? providerMessage : "Call scheduled successfully";
+
+        return ClickToCallResponse.builder()
+            .callId(callId)
+            .externalCallId(null) // SellSpark does not return a call ID
+            .status(status)
+            .message(message)
+            .call(callResponse)
+            .build();
+    }
+
+    private String resolveAndNormalizePhone(ClickToCallRequest request, UUID tenantId) {
         String phone = request.getPhoneNumber();
         if (phone == null || phone.isBlank()) {
             var res = phoneResolver.resolvePhone(request.getEntityType(), request.getEntityId(), tenantId);
@@ -57,59 +148,39 @@ public class DefaultClickToCallService implements ClickToCallService {
             phone = res.getPhone();
         }
 
-        // Build connector execution request
-        ConnectorExecutionRequest execRequest = new ConnectorExecutionRequest();
-        execRequest.setTenantId(tenantId);
-        execRequest.setUserId(userId);
-        execRequest.setProviderKey("sellspark_voice");
-        execRequest.setActionKey("CLICK_TO_CALL");
-        execRequest.setEntityType(request.getEntityType());
-        execRequest.setEntityId(request.getEntityId());
-        execRequest.setEntityData(Map.of("phone", phone, "id", request.getEntityId()));
-        execRequest.setInputData(Map.of("phoneNumber", phone));
-
-        ConnectorExecutionResult result = connectorExecutionService.execute(execRequest);
-
-        String externalCallId = null;
-        String status = null;
-        if (result.getResponseBody() != null) {
-            Object st = result.getResponseBody().get("status");
-            Object cid = result.getResponseBody().get("callId");
-            status = st != null ? st.toString() : null;
-            externalCallId = cid != null ? cid.toString() : null;
+        if (phone != null) {
+            phone = phone.replaceAll("\\s+", "").replace("+91", "").replaceAll("[^0-9]", "");
+            if (phone.length() > 10) {
+                phone = phone.substring(phone.length() - 10);
+            }
+            if (phone.length() != 10) {
+                throw new com.shivang.crm.shared.exception.BusinessException("INVALID_PHONE", "Phone number must resolve to exactly 10 digits");
+            }
         }
+        return phone;
+    }
 
-        if (externalCallId == null) {
-            throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_RESPONSE_INVALID", "Provider did not return callId");
-        }
+    @Transactional
+    protected void saveProviderLink(UUID tenantId, UUID userId, UUID callId, ConnectorExecutionResult result) {
+        Call callEntity = callRepository.findById(callId)
+            .orElseThrow(() -> new RuntimeException("Call entity not found after creation: " + callId));
 
-        // Create CRM Call
-        CallCreateRequest createReq = CallCreateRequest.builder()
-            .subject(request.getSubject() != null ? request.getSubject() : "Click-to-Call")
-            .callType(com.shivang.crm.modules.call.entity.Call.CallType.OUTGOING)
-            .phoneNumber(phone)
-            .entityType(request.getEntityType())
-            .entityId(request.getEntityId())
-            .build();
-
-        CallResponse callResponse = callService.createCall(tenantId, userId, createReq);
-
-        // Link provider
         ConnectorExecution connectorExecutionEntity = null;
         if (result.getExecutionId() != null) {
             connectorExecutionEntity = connectorExecutionService.findById(result.getExecutionId()).orElse(null);
         }
 
-        UUID callId = callResponse.getId();
-        Call callEntity = callRepository.findById(callId).orElseThrow(() -> new RuntimeException("Call entity not found"));
+        Map<String, Object> linkMetadata = new HashMap<>();
+        linkMetadata.put("providerKey", "sellspark_voice");
 
         CallProviderLink link = CallProviderLink.builder()
             .tenantId(tenantId)
             .call(callEntity)
-            .externalCallId(externalCallId)
+            .externalCallId(null) // SellSpark does not return an external call ID
+            .correlationKey(callId.toString()) // CRM Call ID as correlation key
             .linkedAt(java.time.Instant.now())
             .createdBy(userId)
-            .metadata(Map.of("providerKey", "sellspark_voice", "status", status))
+            .metadata(linkMetadata)
             .build();
 
         if (connectorExecutionEntity != null) {
@@ -118,28 +189,35 @@ public class DefaultClickToCallService implements ClickToCallService {
         }
 
         callProviderLinkService.save(link);
+        log.info("Saved CallProviderLink for CRM Call {} with correlationKey={}", callId, callId);
+    }
 
-        // Log activity
-        java.util.Map<String, Object> metadata = new java.util.HashMap<>();
-        metadata.put("crmCallId", callResponse.getId());
+    @Transactional
+    protected void markCallFailed(UUID callId, String reason) {
+        try {
+            callRepository.findById(callId).ifPresent(call -> {
+                call.setStatus(CallStatus.CANCELLED);
+                Map<String, Object> custom = call.getCustomData() == null ? new HashMap<>() : new HashMap<>(call.getCustomData());
+                custom.put("failureReason", reason);
+                custom.put("failedAt", java.time.Instant.now().toString());
+                call.setCustomData(custom);
+                callRepository.save(call);
+                log.warn("Marked CRM Call {} as CANCELLED due to provider failure: {}", callId, reason);
+            });
+        } catch (Exception e) {
+            log.error("Failed to mark Call {} as CANCELLED: {}", callId, e.getMessage());
+        }
+    }
+
+    private void logCallInitiatedActivity(UUID tenantId, UUID userId, UUID callId, String phone,
+                                          ClickToCallRequest request, ConnectorExecutionResult result) {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("crmCallId", callId);
         metadata.put("providerKey", "sellspark_voice");
-        metadata.put("externalCallId", externalCallId);
         metadata.put("connectorExecutionId", result.getExecutionId());
-        // Include subtype for UI filtering while keeping activityType generic
         metadata.put("subType", "CALL_INITIATED");
 
-        // Create activity entry linked to the original entity. This is executed within the same transaction
-        // so Call, CallProviderLink and Activity are saved atomically.
         String description = "Call initiated to " + phone;
         activityService.logActivity(tenantId, request.getEntityId(), request.getEntityType(), "CALL", description, userId, metadata);
-
-        ClickToCallResponse resp = ClickToCallResponse.builder()
-            .callId(callResponse.getId())
-            .externalCallId(externalCallId)
-            .status(status)
-            .call(callResponse)
-            .build();
-
-        return resp;
     }
 }

@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.shivang.crm.modules.call.entity.Call;
+import com.shivang.crm.modules.call.entity.Call.CallStatus;
 import com.shivang.crm.shared.model.Recurrence;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -31,6 +32,9 @@ public class CallCreateRequest {
 
     @Schema(description = "Call type (INCOMING/OUTGOING)", required = true)
     private Call.CallType callType;
+
+    @Schema(description = "Call status (PLANNED/COMPLETED/CANCELLED)", required = true)
+    private CallStatus status;
 
     @Schema(description = "Phone number")
     private String phoneNumber;

@@ -6,7 +6,12 @@ services:
     environment:
       - POSTGRES_DB=crm
     ports:
-      - '5432:5432'
+      - '5433:5432'
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
   rabbitmq:
     image: 'rabbitmq:latest'
@@ -14,8 +19,18 @@ services:
       - .env
     ports:
       - '5672:5672'
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
       
   redis:
     image: 'redis:latest'
     ports:
       - '6379:6379'
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M

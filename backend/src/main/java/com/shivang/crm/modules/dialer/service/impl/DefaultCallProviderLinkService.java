@@ -29,17 +29,22 @@ public class DefaultCallProviderLinkService implements CallProviderLinkService {
     }
 
     @Override
-    public List<CallProviderLink> findByTenantId(UUID tenantId) {
-        return callProviderLinkRepository.findByTenantId(tenantId);
+    public List<CallProviderLink> findByTenantIdAndDeletedFalse(UUID tenantId) {
+        return callProviderLinkRepository.findByTenantIdAndDeletedFalse(tenantId);
     }
 
     @Override
-    public Optional<CallProviderLink> findByCallId(UUID callId) {
-        return callProviderLinkRepository.findByCallId(callId);
+    public Optional<CallProviderLink> findByTenantIdAndCallIdAndDeletedFalse(UUID tenantId, UUID callId) {
+        return callProviderLinkRepository.findByTenantIdAndCallIdAndDeletedFalse(tenantId, callId);
     }
 
     @Override
-    public Optional<CallProviderLink> findByExternalCallId(String externalCallId) {
-        return callProviderLinkRepository.findByExternalCallId(externalCallId);
+    public Optional<CallProviderLink> findByTenantIdAndExternalCallIdAndDeletedFalse(UUID tenantId, String externalCallId) {
+        return callProviderLinkRepository.findByTenantIdAndExternalCallIdAndDeletedFalse(tenantId, externalCallId);
+    }
+
+    @Override
+    public Optional<CallProviderLink> findByTenantIdAndCorrelationKeyAndDeletedFalse(UUID tenantId, String correlationKey) {
+        return callProviderLinkRepository.findByTenantIdAndCorrelationKeyAndDeletedFalse(tenantId, correlationKey);
     }
 }

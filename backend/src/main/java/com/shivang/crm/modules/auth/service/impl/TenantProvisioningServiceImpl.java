@@ -168,7 +168,7 @@ public class TenantProvisioningServiceImpl implements TenantProvisioningService 
      * Fallback method to create default roles manually if trigger fails
      * IMPORTANT: This logic must remain in sync with PostgreSQL trigger function:
      * 
-     * @see database/migrations/V2__create_tenant_roles_trigger.sql
+     * @see database/migrations/V5__create_tenant_roles_trigger.sql
      */
     private Role createDefaultRolesManually(UUID tenantId) {
         try {

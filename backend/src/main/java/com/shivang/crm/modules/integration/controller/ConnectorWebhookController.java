@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -50,9 +51,9 @@ public class ConnectorWebhookController {
     private final CallWebhookMappingApplier callWebhookMappingApplier;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @PostMapping("/{tenantSlug}/{providerKey}/{triggerKey}")
+    @PostMapping("/{tenantId}/{providerKey}/{triggerKey}")
     public ResponseEntity<?> receiveWebhook(
-            @PathVariable String tenantSlug,
+            @PathVariable UUID tenantId,
             @PathVariable String providerKey,
             @PathVariable String triggerKey,
             @RequestHeader HttpHeaders headers,
@@ -60,17 +61,20 @@ public class ConnectorWebhookController {
 
         byte[] body = StreamUtils.copyToByteArray(request.getInputStream());
 
-        Optional<ConnectorInstance> instanceOpt = connectorInstanceService.findByProviderKeyAndTenantSlug(providerKey, tenantSlug);
+        Optional<ConnectorInstance> instanceOpt = connectorInstanceService.findActiveByTenantAndProvider(tenantId,
+                providerKey);
         if (instanceOpt.isEmpty()) {
             return ResponseEntity.status(404).body(Map.of("error", "connector_instance_not_found"));
         }
         ConnectorInstance instance = instanceOpt.get();
 
-        Optional<ConnectorWebhookConfig> configOpt = webhookConfigService.findByTenantAndConnector(instance.getTenantId(), instance.getId());
+        Optional<ConnectorWebhookConfig> configOpt = webhookConfigService
+                .findByTenantAndConnector(instance.getTenantId(), instance.getId());
         String verificationStatus = "NOT_CONFIGURED";
         boolean verified = false;
 
-        // Production safety: if connector instance is active, require an active webhook config
+        // Production safety: if connector instance is active, require an active webhook
+        // config
         if (Boolean.TRUE.equals(instance.getIsActive())) {
             if (configOpt.isEmpty() || !Boolean.TRUE.equals(configOpt.get().getIsActive())) {
                 return ResponseEntity.status(403).body(Map.of("error", "webhook_not_configured"));
@@ -81,15 +85,31 @@ public class ConnectorWebhookController {
             ConnectorWebhookConfig config = configOpt.get();
             // Only require verification when webhook config is active
             if (Boolean.TRUE.equals(config.getIsActive())) {
-                String secret = webhookConfigService.getDecryptedSecret(config);
-                String sigHeader = headers.getFirst("X-Signature");
-                if (sigHeader == null) sigHeader = headers.getFirst("X-Hub-Signature-256");
-                if (sigHeader == null) sigHeader = headers.getFirst("X-SellSpark-Signature");
-                if (sigHeader != null && secret != null) {
-                    verified = verificationService.verifyHmacSha256(body, secret, sigHeader);
-                    verificationStatus = verified ? "VERIFIED" : "INVALID_SIGNATURE";
+                String mode = config.getVerificationMode();
+                if (mode == null || mode.isBlank()) {
+                    log.warn("Webhook config for tenant={} connector={} has no verification mode. Defaulting to NONE.",
+                            instance.getTenantId(), instance.getId());
+                    mode = "NONE";
+                }
+
+                if ("NONE".equalsIgnoreCase(mode)) {
+                    verified = true;
+                    verificationStatus = "VERIFIED_NONE";
+                } else if ("HMAC_SHA256".equalsIgnoreCase(mode)) {
+                    String secret = webhookConfigService.getDecryptedSecret(config);
+                    String sigHeader = headers.getFirst("X-Signature");
+                    if (sigHeader == null)
+                        sigHeader = headers.getFirst("X-Hub-Signature-256");
+                    if (sigHeader == null)
+                        sigHeader = headers.getFirst("X-SellSpark-Signature");
+                    if (sigHeader != null && secret != null) {
+                        verified = verificationService.verifyHmacSha256(body, secret, sigHeader);
+                        verificationStatus = verified ? "VERIFIED" : "INVALID_SIGNATURE";
+                    } else {
+                        verificationStatus = "NO_SIGNATURE";
+                    }
                 } else {
-                    verificationStatus = "NO_SIGNATURE";
+                    verificationStatus = "UNSUPPORTED_MODE";
                 }
             } else {
                 verificationStatus = "NOT_ACTIVE";
@@ -107,13 +127,16 @@ public class ConnectorWebhookController {
 
         Map<String, Object> sanitizedHeaders = new HashMap<>();
         try {
-            sanitizedHeaders = headerSanitizer.sanitize(headers.toSingleValueMap().entrySet().stream().collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> java.util.List.of(e.getValue()))));
+            sanitizedHeaders = headerSanitizer.sanitize(headers.toSingleValueMap().entrySet().stream().collect(
+                    java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> java.util.List.of(e.getValue()))));
         } catch (Exception ex) {
             // fallback
         }
 
-        log.info("Webhook received tenant={} connector={} trigger={} verificationStatus={} payloadKeys={} headerKeys={}",
-                instance.getTenantId(), instance.getId(), triggerKey, verificationStatus, payloadMap.keySet(), sanitizedHeaders.keySet());
+        log.info(
+                "Webhook received tenant={} connector={} trigger={} verificationStatus={} payloadKeys={} headerKeys={}",
+                instance.getTenantId(), instance.getId(), triggerKey, verificationStatus, payloadMap.keySet(),
+                sanitizedHeaders.keySet());
 
         ConnectorWebhookEvent event = ConnectorWebhookEvent.builder()
                 .tenantId(instance.getTenantId())
@@ -136,13 +159,15 @@ public class ConnectorWebhookController {
         }
 
         // only process when verified or not configured
-        if (!verified && configOpt.isPresent()) {
+        if (!verified && configOpt.isPresent()
+                && "HMAC_SHA256".equalsIgnoreCase(configOpt.get().getVerificationMode())) {
             return ResponseEntity.status(401).body(Map.of("error", "invalid_signature"));
         }
 
         // Mapping and processing (mapping-driven idempotency)
         try {
-            var mappings = webhookMappingService.loadActiveMappings(instance.getTenantId(), instance.getId(), triggerKey);
+            var mappings = webhookMappingService.loadActiveMappings(instance.getTenantId(), instance.getId(),
+                    triggerKey);
             var normalized = normalizedCallWebhookMapper.map(mappings, payloadMap);
             if (normalized == null) {
                 saved.setProcessingStatus("MAPPING_FAILED");
@@ -153,7 +178,8 @@ public class ConnectorWebhookController {
             // build idempotency from normalized fields (mapping-driven)
             String normalizedEventId = normalized.getExternalEventId();
             String normalizedCallId = normalized.getExternalCallId();
-            String normalizedTs = normalized.getEventTimestamp() != null ? normalized.getEventTimestamp().toString() : null;
+            String normalizedTs = normalized.getEventTimestamp() != null ? normalized.getEventTimestamp().toString()
+                    : null;
 
             String idempotencyKey = null;
             if (normalizedEventId != null && !normalizedEventId.isBlank()) {
@@ -164,10 +190,12 @@ public class ConnectorWebhookController {
                 idempotencyKey = "call:" + normalizedCallId + ":trigger:" + triggerKey;
             }
 
-            // If normalizedCallId is required for this mapping but missing, mapper should have returned null above.
+            // If normalizedCallId is required for this mapping but missing, mapper should
+            // have returned null above.
 
             // check duplicates by idempotency key
-            if (idempotencyKey != null && webhookService.findByConnectorInstanceIdAndIdempotencyKey(instance.getId(), idempotencyKey).isPresent()) {
+            if (idempotencyKey != null && webhookService
+                    .findByConnectorInstanceIdAndIdempotencyKey(instance.getId(), idempotencyKey).isPresent()) {
                 saved.setProcessingStatus("DUPLICATE_IGNORED");
                 webhookService.save(saved);
                 return ResponseEntity.ok(Map.of("status", "duplicate"));
@@ -181,9 +209,11 @@ public class ConnectorWebhookController {
 
             String result = "";
             if ("call-connect".equals(triggerKey)) {
-                result = callWebhookMappingApplier.applyConnect(normalized, instance.getProvider().getProviderKey());
+                result = callWebhookMappingApplier.applyConnect(instance.getTenantId(), normalized,
+                        instance.getProvider().getProviderKey());
             } else if ("cdr".equals(triggerKey)) {
-                result = callWebhookMappingApplier.applyCdr(normalized, instance.getProvider().getProviderKey());
+                result = callWebhookMappingApplier.applyCdr(instance.getTenantId(), normalized,
+                        instance.getProvider().getProviderKey());
             }
             saved.setProcessingStatus(result);
             saved.setProcessedAt(Instant.now());

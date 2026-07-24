@@ -37,7 +37,11 @@ public abstract class BaseEntity {
 
     @Column(nullable = false)
     private Boolean deleted = false;
+
+    @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @Column(name = "deleted_by")
     private UUID deletedBy;
 
     @PrePersist

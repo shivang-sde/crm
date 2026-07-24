@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: crm
+
+  docker:
+    compose:
+      enabled: false
+
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+    hikari:
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:10}
+      minimum-idle: ${DB_MIN_IDLE:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      keepalive-time: 120000
+
+      # Keep disabled or high in production.
+      # A very low value reports Flyway as an apparent leak.
+      leak-detection-threshold: ${DB_LEAK_DETECTION_THRESHOLD:60000}
+
+      data-source-properties:
+        timezone: UTC
+
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+  forward-headers-strategy: framework
+
+  servlet:
+    session:
+      cookie:
+        secure: true
+        same-site: lax
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+logging:
+  file:
+    name: /app/logs/application.log

@@ -56,6 +56,10 @@ public class CallResponse {
     @JsonProperty("duration_minutes")
     private Integer durationMinutes;
 
+    @Schema(description = "Duration in seconds (exact provider value)")
+    @JsonProperty("duration_seconds")
+    private Integer durationSeconds;
+
     @Schema(description = "Disposition captured after the call ended")
     private String disposition;
 
@@ -65,6 +69,18 @@ public class CallResponse {
     @Schema(description = "Suggested next action")
     @JsonProperty("next_action")
     private String nextAction;
+
+    @Schema(description = "Recording URL from provider")
+    @JsonProperty("recording_url")
+    private String recordingUrl;
+
+    @Schema(description = "External call ID from provider")
+    @JsonProperty("external_call_id")
+    private String externalCallId;
+
+    @Schema(description = "Provider name")
+    @JsonProperty("provider_name")
+    private String providerName;
 
     @Schema(description = "Follow-up timestamp")
     @JsonProperty("follow_up_at")

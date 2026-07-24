@@ -2,6 +2,7 @@ package com.shivang.crm.modules.activity.service;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -34,7 +35,56 @@ public class ActivityService {
             String activityType,
             String description,
             UUID userId,
-            java.util.Map<String, Object> metadata) {
+            Map<String, Object> metadata) {
+
+        if (userId == null) {
+            throw new IllegalArgumentException(
+                    "userId is required for user activity");
+        }
+
+        return saveActivity(
+                tenantId,
+                entityId,
+                entityType,
+                activityType,
+                description,
+                userId,
+                "USER",
+                null,
+                metadata);
+    }
+
+    public ActivityResponse logSystemActivity(
+            UUID tenantId,
+            UUID entityId,
+            String entityType,
+            String activityType,
+            String description,
+            String actorSource,
+            Map<String, Object> metadata) {
+
+        return saveActivity(
+                tenantId,
+                entityId,
+                entityType,
+                activityType,
+                description,
+                null,
+                "SYSTEM",
+                actorSource,
+                metadata);
+    }
+
+    private ActivityResponse saveActivity(
+            UUID tenantId,
+            UUID entityId,
+            String entityType,
+            String activityType,
+            String description,
+            UUID performedBy,
+            String actorType,
+            String actorSource,
+            Map<String, Object> metadata) {
 
         try {
             Activity activity = Activity.builder()
@@ -43,29 +93,65 @@ public class ActivityService {
                     .entityType(entityType)
                     .activityType(activityType)
                     .description(description)
-                    .performedBy(userId)
-                    .metadata(metadata == null ? new HashMap<>() : metadata)
-                    .build(); 
+                    .performedBy(performedBy)
+                    .actorType(actorType)
+                    .actorSource(actorSource)
+                    .metadata(
+                            metadata == null
+                                    ? new HashMap<>()
+                                    : new HashMap<>(metadata))
+                    .build();
 
             Activity saved = activityRepository.save(activity);
             return activityMapper.toResponse(saved);
 
         } catch (Exception e) {
-            log.error("Failed to log activity {} for entity {}:{} - {}", activityType, entityType, entityId, e.getMessage());
-            throw new RuntimeException("Failed to record activity", e);
+            log.error(
+                    "Failed to log activity {} for entity {}:{}",
+                    activityType,
+                    entityType,
+                    entityId,
+                    e);
+
+            throw new RuntimeException(
+                    "Failed to record activity",
+                    e);
         }
     }
 
     @Transactional(readOnly = true)
-    public Page<ActivityResponse> getEntityActivities(UUID entityId, String entityType, UUID tenantId, int page, int size) {
+    public Page<ActivityResponse> getEntityActivities(
+            UUID entityId,
+            String entityType,
+            UUID tenantId,
+            int page,
+            int size) {
+
         Pageable pageable = PageRequest.of(page, size);
-        Page<Activity> activities = activityRepository.findByEntityTypeAndEntityIdAndTenantIdOrderByCreatedAtDesc(entityType, entityId, tenantId, pageable);
-        return activities.map(activityMapper::toResponse);
+
+        return activityRepository
+                .findByEntityTypeAndEntityIdAndTenantIdOrderByCreatedAtDesc(
+                        entityType,
+                        entityId,
+                        tenantId,
+                        pageable)
+                .map(activityMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
-    public List<ActivityResponse> getRecentActivities(UUID entityId, String entityType, UUID tenantId, List<String> activityTypes) {
-        List<Activity> activities = activityRepository.findByEntityTypeAndEntityIdAndTenantIdAndActivityTypeInOrderByCreatedAtDesc(entityType, entityId, tenantId, activityTypes);
+    public List<ActivityResponse> getRecentActivities(
+            UUID entityId,
+            String entityType,
+            UUID tenantId,
+            List<String> activityTypes) {
+
+        List<Activity> activities = activityRepository
+                .findByEntityTypeAndEntityIdAndTenantIdAndActivityTypeInOrderByCreatedAtDesc(
+                        entityType,
+                        entityId,
+                        tenantId,
+                        activityTypes);
+
         return activityMapper.toResponseList(activities);
     }
 }

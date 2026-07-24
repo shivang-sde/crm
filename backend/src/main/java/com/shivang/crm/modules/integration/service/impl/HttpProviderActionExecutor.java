@@ -118,10 +118,13 @@ public class HttpProviderActionExecutor implements ProviderActionExecutor {
     }
 
     private String resolveAbsoluteUrl(ConnectorInstance connectorInstance, String endpointTemplate) {
-        if (endpointTemplate == null || endpointTemplate.isBlank()) {
-            throw new IllegalArgumentException("Endpoint template is required");
-        }
         String baseUrl = connectorInstance.getBaseUrl();
+        if (endpointTemplate == null || endpointTemplate.isBlank()) {
+            if (baseUrl != null && !baseUrl.isBlank()) {
+                return baseUrl;
+            }
+            throw new IllegalArgumentException("Either endpoint template or connector base URL is required");
+        }
         if (endpointTemplate.startsWith("http://") || endpointTemplate.startsWith("https://")) {
             return endpointTemplate;
         }
