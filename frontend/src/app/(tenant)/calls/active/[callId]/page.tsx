@@ -58,6 +58,19 @@ export default function ActiveCallPage() {
     OUTGOING: 'bg-blue-100 text-blue-800',
   };
 
+  const formatDuration = (seconds?: number | null) => {
+    if (seconds == null) return '—';
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m < 60) return `${m}m ${s}s`;
+    const h = Math.floor(m / 60);
+    const m2 = m % 60;
+    return `${h}h ${m2}m ${s}s`;
+  };
+
+  const isCompleted = !!call.endTime || ['HELD', 'NOT_HELD', 'CANCELLED'].includes(call.status);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -104,7 +117,7 @@ export default function ActiveCallPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Duration</p>
-                <p className="text-sm">{call.durationMinutes ? `${call.durationMinutes} minutes` : '—'}</p>
+                <p className="text-sm">{formatDuration(call.durationSeconds)}</p>
               </div>
               {call.recordingUrl ? (
                 <div>
@@ -138,7 +151,9 @@ export default function ActiveCallPage() {
             </CardContent>
           </Card>
 
-          <CallDispositionForm call={call} onSaved={() => refetch()} />
+          {isCompleted && (
+            <CallDispositionForm call={call} onSaved={() => refetch()} />
+          )}
         </div>
 
         <div className="space-y-6">
@@ -152,7 +167,11 @@ export default function ActiveCallPage() {
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{call.entityType}</p>
                   <p className="text-sm">{call.entityName}</p>
-                  <Button variant="link" onClick={() => router.push(`/${call.entityType?.toLowerCase()}/${call.entityId}`)}>Open entity</Button>
+                  <Button variant="link" onClick={() => {
+                    const type = call.entityType?.toLowerCase();
+                    const path = type === 'lead' ? 'leads' : type === 'contact' ? 'contacts' : type === 'account' ? 'accounts' : type === 'deal' ? 'deals' : `${type}s`;
+                    router.push(`/${path}/${call.entityId}`);
+                  }}>Open entity</Button>
                 </div>
               ) : (
                 <UnknownCallerWorkflow callId={call.id} phone={call.phoneNumber} />

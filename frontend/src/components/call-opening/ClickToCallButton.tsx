@@ -7,6 +7,7 @@ import { callOpeningApi } from "@/lib/api/call-opening";
 import { handleCallOpeningInstruction } from "@/lib/call-opening/handleCallOpeningInstruction";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { ClickToCallRequest } from "@/types/call-opening";
 
 interface ClickToCallButtonProps {
@@ -27,10 +28,17 @@ export function ClickToCallButton({
   variant = "secondary",
 }: ClickToCallButtonProps) {
   const router = useRouter();
+  const { hasPermission } = usePermissions();
   const [isLoading, setIsLoading] = useState(false);
+
+  const canCall = hasPermission("call", "write");
 
   const disabled = isLoading;
   const buttonLabel = isLoading ? "Calling…" : label;
+
+  if (!canCall) {
+    return null;
+  }
 
   const handleClick = async () => {
     setIsLoading(true);

@@ -21,6 +21,8 @@ export default function CallsPage() {
   });
 
   const { data, isLoading } = useCalls(filters as any);
+  
+  console.log("call data", data)
 
   if (!canViewCalls) {
     return (

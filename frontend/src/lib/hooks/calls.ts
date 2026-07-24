@@ -14,6 +14,14 @@ export function useCall(id: string) {
     queryKey: ['call', id],
     queryFn: () => callApi.getCall(id),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 4000; // poll while loading initial
+      if (data.status === 'HELD' || data.status === 'CANCELLED' || data.status === 'NOT_HELD' || data.endTime) {
+        return false;
+      }
+      return 4000;
+    },
   });
 }
 

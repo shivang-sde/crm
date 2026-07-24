@@ -66,6 +66,7 @@ export function isRouteAllowedForRole(pathname: string, role: string | null): bo
  */
 export function getNavigationItems(role: string | null, permissions?: Map<string, string>): NavItem[] {
    console.log("Navigation role:", role);
+   console.log("permission:", permissions)
   const baseItems: NavItem[] = [
     { name: "Dashboard", href: getDashboardRoute(role), icon: Home, show: true },
   ];

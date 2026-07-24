@@ -111,8 +111,8 @@ export default function CallingSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingInstance, setSavingInstance] = useState(false);
   const { hasPermission } = usePermissions();
-  const canManageCallingSettings = hasPermission("call", "write");
-  const canViewCallingSettings = hasPermission("call", "read");
+  const canManageCallingSettings = hasPermission("admin", "settings");
+  const canViewCallingSettings = hasPermission("admin", "settings");
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [savingTrigger, setSavingTrigger] = useState(false);
@@ -699,7 +699,37 @@ export default function CallingSettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="ruleResolve">Resolve strategy</Label>
-                  <Input id="ruleResolve" value={triggerForm.resolveBy} onChange={(event) => setTriggerForm((previous) => ({ ...previous, resolveBy: event.target.value }))} />
+                  <Select
+                    value={triggerForm.resolveBy}
+                    onValueChange={(value) =>
+                      setTriggerForm((previous) => ({
+                        ...previous,
+                        resolveBy: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose resolve strategy" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="EXISTING_CALL_LINK">
+                        Existing call link
+                      </SelectItem>
+
+                      <SelectItem value="EXTERNAL_CALL_ID">
+                        External call ID
+                      </SelectItem>
+
+                      <SelectItem value="CALLER_NUMBER">
+                        Caller number
+                      </SelectItem>
+
+                      <SelectItem value="CALLEE_NUMBER">
+                        Callee number
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="ruleEntity">Target entity type</Label>

@@ -13,6 +13,7 @@ export interface CallResponse {
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
+  durationSeconds?: number;
   disposition?: string;
   notes?: string;
   nextAction?: string;
