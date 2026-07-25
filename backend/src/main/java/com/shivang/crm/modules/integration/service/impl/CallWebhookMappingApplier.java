@@ -37,47 +37,53 @@ public class CallWebhookMappingApplier {
 
     // ─── Connect Webhook ──────────────────────────────────────────────
     @Transactional
-public String applyConnect(
-        UUID tenantId,
-        NormalizedCallWebhookEvent event,
-        String providerKey) {
+    public String applyConnect(
+            UUID tenantId,
+            NormalizedCallWebhookEvent event,
+            String providerKey) {
 
-    if (event == null) {
-        return "NULL_EVENT";
-    }
+        if (event == null) {
+            return "NULL_EVENT";
+        }
 
-    CallProviderLink link = resolveLink(tenantId, event);
-
-    if (link != null) {
-        return handleOutboundConnect(
+        CallProviderLink link = resolveLink(
                 tenantId,
-                link,
-                event,
-                providerKey
+                event
         );
-    }
 
-    String direction = normalizeDirection(event.getDirection());
+        if (link != null) {
+            return handleOutboundConnect(
+                    tenantId,
+                    link,
+                    event,
+                    providerKey
+            );
+        }
 
-    if ("INBOUND".equals(direction)) {
-        return handleInboundConnect(
+        String direction = normalizeDirection(
+                event.getDirection()
+        );
+
+        if ("INBOUND".equals(direction)) {
+            return handleInboundConnect(
+                    tenantId,
+                    event,
+                    providerKey
+            );
+        }
+
+        log.warn(
+                "Call-connect could not be correlated and will not create an inbound call. "
+                + "tenant={} provider={} direction={} externalCallId={} correlationKey={}",
                 tenantId,
-                event,
-                providerKey
+                providerKey,
+                direction,
+                event.getExternalCallId(),
+                event.getCorrelationKey()
         );
+
+        return "PENDING_CORRELATION";
     }
-
-    log.warn(
-            "Outbound call-connect could not be correlated. " +
-            "tenant={} provider={} externalCallId={} correlationKey={}",
-            tenantId,
-            providerKey,
-            event.getExternalCallId(),
-            event.getCorrelationKey()
-    );
-
-    return "PENDING_CORRELATION";
-}
 
     private String handleOutboundConnect(UUID tenantId, CallProviderLink link, NormalizedCallWebhookEvent event,
             String providerKey) {
@@ -147,17 +153,17 @@ public String applyConnect(
         Instant startTime = event.getEventTimestamp() != null ? event.getEventTimestamp() : event.getStartedAt();
 
         Call call = Call.builder()
-        .tenantId(tenantId)
-        .subject("Inbound Call" + (phone != null ? " from " + phone : ""))
-        .callType(CallType.INCOMING)
-        .status(CallStatus.PLANNED)
-        .phoneNumber(phone)
-        .startTime(startTime)
-        .createdBy(null)
-        .updatedBy(null)
-        .actorType("SYSTEM")
-        .actorSource("WEBHOOK:" + providerKey)
-        .build();
+                .tenantId(tenantId)
+                .subject("Inbound Call" + (phone != null ? " from " + phone : ""))
+                .callType(CallType.INCOMING)
+                .status(CallStatus.PLANNED)
+                .phoneNumber(phone)
+                .startTime(startTime)
+                .createdBy(null)
+                .updatedBy(null)
+                .actorType("SYSTEM")
+                .actorSource("WEBHOOK:" + providerKey)
+                .build();
 
         Call savedCall = callRepository.save(call);
         log.info("Created inbound Call {} for tenant {} from connect webhook", savedCall.getId(), tenantId);
@@ -217,8 +223,9 @@ public String applyConnect(
     // ─── CDR Webhook ──────────────────────────────────────────────────
     @Transactional
     public String applyCdr(UUID tenantId, NormalizedCallWebhookEvent event, String providerKey) {
-        if (event == null)
+        if (event == null) {
             return "NULL_EVENT";
+        }
 
         // Correlation: 1. tenant + externalCallId, 2. tenant + correlationKey
         CallProviderLink link = resolveLink(tenantId, event);
@@ -269,12 +276,15 @@ public String applyConnect(
         // Also store in customData for backward compatibility
         Map<String, Object> custom = call.getCustomData() == null ? new HashMap<>()
                 : new HashMap<>(call.getCustomData());
-        if (event.getRecordingUrl() != null)
+        if (event.getRecordingUrl() != null) {
             custom.put("recordingUrl", event.getRecordingUrl());
-        if (event.getDisposition() != null)
+        }
+        if (event.getDisposition() != null) {
             custom.put("disposition", event.getDisposition());
-        if (event.getProviderStatus() != null)
+        }
+        if (event.getProviderStatus() != null) {
             custom.put("providerStatus", event.getProviderStatus());
+        }
         call.setCustomData(custom);
 
         // Set status to HELD to mark completed
@@ -307,72 +317,71 @@ public String applyConnect(
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────
-
     /**
-     * Resolve CallProviderLink by correlation order:
-     * 1. tenant + externalCallId
+     * Resolve CallProviderLink by correlation order: 1. tenant + externalCallId
      * 2. tenant + correlationKey
      */
     private CallProviderLink resolveLink(
-        UUID tenantId,
-        NormalizedCallWebhookEvent event) {
+            UUID tenantId,
+            NormalizedCallWebhookEvent event) {
 
-    log.info(
-            "Resolving call link tenant={} externalCallId={} correlationKey={}",
-            tenantId,
-            event.getExternalCallId(),
-            event.getCorrelationKey()
-    );
+        String externalCallId = event.getExternalCallId();
+        String correlationKey = event.getCorrelationKey();
 
-    if (event.getExternalCallId() != null
-            && !event.getExternalCallId().isBlank()) {
+        log.info(
+                "Resolving call link tenant={} externalCallId={} correlationKey={}",
+                tenantId,
+                externalCallId,
+                correlationKey
+        );
 
-        Optional<CallProviderLink> byExternal =
-                linkService
-                        .findByTenantIdAndExternalCallIdAndDeletedFalse(
-                                tenantId,
-                                event.getExternalCallId()
-                        );
+        if (hasUsableIdentifier(externalCallId)) {
+            Optional<CallProviderLink> byExternal
+                    = linkService
+                            .findByTenantIdAndExternalCallIdAndDeletedFalse(
+                                    tenantId,
+                                    externalCallId.trim()
+                            );
 
-        if (byExternal.isPresent()) {
-            log.info(
-                    "Resolved provider link {} using externalCallId={}",
-                    byExternal.get().getId(),
-                    event.getExternalCallId()
-            );
-            return byExternal.get();
+            if (byExternal.isPresent()) {
+                log.info(
+                        "Resolved provider link {} using externalCallId={}",
+                        byExternal.get().getId(),
+                        externalCallId
+                );
+
+                return byExternal.get();
+            }
         }
-    }
 
-    if (event.getCorrelationKey() != null
-            && !event.getCorrelationKey().isBlank()) {
+        if (hasUsableIdentifier(correlationKey)) {
+            Optional<CallProviderLink> byCorrelation
+                    = linkService
+                            .findByTenantIdAndCorrelationKeyAndDeletedFalse(
+                                    tenantId,
+                                    correlationKey.trim()
+                            );
 
-        Optional<CallProviderLink> byCorrelation =
-                linkService
-                        .findByTenantIdAndCorrelationKeyAndDeletedFalse(
-                                tenantId,
-                                event.getCorrelationKey()
-                        );
+            if (byCorrelation.isPresent()) {
+                log.info(
+                        "Resolved provider link {} using correlationKey={}",
+                        byCorrelation.get().getId(),
+                        correlationKey
+                );
 
-        if (byCorrelation.isPresent()) {
-            log.info(
-                    "Resolved provider link {} using correlationKey={}",
-                    byCorrelation.get().getId(),
-                    event.getCorrelationKey()
-            );
-            return byCorrelation.get();
+                return byCorrelation.get();
+            }
         }
+
+        log.warn(
+                "No provider link matched tenant={} externalCallId={} correlationKey={}",
+                tenantId,
+                externalCallId,
+                correlationKey
+        );
+
+        return null;
     }
-
-    log.warn(
-            "No provider link matched tenant={} externalCallId={} correlationKey={}",
-            tenantId,
-            event.getExternalCallId(),
-            event.getCorrelationKey()
-    );
-
-    return null;
-}
 
     private Map<String, Object> buildConnectMetadata(Call call, NormalizedCallWebhookEvent event, String providerKey) {
         Map<String, Object> metadata = new HashMap<>();
@@ -389,17 +398,34 @@ public String applyConnect(
         return metadata;
     }
 
-
     private String normalizeDirection(String value) {
-    if (value == null || value.isBlank()) {
-        return "UNKNOWN";
+        if (value == null || value.isBlank()) {
+            return "UNKNOWN";
+        }
+
+        return switch (value.trim().toUpperCase()) {
+            case "INCOMING", "INBOUND", "IN" ->
+                "INBOUND";
+            case "OUTGOING", "OUTBOUND", "OUT" ->
+                "OUTBOUND";
+            default ->
+                "UNKNOWN";
+        };
     }
 
-    return switch (value.trim().toUpperCase()) {
-        case "INCOMING", "INBOUND", "IN" -> "INBOUND";
-        case "OUTGOING", "OUTBOUND", "OUT" -> "OUTBOUND";
-        default -> "UNKNOWN";
-    };
-}
+    private boolean hasUsableIdentifier(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.trim();
+
+        return !normalized.equals("0")
+                && !normalized.equalsIgnoreCase("NA")
+                && !normalized.equalsIgnoreCase("N/A")
+                && !normalized.equalsIgnoreCase("NULL")
+                && !normalized.equalsIgnoreCase("UNDEFINED")
+                && !normalized.equals("-");
+    }
 
 }

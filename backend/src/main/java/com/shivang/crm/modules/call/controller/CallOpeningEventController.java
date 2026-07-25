@@ -1,8 +1,9 @@
 package com.shivang.crm.modules.call.controller;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,9 +13,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.dialer.entity.CallOpeningEvent;
 import com.shivang.crm.modules.dialer.service.CallOpeningEventService;
-import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.shared.dto.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
@@ -27,24 +28,101 @@ public class CallOpeningEventController {
     private final CallOpeningEventService eventService;
     private final TenantContext tenantContext;
 
-    record CallOpeningEventResponse(UUID id, UUID tenantId, UUID userId, String agentId, UUID callId, String externalCallId, String providerKey, String triggerKey, java.util.Map<String, Object> instruction, String deliveryStatus, java.time.Instant createdAt, java.time.Instant deliveredAt) {}
+    public record CallOpeningEventResponse(
+            UUID id,
+            UUID tenantId,
+            UUID userId,
+            String agentId,
+            UUID callId,
+            String externalCallId,
+            String providerKey,
+            String triggerKey,
+            Map<String, Object> instruction,
+            String deliveryStatus,
+            Instant createdAt,
+            Instant deliveredAt) {
+    }
+
+    public record DeliveryResponse(
+            UUID eventId,
+            String status,
+            Instant deliveredAt) {
+    }
 
     @GetMapping("/pending")
-    public ResponseEntity<ApiResponse<List<CallOpeningEventResponse>>> pending(@RequestParam(required = false) String agentId) {
-        UUID tenantId = tenantContext.getTenantId();
+    public ResponseEntity<ApiResponse<List<CallOpeningEventResponse>>> pending(
+            @RequestParam(required = false) String agentId) {
+
+        UUID tenantId = requireTenantId();
+        UUID userId = tenantContext.getUserId();
+
         List<CallOpeningEvent> events;
+
         if (agentId != null && !agentId.isBlank()) {
-            events = eventService.findPendingForAgent(tenantId, agentId);
+            events = eventService.findPendingForAgent(
+                    tenantId,
+                    agentId
+            );
         } else {
-            events = eventService.findPendingForTenant(tenantId);
+            events = eventService.findPendingForTenantAndUser(
+                    tenantId,
+                    userId
+            );
         }
-        var resp = events.stream().map(e -> new CallOpeningEventResponse(e.getId(), e.getTenantId(), e.getUserId(), e.getAgentId(), e.getCallId(), e.getExternalCallId(), e.getProviderKey(), e.getTriggerKey(), e.getInstruction(), e.getDeliveryStatus(), e.getCreatedAt(), e.getDeliveredAt())).collect(Collectors.toList());
-        return ResponseEntity.ok(ApiResponse.success(resp));
+
+        List<CallOpeningEventResponse> response = events.stream()
+                .map(this::toResponse)
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PostMapping("/{eventId}/delivered")
-    public ResponseEntity<ApiResponse<Void>> markDelivered(@PathVariable UUID eventId) {
-        eventService.markDelivered(eventId);
-        return ResponseEntity.ok(ApiResponse.success(null));
+    public ResponseEntity<ApiResponse<DeliveryResponse>> markDelivered(
+            @PathVariable UUID eventId) {
+
+        UUID tenantId = requireTenantId();
+        UUID userId = tenantContext.getUserId();
+
+        CallOpeningEvent event = eventService.markDelivered(
+                tenantId,
+                userId,
+                eventId
+        );
+
+        DeliveryResponse response = new DeliveryResponse(
+                event.getId(),
+                event.getDeliveryStatus(),
+                event.getDeliveredAt()
+        );
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    private CallOpeningEventResponse toResponse(CallOpeningEvent event) {
+        return new CallOpeningEventResponse(
+                event.getId(),
+                event.getTenantId(),
+                event.getUserId(),
+                event.getAgentId(),
+                event.getCallId(),
+                event.getExternalCallId(),
+                event.getProviderKey(),
+                event.getTriggerKey(),
+                event.getInstruction(),
+                event.getDeliveryStatus(),
+                event.getCreatedAt(),
+                event.getDeliveredAt()
+        );
+    }
+
+    private UUID requireTenantId() {
+        if (!tenantContext.hasTenant()) {
+            throw new IllegalStateException(
+                    "Tenant context is not available"
+            );
+        }
+
+        return tenantContext.getTenantId();
     }
 }
