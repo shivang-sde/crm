@@ -102,6 +102,14 @@ public class TenantContext {
     public boolean hasTenant() {
         return tenantId != null && !tenantId.equals(new UUID(0L, 0L));
     }
+
+    public UUID requireTenantId() {
+    if (!hasTenant()) {
+        throw new IllegalStateException("Tenant context is not available");
+    }
+
+    return tenantId;
+}
     
     public boolean hasUser() {
         return userId != null;

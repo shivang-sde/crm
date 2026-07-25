@@ -96,6 +96,12 @@ public class Call extends TenantOwnedEntity {
      @Column(name = "updated_by")
     private UUID updatedBy;
 
+    @Column(name = "actor_type", nullable = false, length = 30)
+    private String actorType = "USER";
+
+@Column(name = "actor_source", length = 100)
+private String actorSource;
+
     // Recurrence (stored as JSONB)
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

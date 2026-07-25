@@ -41,7 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ConnectorWebhookController {
 
-    private final ConnectorInstanceService connectorInstanceService;
+private final ConnectorInstanceService connectorInstanceService;
     private final ConnectorWebhookConfigService webhookConfigService;
     private final ConnectorWebhookService webhookService;
     private final WebhookVerificationService verificationService;

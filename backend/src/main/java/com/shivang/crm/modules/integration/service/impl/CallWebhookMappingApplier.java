@@ -78,7 +78,7 @@ public class CallWebhookMappingApplier {
 
         // Decide opening instruction — target the user who initiated the call
         UUID targetUserId = call.getCreatedBy();
-        var decision = decisionService.decide(tenantId, event);
+        var decision = decisionService.decide(tenantId, event, link);
         if (decision.shouldOpen()) {
             var instr = decision.instruction();
             // Ensure the instruction has the CRM callId for active call navigation
@@ -121,13 +121,17 @@ public class CallWebhookMappingApplier {
         Instant startTime = event.getEventTimestamp() != null ? event.getEventTimestamp() : event.getStartedAt();
 
         Call call = Call.builder()
-                .tenantId(tenantId)
-                .subject("Inbound Call" + (phone != null ? " from " + phone : ""))
-                .callType(CallType.INCOMING)
-                .status(CallStatus.PLANNED)
-                .phoneNumber(phone)
-                .startTime(startTime)
-                .build();
+        .tenantId(tenantId)
+        .subject("Inbound Call" + (phone != null ? " from " + phone : ""))
+        .callType(CallType.INCOMING)
+        .status(CallStatus.PLANNED)
+        .phoneNumber(phone)
+        .startTime(startTime)
+        .createdBy(null)
+        .updatedBy(null)
+        .actorType("SYSTEM")
+        .actorSource("WEBHOOK:" + providerKey)
+        .build();
 
         Call savedCall = callRepository.save(call);
         log.info("Created inbound Call {} for tenant {} from connect webhook", savedCall.getId(), tenantId);
@@ -145,7 +149,7 @@ public class CallWebhookMappingApplier {
         linkService.save(link);
 
         // Decide opening
-        var decision = decisionService.decide(tenantId, event);
+        var decision = decisionService.decide(tenantId, event, link);
         CallOpeningInstruction instr;
         if (decision.shouldOpen()) {
             instr = decision.instruction();

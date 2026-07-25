@@ -77,6 +77,7 @@ public class CallService {
             .description(request.getDescription())
             .callType(request.getCallType() != null ? request.getCallType() : Call.CallType.OUTGOING)
             .status(status)
+            .actorType("USER")
             .phoneNumber(request.getPhoneNumber())
             .startTime(request.getStartTime())
             .endTime(request.getEndTime())

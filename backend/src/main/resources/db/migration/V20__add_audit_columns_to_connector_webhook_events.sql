@@ -40,3 +40,17 @@ CREATE INDEX IF NOT EXISTS idx_activities_actor_type
 
 CREATE INDEX IF NOT EXISTS idx_activities_actor_source
     ON activities(actor_source);
+
+-- Allow calls to be created by external/system actors
+ALTER TABLE calls
+    ALTER COLUMN created_by DROP NOT NULL;
+
+ALTER TABLE calls
+    ADD COLUMN IF NOT EXISTS actor_type VARCHAR(30) NOT NULL DEFAULT 'USER',
+    ADD COLUMN IF NOT EXISTS actor_source VARCHAR(100);
+
+CREATE INDEX IF NOT EXISTS idx_calls_actor_type
+    ON calls(actor_type);
+
+CREATE INDEX IF NOT EXISTS idx_calls_actor_source
+    ON calls(actor_source);

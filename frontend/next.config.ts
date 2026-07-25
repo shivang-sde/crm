@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const backendProxyUrl =
-  process.env.BACKEND_PROXY_URL ?? "http://localhost:8080";
+  process.env.BACKEND_PROXY_URL ??
+  "http://localhost:8080";
 
 const nextConfig: NextConfig = {
   output: "standalone",

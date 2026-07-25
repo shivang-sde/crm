@@ -60,10 +60,10 @@ public class LeadActivityController {
     }
 
     private UUID currentTenantId() {
-        
-        if (tenantContext.hasTenant()) {
-            throw new IllegalStateException("Tenant context is not available");
-        }
-        return tenantContext.getTenantId();
+    if (!tenantContext.hasTenant()) {
+        throw new IllegalStateException("Tenant context is not available");
     }
+
+    return tenantContext.getTenantId();
+}
 }
