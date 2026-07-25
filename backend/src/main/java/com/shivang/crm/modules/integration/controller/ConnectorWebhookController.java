@@ -7,20 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.shivang.crm.modules.integration.entity.ConnectorInstance;
-import com.shivang.crm.modules.integration.entity.ConnectorWebhookConfig;
-import com.shivang.crm.modules.integration.entity.ConnectorWebhookEvent;
-import com.shivang.crm.modules.integration.service.ConnectorInstanceService;
-import com.shivang.crm.modules.integration.service.ConnectorWebhookConfigService;
-import com.shivang.crm.modules.integration.service.WebhookMappingService;
-import com.shivang.crm.modules.integration.webhook.HeaderSanitizer;
-import com.shivang.crm.modules.integration.webhook.NormalizedCallWebhookMapper;
-import com.shivang.crm.modules.integration.service.impl.CallWebhookMappingApplier;
-import com.shivang.crm.modules.integration.service.ConnectorWebhookService;
-import com.shivang.crm.modules.integration.webhook.WebhookVerificationService;
-
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StreamUtils;
@@ -30,8 +16,21 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.servlet.http.HttpServletRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.shivang.crm.modules.integration.entity.ConnectorInstance;
+import com.shivang.crm.modules.integration.entity.ConnectorWebhookConfig;
+import com.shivang.crm.modules.integration.entity.ConnectorWebhookEvent;
+import com.shivang.crm.modules.integration.service.ConnectorInstanceService;
+import com.shivang.crm.modules.integration.service.ConnectorWebhookConfigService;
+import com.shivang.crm.modules.integration.service.ConnectorWebhookService;
+import com.shivang.crm.modules.integration.service.WebhookMappingService;
+import com.shivang.crm.modules.integration.service.impl.CallWebhookMappingApplier;
+import com.shivang.crm.modules.integration.webhook.HeaderSanitizer;
+import com.shivang.crm.modules.integration.webhook.NormalizedCallWebhookMapper;
+import com.shivang.crm.modules.integration.webhook.WebhookVerificationService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -180,6 +179,17 @@ private final ConnectorInstanceService connectorInstanceService;
             String normalizedCallId = normalized.getExternalCallId();
             String normalizedTs = normalized.getEventTimestamp() != null ? normalized.getEventTimestamp().toString()
                     : null;
+
+            log.info(
+        "Normalized webhook tenant={} trigger={} externalCallId={} " +
+        "correlationKey={} agentId={} direction={}",
+        instance.getTenantId(),
+        triggerKey,
+        normalized.getExternalCallId(),
+        normalized.getCorrelationKey(),
+        normalized.getAgentId(),
+        normalized.getDirection()
+);
 
             String idempotencyKey = null;
             if (normalizedEventId != null && !normalizedEventId.isBlank()) {
