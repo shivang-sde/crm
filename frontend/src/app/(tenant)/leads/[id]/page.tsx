@@ -12,7 +12,7 @@ function LeadDetailPageContent() {
   const id = typeof rawId === "string" ? rawId : rawId?.[0];
   const { data: lead, isLoading, isError } = useLead(id);
 
-  if (isLoading) {
+  if (isLoading) { 
     return (
       <div className="flex justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

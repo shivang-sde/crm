@@ -22,6 +22,7 @@ import { AccountContacts } from "./AccountContacts";
 import { AccountTimeline } from "./AccountTimeline";
 import { AccountNotes } from "./AccountNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
+import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
 
 interface AccountDetailProps {
   account: AccountResponse;
@@ -162,6 +163,12 @@ export function AccountDetail({ account }: AccountDetailProps) {
           <div className="rounded-lg border bg-white p-6">
             <h3 className="text-sm font-semibold">Contacts</h3>
             <AccountContacts accountId={account.id} />
+            <EntityCallHistory
+              entityType="account"
+              entityId={account.id}
+              title="Account call history"
+              pageSize={10}
+            />
           </div>
         </div>
       </div>

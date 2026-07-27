@@ -114,12 +114,24 @@ private String actorSource;
 
     // Helper methods
     public void markAsHeld(UUID userId) {
-        this.status = CallStatus.HELD;
-        this.updatedBy = userId;
-        if (this.startTime != null && this.endTime != null) {
-            this.durationMinutes = (int) ChronoUnit.MINUTES.between(startTime, endTime);
-        }
+    this.status = CallStatus.HELD;
+    this.updatedBy = userId;
+
+    if (this.startTime != null && this.endTime != null) {
+        long seconds = ChronoUnit.SECONDS.between(
+            this.startTime,
+            this.endTime
+        );
+
+        this.durationSeconds = Math.max(
+            0,
+            Math.toIntExact(seconds)
+        );
+
+        this.durationMinutes =
+            this.durationSeconds / 60;
     }
+}
 
     public void markAsNotHeld(UUID userId) {
         this.status = CallStatus.NOT_HELD;

@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.shivang.crm.modules.dialer.dto.CallOpeningInstruction;
 import com.shivang.crm.modules.dialer.entity.CallOpeningEvent;
 import com.shivang.crm.modules.dialer.repository.CallOpeningEventRepository;
@@ -21,37 +23,44 @@ import lombok.RequiredArgsConstructor;
 public class DefaultCallOpeningEventService implements CallOpeningEventService {
 
     private final CallOpeningEventRepository repo;
+    ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public CallOpeningEvent createEvent(
-            UUID tenantId,
-            UUID userId,
-            String agentId,
-            UUID callId,
-            String externalCallId,
-            String providerKey,
-            String triggerKey,
-            CallOpeningInstruction instruction) {
+public CallOpeningEvent createEvent(
+        UUID tenantId,
+        UUID userId,
+        String agentId,
+        UUID callId,
+        String externalCallId,
+        String providerKey,
+        String triggerKey,
+        CallOpeningInstruction instruction) {
 
-        CallOpeningEvent event = CallOpeningEvent.builder()
-                .tenantId(tenantId)
-                .userId(userId)
-                .agentId(agentId)
-                .callId(callId)
-                .externalCallId(externalCallId)
-                .providerKey(providerKey)
-                .triggerKey(triggerKey)
-                .instruction(
-                        instruction == null
-                                ? null
-                                : Map.of("instruction", instruction)
-                )
-                .deliveryStatus("PENDING")
-                .createdAt(Instant.now())
-                .build();
+    Map<String, Object> instructionMap =
+            instruction == null
+                    ? null
+                    : objectMapper.convertValue(
+                            instruction,
+                            new com.fasterxml.jackson.core.type.TypeReference<
+                                    Map<String, Object>>() {
+                            }
+                    );
 
-        return repo.save(event);
-    }
+    CallOpeningEvent event = CallOpeningEvent.builder()
+            .tenantId(tenantId)
+            .userId(userId)
+            .agentId(agentId)
+            .callId(callId)
+            .externalCallId(externalCallId)
+            .providerKey(providerKey)
+            .triggerKey(triggerKey)
+            .instruction(instructionMap)
+            .deliveryStatus("PENDING")
+            .createdAt(Instant.now())
+            .build();
+
+    return repo.save(event);
+}
 
     @Override
     @Transactional(readOnly = true)

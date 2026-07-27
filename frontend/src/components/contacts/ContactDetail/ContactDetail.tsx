@@ -22,6 +22,7 @@ import { ContactResponse } from "@/types/contacts";
 import { ContactTimeline } from "./ContactTimeline";
 import { ContactNotes } from "./ContactNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
+import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
 
 interface ContactDetailProps {
   contact: ContactResponse;
@@ -127,13 +128,21 @@ export function ContactDetail({ contact }: ContactDetailProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_1fr]">
-        <div className="space-y-6">
-          <ContactTimeline contactId={contact.id} />
-        </div>
-        <div className="space-y-6">
-          <ContactNotes contactId={contact.id} />
-        </div>
-      </div>
+  <div className="space-y-6">
+    <ContactTimeline contactId={contact.id} />
+
+    <EntityCallHistory
+      entityType="contact"
+      entityId={contact.id}
+      title="Contact call history"
+      pageSize={10}
+    />
+  </div>
+
+  <div className="space-y-6">
+    <ContactNotes contactId={contact.id} />
+  </div>
+</div>
 
       <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
         <AlertDialogContent>

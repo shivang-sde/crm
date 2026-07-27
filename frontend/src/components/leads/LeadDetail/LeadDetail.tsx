@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -14,17 +16,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+
 import { useDeleteLead } from "@/lib/hooks/leads";
 import { usePermissions } from "@/lib/hooks/usePermissions";
-import { LeadResponse } from "@/types/leads";
+import type { LeadResponse } from "@/types/leads";
+
 import { LeadBasicInfo } from "./LeadBasicInfo";
 import { LeadConvertDialog } from "../LeadConvertDialog";
 import { LeadCustomFields } from "./LeadCustomFields";
 import { LeadTimeline } from "./LeadTimeline";
 import { LeadNotes } from "./LeadNotes";
 import { LeadAssignment } from "./LeadAssignment";
+
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
+import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
 
 interface LeadDetailProps {
   lead: LeadResponse;
@@ -45,7 +50,8 @@ export function LeadDetail({ lead }: LeadDetailProps) {
             Back to leads
           </Link>
         </Button>
-        <div className="flex gap-2 flex-wrap">
+
+        <div className="flex flex-wrap gap-2">
           {lead.phone && (
             <ClickToCallButton
               entityType="lead"
@@ -56,9 +62,14 @@ export function LeadDetail({ lead }: LeadDetailProps) {
               size="sm"
             />
           )}
+
           {canEditLeads && !lead.isConverted && (
-            <LeadConvertDialog triggerLabel="Convert" lead={lead} />
+            <LeadConvertDialog
+              triggerLabel="Convert"
+              lead={lead}
+            />
           )}
+
           {canEditLeads && (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/leads/${lead.id}/edit`}>
@@ -67,6 +78,7 @@ export function LeadDetail({ lead }: LeadDetailProps) {
               </Link>
             </Button>
           )}
+
           {canEditLeads && (
             <Button
               variant="outline"
@@ -81,37 +93,62 @@ export function LeadDetail({ lead }: LeadDetailProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <LeadBasicInfo lead={lead} />
+
           <LeadCustomFields lead={lead} />
+
           <LeadTimeline leadId={lead.id} />
+
+          <EntityCallHistory
+            entityType="lead"
+            entityId={lead.id}
+            title="Lead call history"
+            pageSize={10}
+          />
+
           <LeadNotes leadId={lead.id} />
         </div>
+
         <div>
           <LeadAssignment lead={lead} />
         </div>
       </div>
 
-      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
+      <AlertDialog
+        open={showDelete}
+        onOpenChange={setShowDelete}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this lead?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete this lead?
+            </AlertDialogTitle>
+
             <AlertDialogDescription>
-              This action cannot be undone. The lead and its activity history will be removed.
+              This action cannot be undone. The lead and
+              its activity history will be removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              Cancel
+            </AlertDialogCancel>
+
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={() =>
                 deleteMutation.mutate(lead.id, {
-                  onSuccess: () => router.push("/leads"),
+                  onSuccess: () =>
+                    router.push("/leads"),
                 })
               }
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending
+                ? "Deleting..."
+                : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
