@@ -44,10 +44,11 @@ interface TaskTableProps {
 const statusColors: Record<TaskStatus, string> = {
   NOT_STARTED: 'bg-gray-100 text-gray-800',
   IN_PROGRESS: 'bg-blue-100 text-blue-800',
-  WAITING: 'bg-yellow-100 text-yellow-800',
+  WAITING_ON_SOMEONE: 'bg-yellow-100 text-yellow-800',
+  DEFERRED: 'bg-purple-100 text-purple-800',
   COMPLETED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
 };
+
 
 const priorityColors: Record<TaskPriority, string> = {
   LOW: 'bg-gray-100 text-gray-800',
@@ -55,6 +56,7 @@ const priorityColors: Record<TaskPriority, string> = {
   HIGH: 'bg-orange-100 text-orange-800',
   URGENT: 'bg-red-100 text-red-800',
 };
+
 
 export default function TaskTable({
   data,
@@ -135,7 +137,6 @@ export default function TaskTable({
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Due Date</TableHead>
-              <TableHead>Assigned To</TableHead>
               <TableHead>Entity</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -166,9 +167,6 @@ export default function TaskTable({
                     {task.isOverdue && !task.isClosed && (
                       <span className="text-red-500 text-xs ml-1">(Overdue)</span>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {task.assignedTo?.name || task.createdBy?.name || '-'}
                   </TableCell>
                   <TableCell>
                     {task.entityName ? (

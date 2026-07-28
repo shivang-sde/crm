@@ -23,6 +23,8 @@ export default function TasksPage() {
 
   const { data, isLoading, error } = useTasks(filters as any);
 
+  console.log('TasksPage data:', data);
+
   if (!canViewTasks) {
     return (
       <div className="flex items-center justify-center h-64">

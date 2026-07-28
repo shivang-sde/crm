@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ArrowLeft, Pencil, Trash2, MapPin, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDeleteMeeting } from '@/lib/hooks/meetings';
+import {formatDateTime} from '@/lib/utils';
 
 export default function MeetingDetailPage() {
   const router = useRouter();
@@ -107,13 +108,13 @@ export default function MeetingDetailPage() {
                   <Users className="h-4 w-4" />
                   Attendees ({meeting.attendees.length})
                 </p>
-                <div className="flex flex-wrap gap-2 mt-2">
+                {/* <div className="flex flex-wrap gap-2 mt-2">
                   {meeting.attendees.map((attendee: { name?: string; email?: string }, idx: number) => (
                     <Badge key={idx} variant="outline">
                       {attendee.name || attendee.email || 'Unnamed'}
                     </Badge>
                   ))}
-                </div>
+                </div> */}
               </div>
             )}
           </CardContent>
@@ -134,7 +135,7 @@ export default function MeetingDetailPage() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">End Time</p>
               <p className="text-sm font-medium">
-                {new Date(meeting.endTime).toLocaleString()}
+                {formatDateTime(meeting.endTime)}
               </p>
             </div>
             {meeting.remindAt && (
@@ -174,12 +175,12 @@ export default function MeetingDetailPage() {
           <CardTitle>Assignment & Linking</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
-          <div>
+          {/* <div>
             <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
             <p className="text-sm">
               {meeting.assignedTo?.name || meeting.createdBy?.name || 'Unassigned'}
             </p>
-          </div>
+          </div> */}
           <div>
             <p className="text-sm font-medium text-muted-foreground">Linked Entity</p>
             <p className="text-sm">
@@ -189,11 +190,11 @@ export default function MeetingDetailPage() {
               )}
             </p>
           </div>
-          <div>
+          {/* <div>
             <p className="text-sm font-medium text-muted-foreground">Created By</p>
             <p className="text-sm">{meeting.createdBy.name}</p>
             <p className="text-xs text-muted-foreground">{meeting.createdBy.email}</p>
-          </div>
+          </div> */}
           <div>
             <p className="text-sm font-medium text-muted-foreground">Created At</p>
             <p className="text-sm">{new Date(meeting.createdAt).toLocaleString()}</p>

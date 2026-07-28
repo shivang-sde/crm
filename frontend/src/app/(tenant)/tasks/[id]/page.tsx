@@ -22,6 +22,9 @@ export default function TaskDetailPage() {
   const reopenTask = useReopenTask();
   const deleteTask = useDeleteTask();
 
+
+console.log('TaskDetailPage data:', task);  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -179,11 +182,11 @@ export default function TaskDetailPage() {
                 )}
               </p>
             </div>
-            <div>
+            {/* <div>
               <p className="text-sm font-medium text-muted-foreground">Created By</p>
-              <p className="text-sm">{task.createdBy.name}</p>
+              <p className="text-sm">{task.createdBy.name ?? 'N/A'}</p>
               <p className="text-xs text-muted-foreground">{task.createdBy.email}</p>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
       </div>

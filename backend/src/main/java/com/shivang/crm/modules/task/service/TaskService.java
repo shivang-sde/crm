@@ -63,7 +63,6 @@ public class TaskService {
         Task task = Task.builder()
             .tenantId(tenantId)
             .createdBy(userId)
-            .updatedBy(userId)
             .subject(request.getSubject())
             .description(request.getDescription())
             .dueDate(request.getDueDate())
@@ -271,6 +270,7 @@ public class TaskService {
             .createdAt(task.getCreatedAt())
             .updatedAt(task.getUpdatedAt())
             .createdBy(task.getCreatedBy())
+            .ownerUserId(task.getOwnerId())
             .isOverdue(task.isOverdue())
             .build();
 
