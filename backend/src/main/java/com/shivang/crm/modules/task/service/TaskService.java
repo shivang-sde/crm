@@ -56,9 +56,9 @@ public class TaskService {
         }
 
         // Validate assignee if provided
-        if (request.getAssignedTo() != null) {
-            entityResolverService.resolveUserName(request.getAssignedTo());
-        }
+        // if (request.getAssignedTo() != null) {
+        //     entityResolverService.resolveUserName(request.getAssignedTo());
+        // }
 
         Task task = Task.builder()
             .tenantId(tenantId)
@@ -74,7 +74,7 @@ public class TaskService {
             .remindAt(request.getRemindAt())
             .recurrence(request.getRecurrence())
             .customData(request.getCustomData())
-            .assignedTo(request.getAssignedTo())
+            // .assignedTo(request.getAssignedTo())
             .isClosed(false)
             .build();
 
@@ -171,10 +171,10 @@ public class TaskService {
         if (request.getCustomData() != null) {
             task.setCustomData(request.getCustomData());
         }
-        if (request.getAssignedTo() != null) {
-            entityResolverService.resolveUserName(request.getAssignedTo());
-            task.setAssignedTo(request.getAssignedTo());
-        }
+        // if (request.getAssignedTo() != null) {
+        //     entityResolverService.resolveUserName(request.getAssignedTo());
+        //     task.setAssignedTo(request.getAssignedTo());
+        // }
 
         task.setUpdatedBy(userId);
         Task updatedTask = taskRepository.save(task);
@@ -264,8 +264,8 @@ public class TaskService {
             .remindAt(task.getRemindAt())
             .recurrence(task.getRecurrence())
             .customData(task.getCustomData())
-            .assignedTo(task.getAssignedTo())
-            .assigneeName(resolveUserName(task.getAssignedTo()))
+            // .assignedTo(task.getAssignedTo())
+            // .assigneeName(resolveUserName(task.getAssignedTo()))
             .isClosed(task.getIsClosed())
             .completedAt(task.getCompletedAt())
             .createdAt(task.getCreatedAt())

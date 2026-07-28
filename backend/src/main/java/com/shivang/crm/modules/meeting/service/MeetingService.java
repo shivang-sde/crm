@@ -1,19 +1,7 @@
 package com.shivang.crm.modules.meeting.service;
 
-import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
-import com.shivang.crm.modules.auth.security.TenantContext;
-import com.shivang.crm.modules.meeting.dto.MeetingCreateRequest;
-import com.shivang.crm.modules.meeting.dto.MeetingResponse;
-import com.shivang.crm.modules.meeting.dto.MeetingUpdateRequest;
-import com.shivang.crm.modules.meeting.entity.Meeting;
-import com.shivang.crm.modules.meeting.repository.MeetingRepository;
-import com.shivang.crm.modules.meeting.repository.MeetingSpecifications;
-import com.shivang.crm.shared.exception.NotFoundException;
-import com.shivang.crm.shared.exception.PermissionDeniedException;
-import com.shivang.crm.shared.service.EntityResolverService;
-import com.shivang.crm.shared.enums.OwnershipScope;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,8 +9,21 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.UUID;
+import com.shivang.crm.modules.auth.security.TenantContext;
+import com.shivang.crm.modules.meeting.dto.MeetingCreateRequest;
+import com.shivang.crm.modules.meeting.dto.MeetingResponse;
+import com.shivang.crm.modules.meeting.dto.MeetingUpdateRequest;
+import com.shivang.crm.modules.meeting.entity.Meeting;
+import com.shivang.crm.modules.meeting.repository.MeetingRepository;
+import com.shivang.crm.modules.meeting.repository.MeetingSpecifications;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.shared.enums.OwnershipScope;
+import com.shivang.crm.shared.exception.NotFoundException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
+import com.shivang.crm.shared.service.EntityResolverService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -67,6 +68,7 @@ public class MeetingService {
             .startTime(request.getStartTime())
             .endTime(request.getEndTime())
             .attendees(request.getAttendees())
+            .status(Meeting.MeetingStatus.PLANNED)
             .entityType(request.getEntityType())
             .entityId(request.getEntityId())
             .remindAt(request.getRemindAt())

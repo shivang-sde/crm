@@ -76,8 +76,8 @@ public class Task extends TenantOwnedEntity {
     private Boolean isClosed = false;
 
     // Assigned user
-    @Column(name = "assigned_to")
-    private UUID assignedTo;
+    // @Column(name = "assigned_to")
+    // private UUID assignedTo;
 
     @Column(name = "updated_by")
     private UUID updatedBy;

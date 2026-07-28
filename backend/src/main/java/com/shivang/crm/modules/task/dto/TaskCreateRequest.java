@@ -63,9 +63,9 @@ public class TaskCreateRequest {
     @JsonProperty("owner_user_id")
     private UUID ownerUserId;
 
-    @Schema(description = "User assigned to this task", example = "550e8400-e29b-41d4-a716-446655440001")
-    @JsonProperty("assigned_to")
-    private UUID assignedTo;
+    // @Schema(description = "User assigned to this task", example = "550e8400-e29b-41d4-a716-446655440001")
+    // @JsonProperty("assigned_to")
+    // private UUID assignedTo;
 
     @Schema(description = "Custom fields as key-value map")
     @JsonProperty("custom_data")

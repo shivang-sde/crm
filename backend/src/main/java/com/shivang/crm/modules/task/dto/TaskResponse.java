@@ -86,9 +86,9 @@ public class TaskResponse {
     @JsonProperty("owner_user_id")
     private UUID ownerUserId;
 
-    @Schema(description = "User assigned to this task")
-    @JsonProperty("assigned_to")
-    private UUID assignedTo;
+    // @Schema(description = "User assigned to this task")
+    // @JsonProperty("assigned_to")
+    // private UUID assignedTo;
 
     @Schema(description = "Name of the assigned user")
     @JsonProperty("assignee_name")
