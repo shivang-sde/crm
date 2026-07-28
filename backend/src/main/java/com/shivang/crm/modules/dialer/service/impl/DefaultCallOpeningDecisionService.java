@@ -53,7 +53,7 @@ public class DefaultCallOpeningDecisionService implements CallOpeningDecisionSer
 
     private CallOpeningInstruction defaultInstruction(NormalizedCallWebhookEvent event) {
         return CallOpeningInstruction.builder()
-            .actionType("NONE")
+            .actionType("NO_ACTION")
             .displayMode("NONE")
             .resolved(false)
             .externalCallId(event.getExternalCallId())

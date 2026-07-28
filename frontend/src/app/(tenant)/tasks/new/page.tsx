@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,24 +16,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+
+import { toIsoString, emptyToUndefined } from '@/lib/utils';
 import { useCreateTask } from '@/lib/hooks/tasks';
 import { usePermissions } from '@/lib/hooks/usePermissions';
-import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-
-const taskSchema = z.object({
-  subject: z.string().min(1, 'Subject is required'),
-  description: z.string().optional(),
-  dueDate: z.string().optional(),
-  status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'WAITING', 'COMPLETED', 'CANCELLED']).optional(),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  entityType: z.enum(['LEAD', 'CONTACT', 'ACCOUNT', 'DEAL']).optional(),
-  entityId: z.string().optional(),
-  remindAt: z.string().optional(),
-  assignedToId: z.string().optional(),
-});
+import { TaskCreateRequest, taskSchema } from '@/types/tasks';
 
 type TaskFormData = z.infer<typeof taskSchema>;
+
 
 export default function NewTaskPage() {
   const router = useRouter();
@@ -47,25 +46,53 @@ export default function NewTaskPage() {
   } = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
     defaultValues: {
+      subject: '',
+      description: '',
+      dueDate: '',
+      remindAt: '',
+      entityId: '',
+      ownerUserId: '',
+      assignedTo: '',
       status: 'NOT_STARTED',
       priority: 'MEDIUM',
     },
   });
 
+  const status = watch('status');
+  const priority = watch('priority');
+  const entityType = watch('entityType');
+
   const onSubmit = async (data: TaskFormData) => {
-    try {
-      await createTask.mutateAsync(data);
-      toast.success('Task created successfully');
-      router.push('/tasks');
-    } catch (error) {
-      toast.error('Failed to create task');
-    }
-  };
+  try {
+    const payload: TaskCreateRequest = {
+      subject: data.subject.trim(),
+      description: emptyToUndefined(data.description),
+      due_date: toIsoString(data.dueDate),
+      status: data.status,
+      priority: data.priority,
+      entity_type: data.entityType,
+      entity_id: emptyToUndefined(data.entityId),
+      remind_at: toIsoString(data.remindAt),
+      owner_user_id: emptyToUndefined(data.ownerUserId),
+      assigned_to: emptyToUndefined(data.assignedTo),
+    };
+
+    await createTask.mutateAsync(payload);
+
+    toast.success('Task created successfully');
+    router.push('/tasks');
+  } catch (error) {
+    console.error('Failed to create task:', error);
+    toast.error('Failed to create task');
+  }
+};
 
   if (!canEditTasks) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">You don&apos;t have permission to create tasks.</p>
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-muted-foreground">
+          You don&apos;t have permission to create tasks.
+        </p>
       </div>
     );
   }
@@ -73,37 +100,83 @@ export default function NewTaskPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="outline" onClick={() => router.push('/tasks')}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.push('/tasks')}
+        >
           Back
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">Create New Task</h1>
+
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Create New Task
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Create and assign a task to your CRM team.
+          </p>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Task Details</CardTitle>
-          <CardDescription>Fill in the details to create a new task</CardDescription>
+          <CardDescription>
+            Fill in the details to create a new task.
+          </CardDescription>
         </CardHeader>
+
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="space-y-6"
+            noValidate
+          >
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Subject *</label>
-                <Input {...register('subject')} placeholder="Enter task subject" />
+                <label
+                  htmlFor="subject"
+                  className="text-sm font-medium"
+                >
+                  Subject *
+                </label>
+
+                <Input
+                  id="subject"
+                  {...register('subject')}
+                  placeholder="Enter task subject"
+                  aria-invalid={Boolean(errors.subject)}
+                />
+
                 {errors.subject && (
-                  <p className="text-sm text-red-500">{errors.subject.message}</p>
+                  <p className="text-sm text-destructive">
+                    {errors.subject.message}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Priority</label>
+                <label className="text-sm font-medium">
+                  Priority
+                </label>
+
                 <Select
-                  defaultValue={watch('priority') || 'MEDIUM'}
-                  onValueChange={(value) => setValue('priority', value as any)}
+                  value={priority}
+                  onValueChange={(value) =>
+                    setValue(
+                      'priority',
+                      value as TaskFormData['priority'],
+                      {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      },
+                    )
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
+
                   <SelectContent>
                     <SelectItem value="LOW">Low</SelectItem>
                     <SelectItem value="MEDIUM">Medium</SelectItem>
@@ -115,52 +188,122 @@ export default function NewTaskPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
+              <label
+                htmlFor="description"
+                className="text-sm font-medium"
+              >
+                Description
+              </label>
+
               <Textarea
+                id="description"
                 {...register('description')}
                 placeholder="Enter task description"
                 rows={4}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Due Date</label>
-                <Input type="datetime-local" {...register('dueDate')} />
+                <label
+                  htmlFor="dueDate"
+                  className="text-sm font-medium"
+                >
+                  Due Date
+                </label>
+
+                <Input
+                  id="dueDate"
+                  type="datetime-local"
+                  {...register('dueDate')}
+                />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Remind At</label>
-                <Input type="datetime-local" {...register('remindAt')} />
+                <label
+                  htmlFor="remindAt"
+                  className="text-sm font-medium"
+                >
+                  Remind At
+                </label>
+
+                <Input
+                  id="remindAt"
+                  type="datetime-local"
+                  {...register('remindAt')}
+                />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Status</label>
+                <label className="text-sm font-medium">
+                  Status
+                </label>
+
                 <Select
-                  defaultValue={watch('status') || 'NOT_STARTED'}
-                  onValueChange={(value) => setValue('status', value as any)}
+                  value={status}
+                  onValueChange={(value) =>
+                    setValue(
+                      'status',
+                      value as TaskFormData['status'],
+                      {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      },
+                    )
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
+
                   <SelectContent>
-                    <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                    <SelectItem value="WAITING">Waiting</SelectItem>
-                    <SelectItem value="COMPLETED">Completed</SelectItem>
-                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    <SelectItem value="NOT_STARTED">
+                      Not Started
+                    </SelectItem>
+
+                    <SelectItem value="IN_PROGRESS">
+                      In Progress
+                    </SelectItem>
+
+                    <SelectItem value="WAITING_ON_SOMEONE">
+                      Waiting on Someone
+                    </SelectItem>
+
+                    <SelectItem value="DEFERRED">
+                      Deferred
+                    </SelectItem>
+
+                    <SelectItem value="COMPLETED">
+                      Completed
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Link to Entity</label>
-                <Select onValueChange={(value) => setValue('entityType', value as any)}>
+                <label className="text-sm font-medium">
+                  Link to Entity
+                </label>
+
+                <Select
+                  value={entityType}
+                  onValueChange={(value) =>
+                    setValue(
+                      'entityType',
+                      value as TaskFormData['entityType'],
+                      {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      },
+                    )
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select entity type" />
                   </SelectTrigger>
+
                   <SelectContent>
                     <SelectItem value="LEAD">Lead</SelectItem>
                     <SelectItem value="CONTACT">Contact</SelectItem>
@@ -171,12 +314,46 @@ export default function NewTaskPage() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => router.push('/tasks')}>
+            {entityType && (
+              <div className="space-y-2">
+                <label
+                  htmlFor="entityId"
+                  className="text-sm font-medium"
+                >
+                  Entity ID
+                </label>
+
+                <Input
+                  id="entityId"
+                  {...register('entityId')}
+                  placeholder={`Enter ${entityType.toLowerCase()} UUID`}
+                />
+
+                {errors.entityId && (
+                  <p className="text-sm text-destructive">
+                    {errors.entityId.message}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createTask.isPending}
+                onClick={() => router.push('/tasks')}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={createTask.isPending}>
-                {createTask.isPending ? 'Creating...' : 'Create Task'}
+
+              <Button
+                type="submit"
+                disabled={createTask.isPending}
+              >
+                {createTask.isPending
+                  ? 'Creating...'
+                  : 'Create Task'}
               </Button>
             </div>
           </form>

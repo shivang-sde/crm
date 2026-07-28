@@ -124,10 +124,4 @@ public class Task extends TenantOwnedEntity {
     public static boolean isStatusClosed(TaskStatus status) {
         throw new UnsupportedOperationException("Not supported yet.");
     }
-
-    // getter setter
-    public UUID getCreatedBy(){
-        return this.getCreatedBy();
-    }
-
 }

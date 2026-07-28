@@ -10,6 +10,9 @@ import com.shivang.crm.modules.meeting.entity.Meeting;
 import com.shivang.crm.shared.model.Recurrence;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -24,7 +27,9 @@ import lombok.Setter;
 @Schema(description = "Request payload for creating a meeting")
 public class MeetingCreateRequest {
 
-    @Schema(description = "Meeting subject", required = true)
+    @NotBlank(message = "Meeting subject is required")
+    @Size(max = 255, message = "Meeting subject must not exceed 255 characters")
+    @Schema(description = "Meeting subject", requiredMode = Schema.RequiredMode.REQUIRED)
     private String subject;
 
     @Schema(description = "Meeting description")
@@ -40,11 +45,16 @@ public class MeetingCreateRequest {
     @JsonProperty("meeting_type")
     private Meeting.MeetingType meetingType;
 
-    @Schema(description = "Start time", required = true)
+    @NotNull(message = "Meeting start time is required")
+    @Schema(
+            description = "Start time",
+            example = "2026-07-28T10:00:00Z",
+            requiredMode = Schema.RequiredMode.REQUIRED
+    )
     @JsonProperty("start_time")
     private Instant startTime;
 
-    @Schema(description = "End time")
+    @Schema(description = "End time", example = "2026-07-28T10:30:00Z")
     @JsonProperty("end_time")
     private Instant endTime;
 

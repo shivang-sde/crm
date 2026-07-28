@@ -107,12 +107,11 @@ export function LeadDetail({ lead }: LeadDetailProps) {
             title="Lead call history"
             pageSize={10}
           />
-
-          <LeadNotes leadId={lead.id} />
         </div>
 
         <div>
           <LeadAssignment lead={lead} />
+          <LeadNotes leadId={lead.id} />
         </div>
       </div>
 

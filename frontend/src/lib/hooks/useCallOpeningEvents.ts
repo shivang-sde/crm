@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import type { CallOpeningEvent } from "@/types/call-opening";
 
 const POLLING_ENABLED = true;
-const POLL_INTERVAL_MS = 5000; // 4 seconds
+const POLL_INTERVAL_MS = 50000; // 50 seconds
 
 interface UseCallOpeningEventsOptions {
   onEvent?: (event: CallOpeningEvent) => Promise<void>;

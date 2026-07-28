@@ -21,9 +21,13 @@ export function useCreateMeeting() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (request: MeetingCreateRequest) => meetingApi.createMeeting(request),
+    mutationFn: (request: MeetingCreateRequest) =>
+      meetingApi.createMeeting(request),
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['meetings'] });
+      queryClient.invalidateQueries({
+        queryKey: ['meetings'],
+      });
     },
   });
 }

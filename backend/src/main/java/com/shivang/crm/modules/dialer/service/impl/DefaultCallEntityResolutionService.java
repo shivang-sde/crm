@@ -272,10 +272,10 @@ public class DefaultCallEntityResolutionService implements CallEntityResolutionS
     /**
      * Normalizes common Indian phone-number formats:
      *
-     * +91 95559 69516 -> 9555969516
-     * 919555969516    -> 9555969516
-     * 09555969516     -> 9555969516
-     * 95559-69516     -> 9555969516
+     * +91 87895 68736 -> 8789568736
+     * 918789568736    -> 8789568736
+     * 08789568736     -> 8789568736
+     * 87895-68736     -> 9555969516
      */
     private String normalizePhone(String phone) {
         String normalized = trimToNull(phone);

@@ -18,20 +18,9 @@ import { useCreateMeeting } from '@/lib/hooks/meetings';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MeetingCreateRequest,meetingSchema } from '@/types/meetings';
+import {emptyToUndefined } from '@/lib/utils';
 
-const meetingSchema = z.object({
-  subject: z.string().min(1, 'Subject is required'),
-  description: z.string().optional(),
-  location: z.string().optional(),
-  agenda: z.string().optional(),
-  startTime: z.string(),
-  endTime: z.string(),
-  status: z.enum(['PLANNED', 'HELD', 'NOT_HELD', 'CANCELLED']).optional(),
-  entityType: z.enum(['LEAD', 'CONTACT', 'ACCOUNT', 'DEAL']).optional(),
-  entityId: z.string().optional(),
-  remindAt: z.string().optional(),
-  assignedToId: z.string().optional(),
-});
 
 type MeetingFormData = z.infer<typeof meetingSchema>;
 
@@ -41,27 +30,64 @@ export default function NewMeetingPage() {
   const createMeeting = useCreateMeeting();
 
   const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-    watch,
-  } = useForm<MeetingFormData>({
-    resolver: zodResolver(meetingSchema),
-    defaultValues: {
-      status: 'PLANNED',
-    },
-  });
+  register,
+  handleSubmit,
+  formState: { errors },
+  setValue,
+  watch,
+} = useForm<MeetingFormData>({
+  resolver: zodResolver(meetingSchema),
+  defaultValues: {
+    subject: '',
+    description: '',
+    location: '',
+    agenda: '',
+    meetingType: undefined,
+    startTime: '',
+    endTime: '',
+    entityType: undefined,
+    entityId: '',
+    remindAt: '',
+    assignedTo: '',
+  },
+});
 
-  const onSubmit = async (data: MeetingFormData) => {
-    try {
-      await createMeeting.mutateAsync(data);
-      toast.success('Meeting scheduled successfully');
-      router.push('/meetings');
-    } catch (error) {
-      toast.error('Failed to schedule meeting');
-    }
-  };
+ const onSubmit = async (data: MeetingFormData) => {
+  try {
+    const payload: MeetingCreateRequest = {
+      subject: data.subject.trim(),
+
+      description: emptyToUndefined(data.description),
+      agenda: emptyToUndefined(data.agenda),
+      location: emptyToUndefined(data.location),
+
+      meeting_type: data.meetingType,
+
+      start_time: new Date(data.startTime).toISOString(),
+
+      end_time: data.endTime
+        ? new Date(data.endTime).toISOString()
+        : undefined,
+
+      entity_type: data.entityType,
+      entity_id: emptyToUndefined(data.entityId),
+
+      remind_at: data.remindAt
+        ? new Date(data.remindAt).toISOString()
+        : undefined,
+
+      assigned_to: emptyToUndefined(data.assignedTo),
+    };
+
+    await createMeeting.mutateAsync(payload);
+
+    toast.success('Meeting scheduled successfully');
+    router.push('/meetings');
+  } catch (error) {
+    console.error('Failed to schedule meeting:', error);
+    toast.error('Failed to schedule meeting');
+  }
+};
 
   if (!canEditMeetings) {
     return (
@@ -103,6 +129,44 @@ export default function NewMeetingPage() {
             </div>
 
             <div className="space-y-2">
+  <label className="text-sm font-medium">
+    Meeting Type
+  </label>
+
+  <Select
+    value={watch('meetingType')}
+    onValueChange={(value) =>
+      setValue(
+        'meetingType',
+        value as MeetingFormData['meetingType'],
+        {
+          shouldDirty: true,
+          shouldValidate: true,
+        },
+      )
+    }
+  >
+    <SelectTrigger>
+      <SelectValue placeholder="Select meeting type" />
+    </SelectTrigger>
+
+    <SelectContent>
+      <SelectItem value="IN_PERSON">
+        In Person
+      </SelectItem>
+
+      <SelectItem value="VIDEO">
+        Video
+      </SelectItem>
+
+      <SelectItem value="PHONE">
+        Phone
+      </SelectItem>
+    </SelectContent>
+  </Select>
+</div>
+
+            <div className="space-y-2">
               <label className="text-sm font-medium">Description</label>
               <Textarea
                 {...register('description')}
@@ -139,24 +203,7 @@ export default function NewMeetingPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Status</label>
-                <Select
-                  defaultValue={watch('status') || 'PLANNED'}
-                  onValueChange={(value) => setValue('status', value as any)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PLANNED">Planned</SelectItem>
-                    <SelectItem value="HELD">Held</SelectItem>
-                    <SelectItem value="NOT_HELD">Not Held</SelectItem>
-                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
+          
               <div className="space-y-2">
                 <label className="text-sm font-medium">Remind At</label>
                 <Input type="datetime-local" {...register('remindAt')} />
