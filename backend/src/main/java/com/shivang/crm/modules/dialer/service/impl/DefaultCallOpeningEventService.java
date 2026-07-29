@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.shivang.crm.modules.dialer.dto.CallOpeningInstruction;
 import com.shivang.crm.modules.dialer.entity.CallOpeningEvent;
 import com.shivang.crm.modules.dialer.repository.CallOpeningEventRepository;

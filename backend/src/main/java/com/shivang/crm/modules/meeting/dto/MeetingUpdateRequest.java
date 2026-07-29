@@ -10,6 +10,7 @@ import com.shivang.crm.modules.meeting.entity.Meeting;
 import com.shivang.crm.shared.model.Recurrence;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -44,6 +45,7 @@ public class MeetingUpdateRequest {
     @JsonProperty("start_time")
     private Instant startTime;
 
+    @NotNull(message = "Meeting end time is required")
     @Schema(description = "End time")
     @JsonProperty("end_time")
     private Instant endTime;

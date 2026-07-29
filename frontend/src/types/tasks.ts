@@ -1,25 +1,27 @@
-import { Recurrence } from './recurrence';
-import z from 'zod';
+import { z } from "zod";
+
+import type {
+  Recurrence,
+} from "./recurrence";
 
 export type TaskStatus =
-  | 'NOT_STARTED'
-  | 'IN_PROGRESS'
-  | 'WAITING_ON_SOMEONE'
-  | 'DEFERRED'
-  | 'COMPLETED';
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "WAITING_ON_SOMEONE"
+  | "DEFERRED"
+  | "COMPLETED";
 
 export type TaskPriority =
-  | 'LOW'
-  | 'MEDIUM'
-  | 'HIGH'
-  | 'URGENT';
+  | "LOW"
+  | "MEDIUM"
+  | "HIGH"
+  | "URGENT";
 
 export type EntityType =
-  | 'LEAD'
-  | 'CONTACT'
-  | 'ACCOUNT'
-  | 'DEAL'
-  | 'OPPORTUNITY';
+  | "LEAD"
+  | "CONTACT"
+  | "ACCOUNT"
+  | "DEAL";
 
 export interface AssignedUserResponse {
   id: string;
@@ -29,6 +31,8 @@ export interface AssignedUserResponse {
 
 export interface TaskResponse {
   id: string;
+  tenantId?: string;
+
   subject: string;
   description?: string;
 
@@ -44,22 +48,35 @@ export interface TaskResponse {
   recurrence?: Recurrence;
 
   completedAt?: string;
+
   isClosed: boolean;
   isOverdue?: boolean;
 
-  customData?: Record<string, unknown>;
+  customData?: Record<
+    string,
+    unknown
+  >;
 
+  ownerUserId?: string;
+
+  /**
+   * Your provided backend response does not currently
+   * return an AssignedUserResponse object.
+   *
+   * Keep this only if another mapper enriches the API response.
+   */
   assignedTo?: AssignedUserResponse;
 
-  createdBy: AssignedUserResponse;
+  /**
+   * Backend currently returns UUID values for these fields.
+   */
+  createdBy: string;
+  updatedBy?: string;
 
   createdAt: string;
   updatedAt: string;
 }
 
-/**
- * Matches the JSON field names expected by TaskCreateRequest in Spring Boot.
- */
 export interface TaskCreateRequest {
   subject: string;
   description?: string;
@@ -76,14 +93,19 @@ export interface TaskCreateRequest {
   recurrence?: Recurrence;
 
   owner_user_id?: string;
-  assigned_to?: string;
 
-  custom_data?: Record<string, unknown>;
+  /**
+   * Enable this only after uncommenting assignedTo
+   * in the backend DTO.
+   */
+  // assigned_to?: string;
+
+  custom_data?: Record<
+    string,
+    unknown
+  >;
 }
 
-/**
- * Matches the JSON field names expected by TaskUpdateRequest in Spring Boot.
- */
 export interface TaskUpdateRequest {
   subject?: string;
   description?: string;
@@ -100,65 +122,164 @@ export interface TaskUpdateRequest {
   recurrence?: Recurrence;
 
   owner_user_id?: string;
-  assigned_to?: string;
 
-  custom_data?: Record<string, unknown>;
+  // assigned_to?: string;
+
+  custom_data?: Record<
+    string,
+    unknown
+  >;
 }
 
+export const taskStatusSchema =
+  z.enum([
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "WAITING_ON_SOMEONE",
+    "DEFERRED",
+    "COMPLETED",
+  ]);
 
+export const taskPrioritySchema =
+  z.enum([
+    "LOW",
+    "MEDIUM",
+    "HIGH",
+    "URGENT",
+  ]);
 
-export const taskStatusSchema = z.enum([
-  'NOT_STARTED',
-  'IN_PROGRESS',
-  'WAITING_ON_SOMEONE',
-  'DEFERRED',
-  'COMPLETED',
-]);
+export const entityTypeSchema =
+  z.enum([
+    "LEAD",
+    "CONTACT",
+    "ACCOUNT",
+    "DEAL",
+  ]);
 
-export const taskPrioritySchema = z.enum([
-  'LOW',
-  'MEDIUM',
-  'HIGH',
-  'URGENT',
-]);
+export const taskSchema = z
+  .object({
+    subject: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "Subject is required"
+      )
+      .max(
+        255,
+        "Subject must not exceed 255 characters"
+      ),
 
-export const entityTypeSchema = z.enum([
-  'LEAD',
-  'CONTACT',
-  'ACCOUNT',
-  'DEAL',
-]);
+    description:
+      z.string().optional(),
 
-export const taskSchema = z.object({
-  subject: z
-    .string()
-    .trim()
-    .min(1, 'Subject is required')
-    .max(255, 'Subject must not exceed 255 characters'),
+    dueDate:
+      z.string().optional(),
 
-  description: z.string().optional(),
+    status:
+      taskStatusSchema,
 
-  dueDate: z.string().optional(),
+    priority:
+      taskPrioritySchema,
 
-  status: taskStatusSchema,
+    entityType:
+      entityTypeSchema.optional(),
 
-  priority: taskPrioritySchema,
+    entityId: z
+      .string()
+      .uuid(
+        "Invalid entity ID"
+      )
+      .optional()
+      .or(z.literal("")),
 
-  entityType: entityTypeSchema.optional(),
+    remindAt:
+      z.string().optional(),
 
-  entityId: z.string().uuid('Invalid entity ID').optional().or(z.literal('')),
+    recurrence:
+      z
+        .custom<Recurrence>()
+        .optional(),
 
-  remindAt: z.string().optional(),
+    ownerUserId: z
+      .string()
+      .uuid(
+        "Invalid owner user ID"
+      )
+      .optional()
+      .or(z.literal("")),
 
-  ownerUserId: z
-    .string()
-    .uuid('Invalid owner user ID')
-    .optional()
-    .or(z.literal('')),
+    assignedToId: z
+      .string()
+      .uuid(
+        "Invalid assigned user ID"
+      )
+      .optional()
+      .or(z.literal("")),
+  })
+  .superRefine(
+    (data, ctx) => {
+      const hasEntityType =
+        Boolean(data.entityType);
 
-  assignedTo: z
-    .string()
-    .uuid('Invalid assigned user ID')
-    .optional()
-    .or(z.literal('')),
-});
+      const hasEntityId =
+        Boolean(data.entityId);
+
+      if (
+        hasEntityType !==
+        hasEntityId
+      ) {
+        ctx.addIssue({
+          code:
+            z.ZodIssueCode
+              .custom,
+
+          path: hasEntityType
+            ? ["entityId"]
+            : ["entityType"],
+
+          message:
+            "Both entity type and entity ID are required",
+        });
+      }
+
+      if (
+        data.dueDate &&
+        data.remindAt
+      ) {
+        const dueDate =
+          new Date(
+            `${data.dueDate}T23:59:59`
+          );
+
+        const remindAt =
+          new Date(
+            data.remindAt
+          );
+
+        if (
+          !Number.isNaN(
+            dueDate.getTime()
+          ) &&
+          !Number.isNaN(
+            remindAt.getTime()
+          ) &&
+          remindAt >= dueDate
+        ) {
+          ctx.addIssue({
+            code:
+              z.ZodIssueCode
+                .custom,
+
+            path: ["remindAt"],
+
+            message:
+              "Reminder must be before the due date",
+          });
+        }
+      }
+    }
+  );
+
+export type TaskFormValues =
+  z.infer<typeof taskSchema>;

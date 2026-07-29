@@ -140,7 +140,7 @@ export function TaskDetail() {
           <div className="border-t pt-4">
             <h3 className="font-semibold">Audit Information</h3>
             <div className="grid grid-cols-2 gap-4 mt-2 text-sm text-muted-foreground">
-              <div>Created: {format(new Date(task.createdAt), 'MMM dd, yyyy HH:mm')} by {task.createdBy.name}</div>
+              {/* <div>Created: {format(new Date(task.createdAt), 'MMM dd, yyyy HH:mm')} by {task.createdBy.name}</div> */}
               <div>Updated: {format(new Date(task.updatedAt), 'MMM dd, yyyy HH:mm')}</div>
             </div>
           </div>

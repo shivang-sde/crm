@@ -19,18 +19,7 @@ import { usePermissions } from '@/lib/hooks/usePermissions';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
-
-const taskSchema = z.object({
-  subject: z.string().min(1, 'Subject is required'),
-  description: z.string().optional(),
-  dueDate: z.string().optional(),
-  status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'WAITING', 'COMPLETED', 'CANCELLED']).optional(),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  entityType: z.enum(['LEAD', 'CONTACT', 'ACCOUNT', 'DEAL', 'OPPORTUNITY']).optional(),
-  entityId: z.string().optional(),
-  remindAt: z.string().optional(),
-  assignedToId: z.string().optional(),
-});
+import { taskSchema } from '@/types/tasks';
 
 type TaskFormData = z.infer<typeof taskSchema>;
 

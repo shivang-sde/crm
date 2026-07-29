@@ -56,6 +56,7 @@ public class MeetingCreateRequest {
 
     @Schema(description = "End time", example = "2026-07-28T10:30:00Z")
     @JsonProperty("end_time")
+    @NotNull(message = "Meeting end time is required")
     private Instant endTime;
 
     @Schema(description = "Attendees (list of emails or contact IDs)")

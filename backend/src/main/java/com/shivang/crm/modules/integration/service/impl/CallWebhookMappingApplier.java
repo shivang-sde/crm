@@ -20,6 +20,7 @@ import com.shivang.crm.modules.dialer.service.CallOpeningDecisionService;
 import com.shivang.crm.modules.dialer.service.CallOpeningEventService;
 import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 import com.shivang.crm.modules.integration.webhook.NormalizedCallWebhookEvent;
+import com.shivang.crm.shared.exception.BusinessException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,10 +36,13 @@ public class CallWebhookMappingApplier {
     private final CallOpeningDecisionService decisionService;
     private final CallOpeningEventService eventService;
 
+    private final ConnectorUserAgentService connectorUserAgentService;
+
     // ─── Connect Webhook ──────────────────────────────────────────────
     @Transactional
     public String applyConnect(
             UUID tenantId,
+            UUID connectorInstanceId,
             NormalizedCallWebhookEvent event,
             String providerKey) {
 
@@ -67,6 +71,7 @@ public class CallWebhookMappingApplier {
         if ("INBOUND".equals(direction)) {
             return handleInboundConnect(
                     tenantId,
+                    connectorInstanceId,
                     event,
                     providerKey
             );
@@ -147,7 +152,7 @@ public class CallWebhookMappingApplier {
         return "PROCESSED";
     }
 
-    private String handleInboundConnect(UUID tenantId, NormalizedCallWebhookEvent event, String providerKey) {
+    private String handleInboundConnect(UUID tenantId, UUID connectorInstanceId, NormalizedCallWebhookEvent event, String providerKey) {
         // Create an inbound Call
         String phone = event.getCallerNumber();
         Instant startTime = event.getEventTimestamp() != null ? event.getEventTimestamp() : event.getStartedAt();
@@ -202,10 +207,34 @@ public class CallWebhookMappingApplier {
         // For inbound, userId is null (we don't know which CRM user yet)
         // The opening event will be delivered to all users in the tenant's pending
         // queue
-        eventService.createEvent(tenantId, null, event.getAgentId(), savedCall.getId(),
-                event.getExternalCallId(), providerKey,
-                decision.shouldOpen() ? decision.triggerKey() : "call-connect",
-                instr);
+        UUID targetUserId =
+        connectorUserAgentService
+                .resolveUserId(
+                        tenantId,
+                        connectorInstanceId,
+                        event.getAgentId(),
+                        event.getAgentNumber()
+                )
+                .orElseThrow(() ->
+                        new BusinessException(
+                                "AGENT_NOT_MAPPED",
+                                "No CRM user is mapped to provider agent "
+                                        + event.getAgentId()
+                        )
+                );
+
+eventService.createEvent(
+        tenantId,
+        targetUserId,
+        event.getAgentId(),
+        savedCall.getId(),
+        event.getExternalCallId(),
+        providerKey,
+        decision.shouldOpen()
+                ? decision.triggerKey()
+                : "call-connect",
+        instr
+);
 
         Map<String, Object> metadata = buildConnectMetadata(savedCall, event, providerKey);
         activityService.logSystemActivity(

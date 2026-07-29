@@ -20,8 +20,9 @@ public interface CallOpeningEventRepository extends JpaRepository<CallOpeningEve
     select e
     from CallOpeningEvent e
     where e.tenantId = :tenantId
+      and e.userId = :userId
       and e.deliveryStatus = 'PENDING'
-      and (e.userId is null or e.userId = :userId)
+      and e.deleted = false
     order by e.createdAt asc
 """)
 List<CallOpeningEvent> findPendingForTenantAndUser(

@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 import { Pencil, Trash2, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
+import { formatDateTime } from '@/lib/utils';
 
 interface MeetingListProps {
   entityType?: string;
@@ -120,7 +121,7 @@ export function MeetingList({ entityType, entityId }: MeetingListProps) {
                 {format(new Date(meeting.startTime), 'MMM dd, yyyy HH:mm')}
               </TableCell>
               <TableCell>
-                {format(new Date(meeting.endTime), 'MMM dd, yyyy HH:mm')}
+                {formatDateTime(meeting.endTime)}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">

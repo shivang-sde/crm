@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import com.shivang.crm.modules.auth.entity.User;
 import com.shivang.crm.shared.base.BaseEntity;
 
 import jakarta.persistence.Column;
@@ -15,11 +16,11 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import lombok.Builder;
 
 @Entity
 @Table(name = "connector_credentials")
@@ -42,6 +43,20 @@ public class ConnectorCredential extends BaseEntity {
 
     @Column(name = "auth_type", nullable = false, length = 50)
     private String authType;
+
+    @Column(name = "credential_scope", nullable = false, length = 30)
+    private String credentialScope; 
+
+    @Column(name = "owner_user_id")
+    private UUID ownerUserId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+        name = "owner_user_id",
+        insertable = false,
+        updatable = false
+    )
+    private User ownerUser;
 
     @Column(name = "encrypted_value", columnDefinition = "TEXT")
     private String encryptedValue;

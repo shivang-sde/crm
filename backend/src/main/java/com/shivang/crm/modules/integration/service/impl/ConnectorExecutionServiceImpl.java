@@ -2,6 +2,7 @@ package com.shivang.crm.modules.integration.service.impl;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionContext;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionResult;
+import com.shivang.crm.modules.integration.entity.ConnectorCredential;
 import com.shivang.crm.modules.integration.entity.ConnectorExecution;
 import com.shivang.crm.modules.integration.entity.ConnectorInstance;
 import com.shivang.crm.modules.integration.entity.ProviderActionDefinition;
@@ -108,25 +110,52 @@ public class ConnectorExecutionServiceImpl implements ConnectorExecutionService 
         }
     }
 
-    private Map<String, Object> resolveCredentials(ConnectorExecutionRequest request, ConnectorInstance connectorInstance) {
-        // 1. Try to find a user-specific credential
-        java.util.List<com.shivang.crm.modules.integration.entity.ConnectorCredential> userCreds = credentialService.findByTenantIdAndConnectorInstanceIdAndCreatedByAndIsActiveTrue(request.getTenantId(), connectorInstance.getId(), request.getUserId());
-        
-        if (!userCreds.isEmpty()) {
-            return decryptCredentialValue(userCreds.get(0));
+    private Map<String, Object> resolveCredentials(
+        ConnectorExecutionRequest request,
+        ConnectorInstance connectorInstance) {
+
+    UUID tenantId = request.getTenantId();
+    UUID userId = request.getUserId();
+    UUID connectorInstanceId = connectorInstance.getId();
+
+    if (userId != null) {
+        List<ConnectorCredential> userCredentials =
+                credentialService
+                        .findActiveUserCredentials(
+                                tenantId,
+                                connectorInstanceId,
+                                userId
+                        );
+
+        if (!userCredentials.isEmpty()) {
+            return decryptCredentialValue(
+                    userCredentials.getFirst()
+            );
         }
-        
-        // 2. Try to find a tenant-level credential (createdBy IS NULL)
-        java.util.List<com.shivang.crm.modules.integration.entity.ConnectorCredential> tenantCreds = credentialService.findByTenantIdAndConnectorInstanceIdAndCreatedByIsNullAndIsActiveTrue(request.getTenantId(), connectorInstance.getId());
-        
-        if (!tenantCreds.isEmpty()) {
-            return decryptCredentialValue(tenantCreds.get(0));
-        }
-        
-        throw new BusinessException("NO_CREDENTIALS", "No active credentials found for the connector instance (checked user and tenant levels).");
     }
 
-    private Map<String, Object> decryptCredentialValue(com.shivang.crm.modules.integration.entity.ConnectorCredential cred) {
+    List<ConnectorCredential> tenantCredentials =
+            credentialService
+                    .findActiveTenantCredentials(
+                            tenantId,
+                            connectorInstanceId
+                    );
+
+    if (!tenantCredentials.isEmpty()) {
+        return decryptCredentialValue(
+                tenantCredentials.getFirst()
+        );
+    }
+
+    throw new BusinessException(
+            "NO_CREDENTIALS",
+            userId == null
+                    ? "No active tenant credential was found"
+                    : "No active user or tenant credential was found"
+    );
+}
+
+    private Map<String, Object> decryptCredentialValue(ConnectorCredential cred) {
         Map<String, Object> credentials = new LinkedHashMap<>();
         String decrypted = credentialService.decryptValue(cred);
         if (decrypted != null && !decrypted.isBlank()) {

@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.shivang.crm.modules.auth.security.TenantContext;
@@ -49,33 +48,27 @@ public class CallOpeningEventController {
             Instant deliveredAt) {
     }
 
-    @GetMapping("/pending")
-    public ResponseEntity<ApiResponse<List<CallOpeningEventResponse>>> pending(
-            @RequestParam(required = false) String agentId) {
+   @GetMapping("/pending")
+        public ResponseEntity<ApiResponse<List<CallOpeningEventResponse>>> pending() {
 
-        UUID tenantId = requireTenantId();
-        UUID userId = tenantContext.getUserId();
+    UUID tenantId = requireTenantId();
+    UUID userId = requireUserId();
 
-        List<CallOpeningEvent> events;
-
-        if (agentId != null && !agentId.isBlank()) {
-            events = eventService.findPendingForAgent(
-                    tenantId,
-                    agentId
-            );
-        } else {
-            events = eventService.findPendingForTenantAndUser(
+    List<CallOpeningEvent> events =
+            eventService.findPendingForTenantAndUser(
                     tenantId,
                     userId
             );
-        }
 
-        List<CallOpeningEventResponse> response = events.stream()
-                .map(this::toResponse)
-                .toList();
+    List<CallOpeningEventResponse> response =
+            events.stream()
+                    .map(this::toResponse)
+                    .toList();
 
-        return ResponseEntity.ok(ApiResponse.success(response));
-    }
+    return ResponseEntity.ok(
+            ApiResponse.success(response)
+    );
+}
 
     @PostMapping("/{eventId}/delivered")
     public ResponseEntity<ApiResponse<DeliveryResponse>> markDelivered(
@@ -124,5 +117,15 @@ public class CallOpeningEventController {
         }
 
         return tenantContext.getTenantId();
+    }
+
+    private UUID requireUserId() {
+        if (!tenantContext.hasUser()) {
+            throw new IllegalStateException(
+                    "User context is not available"
+            );
+        }
+
+        return tenantContext.getUserId();
     }
 }

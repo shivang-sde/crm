@@ -66,11 +66,22 @@ export function useSaveCallDisposition() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, request }: { id: string; request: CallDispositionRequest }) =>
-      callApi.saveDisposition(id, request),
+    mutationFn: ({
+      id,
+      request,
+    }: {
+      id: string;
+      request: CallDispositionRequest;
+    }) => callApi.saveDisposition(id, request),
+
     onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['calls'] });
-      queryClient.invalidateQueries({ queryKey: ['call', id] });
+      queryClient.invalidateQueries({
+        queryKey: ['calls'],
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: ['call', id],
+      });
     },
   });
 }

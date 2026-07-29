@@ -52,7 +52,6 @@ export default function NewTaskPage() {
       remindAt: '',
       entityId: '',
       ownerUserId: '',
-      assignedTo: '',
       status: 'NOT_STARTED',
       priority: 'MEDIUM',
     },
@@ -74,7 +73,6 @@ export default function NewTaskPage() {
       entity_id: emptyToUndefined(data.entityId),
       remind_at: toIsoString(data.remindAt),
       owner_user_id: emptyToUndefined(data.ownerUserId),
-      assigned_to: emptyToUndefined(data.assignedTo),
     };
 
     await createTask.mutateAsync(payload);

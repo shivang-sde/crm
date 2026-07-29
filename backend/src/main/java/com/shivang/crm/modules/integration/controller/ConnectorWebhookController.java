@@ -219,7 +219,7 @@ private final ConnectorInstanceService connectorInstanceService;
 
             String result = "";
             if ("call-connect".equals(triggerKey)) {
-                result = callWebhookMappingApplier.applyConnect(instance.getTenantId(), normalized,
+                result = callWebhookMappingApplier.applyConnect(tenantId, instance.getTenantId(), normalized,
                         instance.getProvider().getProviderKey());
             } else if ("cdr".equals(triggerKey)) {
                 result = callWebhookMappingApplier.applyCdr(instance.getTenantId(), normalized,

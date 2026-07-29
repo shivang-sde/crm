@@ -27,6 +27,11 @@ export  function emptyToUndefined(value?: string): string | undefined {
 }
 
 
+export function toInstant(value: string): string {
+  return new Date(value).toISOString();
+}
+
+
 export function formatDateTime(value: string | null | undefined) {
   if (!value) {
     return 'Not available';

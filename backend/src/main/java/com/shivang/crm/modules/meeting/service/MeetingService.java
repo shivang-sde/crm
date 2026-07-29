@@ -46,9 +46,9 @@ public class MeetingService {
         // Validate linked entity if provided
         if (request.getEntityType() != null && request.getEntityId() != null) {
             entityResolverService.validateEntityExists(
-                request.getEntityType(), 
-                request.getEntityId(), 
-                tenantId
+                    request.getEntityType(),
+                    request.getEntityId(),
+                    tenantId
             );
         }
 
@@ -58,23 +58,25 @@ public class MeetingService {
         }
 
         Meeting meeting = Meeting.builder()
-            .tenantId(tenantId)
-            .createdBy(userId)
-            .subject(request.getSubject())
-            .description(request.getDescription())
-            .agenda(request.getAgenda())
-            .location(request.getLocation())
-            .meetingType(request.getMeetingType())
-            .startTime(request.getStartTime())
-            .endTime(request.getEndTime())
-            .attendees(request.getAttendees())
-            .status(Meeting.MeetingStatus.PLANNED)
-            .entityType(request.getEntityType())
-            .entityId(request.getEntityId())
-            .remindAt(request.getRemindAt())
-            .recurrence(request.getRecurrence())
-            .customData(request.getCustomData())
-            .build();
+                .tenantId(tenantId)
+                .createdBy(userId)
+                .ownerId(userId)
+                .subject(request.getSubject())
+                .description(request.getDescription())
+                .agenda(request.getAgenda())
+                .location(request.getLocation())
+                .meetingType(request.getMeetingType())
+                .startTime(request.getStartTime())
+                .endTime(request.getEndTime())
+                .attendees(request.getAttendees())
+                .assignedTo(request.getAssignedTo())
+                .status(Meeting.MeetingStatus.PLANNED)
+                .entityType(request.getEntityType())
+                .entityId(request.getEntityId())
+                .remindAt(request.getRemindAt())
+                .recurrence(request.getRecurrence())
+                .customData(request.getCustomData())
+                .build();
 
         Meeting savedMeeting = meetingRepository.save(meeting);
         log.info("Created meeting {} for tenant {}", savedMeeting.getId(), tenantId);
@@ -84,14 +86,14 @@ public class MeetingService {
 
     @Transactional(readOnly = true)
     public Page<MeetingResponse> listMeetings(
-        UUID tenantId,
-        String entityType,
-        UUID entityId,
-        Meeting.MeetingStatus status,
-        Pageable pageable
+            UUID tenantId,
+            String entityType,
+            UUID entityId,
+            Meeting.MeetingStatus status,
+            Pageable pageable
     ) {
         Specification<Meeting> spec = Specification.where(MeetingSpecifications.hasTenant(tenantId))
-            .and(MeetingSpecifications.notDeleted());
+                .and(MeetingSpecifications.notDeleted());
 
         if (entityType != null && entityId != null) {
             spec = spec.and(MeetingSpecifications.hasEntity(entityType, entityId));
@@ -127,12 +129,12 @@ public class MeetingService {
 
         // Validate linked entity if changed
         if (request.getEntityType() != null && request.getEntityId() != null) {
-            if (!request.getEntityType().equals(meeting.getEntityType()) || 
-                !request.getEntityId().equals(meeting.getEntityId())) {
+            if (!request.getEntityType().equals(meeting.getEntityType())
+                    || !request.getEntityId().equals(meeting.getEntityId())) {
                 entityResolverService.validateEntityExists(
-                    request.getEntityType(), 
-                    request.getEntityId(), 
-                    tenantId
+                        request.getEntityType(),
+                        request.getEntityId(),
+                        tenantId
                 );
             }
         }
@@ -174,6 +176,30 @@ public class MeetingService {
         if (request.getCustomData() != null) {
             meeting.setCustomData(request.getCustomData());
         }
+        if (request.getEntityType() != null || request.getEntityId() != null) {
+            String newEntityType = request.getEntityType() != null
+                    ? request.getEntityType()
+                    : meeting.getEntityType();
+
+            UUID newEntityId = request.getEntityId() != null
+                    ? request.getEntityId()
+                    : meeting.getEntityId();
+
+            if (newEntityType == null || newEntityId == null) {
+                throw new IllegalArgumentException(
+                        "Both entity type and entity ID are required when linking a meeting"
+                );
+            }
+
+            entityResolverService.validateEntityExists(
+                    newEntityType,
+                    newEntityId,
+                    tenantId
+            );
+
+            meeting.setEntityType(newEntityType);
+            meeting.setEntityId(newEntityId);
+        }
         if (request.getAssignedTo() != null) {
             entityResolverService.resolveUserName(request.getAssignedTo());
             meeting.setAssignedTo(request.getAssignedTo());
@@ -202,21 +228,21 @@ public class MeetingService {
 
     private Meeting findMeetingByIdAndTenant(UUID id, UUID tenantId) {
         return meetingRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
-            .orElseThrow(() -> new NotFoundException("Meeting not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Meeting not found with id: " + id));
     }
 
     private boolean hasWritePermission(Meeting meeting, UUID userId, UUID tenantId) {
         if (permissionEvaluatorService.hasPermission(tenantId, userId, "meeting:write")) {
             OwnershipScope scope = permissionEvaluatorService.getOwnershipScope(tenantId, userId, "meeting");
-            
+
             if (scope == OwnershipScope.ALL) {
                 return true;
             }
-            
+
             if (scope == OwnershipScope.TEAM) {
                 return permissionEvaluatorService.isInSameTeam(tenantId, userId, meeting.getCreatedBy());
             }
-            
+
             if (scope == OwnershipScope.OWN) {
                 return meeting.getCreatedBy().equals(userId);
             }
@@ -226,28 +252,28 @@ public class MeetingService {
 
     private MeetingResponse toResponse(Meeting meeting) {
         MeetingResponse response = MeetingResponse.builder()
-            .id(meeting.getId())
-            .subject(meeting.getSubject())
-            .description(meeting.getDescription())
-            .agenda(meeting.getAgenda())
-            .location(meeting.getLocation())
-            .meetingType(meeting.getMeetingType())
-            .startTime(meeting.getStartTime())
-            .endTime(meeting.getEndTime())
-            .attendees(meeting.getAttendees())
-            .entityType(meeting.getEntityType())
-            .entityId(meeting.getEntityId())
-            .entityName(resolveEntityName(meeting.getEntityType(), meeting.getEntityId()))
-            .status(meeting.getStatus())
-            .remindAt(meeting.getRemindAt())
-            .recurrence(meeting.getRecurrence())
-            .customData(meeting.getCustomData())
-            .assignedTo(meeting.getAssignedTo())
-            .assigneeName(resolveUserName(meeting.getAssignedTo()))
-            .createdAt(meeting.getCreatedAt())
-            .updatedAt(meeting.getUpdatedAt())
-            .createdBy(meeting.getCreatedBy())
-            .build();
+                .id(meeting.getId())
+                .subject(meeting.getSubject())
+                .description(meeting.getDescription())
+                .agenda(meeting.getAgenda())
+                .location(meeting.getLocation())
+                .meetingType(meeting.getMeetingType())
+                .startTime(meeting.getStartTime())
+                .endTime(meeting.getEndTime())
+                .attendees(meeting.getAttendees())
+                .entityType(meeting.getEntityType())
+                .entityId(meeting.getEntityId())
+                .entityName(resolveEntityName(meeting.getEntityType(), meeting.getEntityId()))
+                .status(meeting.getStatus())
+                .remindAt(meeting.getRemindAt())
+                .recurrence(meeting.getRecurrence())
+                .customData(meeting.getCustomData())
+                .assignedTo(meeting.getAssignedTo())
+                .assigneeName(resolveUserName(meeting.getAssignedTo()))
+                .createdAt(meeting.getCreatedAt())
+                .updatedAt(meeting.getUpdatedAt())
+                .createdBy(meeting.getCreatedBy())
+                .build();
 
         return response;
     }

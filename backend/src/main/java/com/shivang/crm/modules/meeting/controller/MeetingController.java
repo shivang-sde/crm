@@ -72,7 +72,7 @@ public class MeetingController {
         return ResponseEntity.ok(response);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id}") 
     public ResponseEntity<Void> deleteMeeting(@PathVariable UUID id) {
         UUID tenantId = tenantContext.getTenantId();
         UUID userId = tenantContext.getUserId();

@@ -50,24 +50,41 @@ export function ClickToCallButton({
     };
 
     try {
-      const response = await callOpeningApi.clickToCall(request);
+      const response =
+        await callOpeningApi.clickToCall(request);
+
+      let handled = false;
 
       if (response.instruction) {
-        const handled = await handleCallOpeningInstruction(router, response.instruction);
-        if (!handled) {
-          toast.error("Unable to handle call instruction.");
-          return;
-        }
+        handled =
+          await handleCallOpeningInstruction(
+            router,
+            response.instruction
+          );
       }
 
-      if (response.message) {
-        toast.success(response.message);
-      } else {
-        toast.success("Call request sent.");
+      if (!handled && response.callId) {
+        router.push(
+          `/calls/active/${response.callId}`
+        );
+        handled = true;
       }
+
+      if (!handled) {
+        toast.error(
+          "Call started, but the active workspace could not be opened."
+        );
+        return;
+      }
+
+      toast.success(
+        response.message ?? "Call request sent."
+      );
     } catch (error) {
       console.error("Click-to-call failed", error);
-      toast.error("Failed to initiate call. Please try again.");
+      toast.error(
+        "Failed to initiate call. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }

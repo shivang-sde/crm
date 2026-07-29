@@ -165,10 +165,10 @@ console.log('TaskDetailPage data:', task);
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
+              {/* <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
               <p className="text-sm">
                 {task.assignedTo?.name || task.createdBy?.name || 'Unassigned'}
-              </p>
+              </p> */}
               {task.assignedTo?.email && (
                 <p className="text-xs text-muted-foreground">{task.assignedTo.email}</p>
               )}
