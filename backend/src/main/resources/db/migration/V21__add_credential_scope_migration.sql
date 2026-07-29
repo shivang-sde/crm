@@ -87,50 +87,24 @@ CREATE TABLE connector_user_agents (
 );
 
 CREATE INDEX idx_connector_user_agents_tenant
-    ON connector_user_agents(tenant_id)
+    ON connector_user_agents (tenant_id)
     WHERE deleted = FALSE;
 
 CREATE INDEX idx_connector_user_agents_connector
-    ON connector_user_agents(
+    ON connector_user_agents (
         tenant_id,
         connector_instance_id
     )
     WHERE deleted = FALSE;
 
 CREATE INDEX idx_connector_user_agents_user_lookup
-    ON connector_user_agents(
+    ON connector_user_agents (
         tenant_id,
         connector_instance_id,
         user_id
     )
     WHERE deleted = FALSE
       AND is_active = TRUE;
-
-CREATE UNIQUE INDEX uq_connector_user_agents_active_user
-    ON connector_user_agents(
-        tenant_id,
-        connector_instance_id,
-        user_id
-    )
-    WHERE deleted = FALSE;
-
-CREATE UNIQUE INDEX uq_connector_user_agents_external_id
-    ON connector_user_agents(
-        tenant_id,
-        connector_instance_id,
-        external_agent_id
-    )
-    WHERE deleted = FALSE
-      AND external_agent_id IS NOT NULL;
-
-CREATE UNIQUE INDEX uq_connector_user_agents_external_number
-    ON connector_user_agents(
-        tenant_id,
-        connector_instance_id,
-        external_agent_number
-    )
-    WHERE deleted = FALSE
-      AND external_agent_number IS NOT NULL;
 
 CREATE UNIQUE INDEX uq_connector_user_agents_user
     ON connector_user_agents (

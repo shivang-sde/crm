@@ -13,7 +13,6 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -24,16 +23,6 @@ import lombok.experimental.SuperBuilder;
 @Entity
 @Table(
     name = "connector_user_agents",
-    uniqueConstraints = {
-        @UniqueConstraint(
-            name = "uq_connector_user_agent_user",
-            columnNames = {
-                "tenant_id",
-                "connector_instance_id",
-                "user_id"
-            }
-        )
-    },
     indexes = {
         @Index(
             name = "idx_connector_user_agent_tenant",
@@ -49,11 +38,13 @@ import lombok.experimental.SuperBuilder;
         ),
         @Index(
             name = "idx_connector_user_agent_external_id",
-            columnList = "tenant_id, connector_instance_id, external_agent_id"
+            columnList =
+                "tenant_id, connector_instance_id, external_agent_id"
         ),
         @Index(
             name = "idx_connector_user_agent_external_number",
-            columnList = "tenant_id, connector_instance_id, external_agent_number"
+            columnList =
+                "tenant_id, connector_instance_id, external_agent_number"
         )
     }
 )
