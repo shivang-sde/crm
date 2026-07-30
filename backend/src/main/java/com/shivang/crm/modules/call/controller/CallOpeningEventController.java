@@ -18,7 +18,9 @@ import com.shivang.crm.modules.dialer.service.CallOpeningEventService;
 import com.shivang.crm.shared.dto.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/calls/opening-events")
 @RequiredArgsConstructor
@@ -59,6 +61,16 @@ public class CallOpeningEventController {
                     tenantId,
                     userId
             );
+
+        log.info(
+            "Pending call-opening events tenant={} user={} count={} eventIds={}",
+            tenantId,
+            userId,
+            events.size(),
+            events.stream()
+                    .map(CallOpeningEvent::getId)
+                    .toList()
+    );
 
     List<CallOpeningEventResponse> response =
             events.stream()

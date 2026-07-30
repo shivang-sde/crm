@@ -15,6 +15,7 @@ import com.shivang.crm.modules.call.entity.Call.CallStatus;
 import com.shivang.crm.modules.call.entity.Call.CallType;
 import com.shivang.crm.modules.call.repository.CallRepository;
 import com.shivang.crm.modules.dialer.dto.CallOpeningInstruction;
+import com.shivang.crm.modules.dialer.entity.CallOpeningEvent;
 import com.shivang.crm.modules.dialer.entity.CallProviderLink;
 import com.shivang.crm.modules.dialer.service.CallOpeningDecisionService;
 import com.shivang.crm.modules.dialer.service.CallOpeningEventService;
@@ -173,6 +174,12 @@ public class CallWebhookMappingApplier {
         Call savedCall = callRepository.save(call);
         log.info("Created inbound Call {} for tenant {} from connect webhook", savedCall.getId(), tenantId);
 
+        log.info(
+                "Saving inbound provider link callId={} externalCallId={}",
+                savedCall.getId(),
+                event.getExternalCallId()
+        );
+
         // Create provider link
         CallProviderLink link = CallProviderLink.builder()
                 .tenantId(tenantId)
@@ -183,7 +190,19 @@ public class CallWebhookMappingApplier {
                 .linkedAt(Instant.now())
                 .metadata(Map.of("providerKey", providerKey, "direction", "inbound"))
                 .build();
-        linkService.save(link);
+
+        CallProviderLink savedLink = linkService.save(link);
+
+        log.info(
+                "Inbound provider link saved linkId={} callId={}",
+                savedLink.getId(),
+                savedCall.getId()
+        );
+
+        log.info(
+                "Evaluating inbound opening decision callId={}",
+                savedCall.getId()
+        );
 
         // Decide opening
         var decision = decisionService.decide(tenantId, event, link);
@@ -204,37 +223,75 @@ public class CallWebhookMappingApplier {
                     .build();
         }
 
+        log.info(
+                "Inbound opening decision completed callId={} shouldOpen={} "
+                + "triggerKey={} reason={}",
+                savedCall.getId(),
+                decision.shouldOpen(),
+                decision.triggerKey(),
+                decision.reason()
+        );
+
         // For inbound, userId is null (we don't know which CRM user yet)
         // The opening event will be delivered to all users in the tenant's pending
         // queue
-        UUID targetUserId =
-        connectorUserAgentService
-                .resolveUserId(
-                        tenantId,
-                        connectorInstanceId,
-                        event.getAgentId(),
-                        event.getAgentNumber()
-                )
-                .orElseThrow(() ->
-                        new BusinessException(
+        UUID targetUserId
+                = connectorUserAgentService
+                        .resolveUserId(
+                                tenantId,
+                                connectorInstanceId,
+                                event.getAgentId(),
+                                event.getAgentNumber()
+                        )
+                        .orElseThrow(()
+                                -> new BusinessException(
                                 "AGENT_NOT_MAPPED",
                                 "No CRM user is mapped to provider agent "
-                                        + event.getAgentId()
+                                + event.getAgentId()
                         )
-                );
+                        );
 
-eventService.createEvent(
-        tenantId,
-        targetUserId,
-        event.getAgentId(),
-        savedCall.getId(),
-        event.getExternalCallId(),
-        providerKey,
-        decision.shouldOpen()
+        log.info(
+                "Resolving inbound target user tenant={} connector={} "
+                + "agentId={} agentNumber={}",
+                tenantId,
+                connectorInstanceId,
+                event.getAgentId(),
+                event.getAgentNumber()
+        );
+
+        log.info(
+                "Creating inbound opening event tenant={} user={} callId={} "
+                + "agentId={} instruction={}",
+                tenantId,
+                targetUserId,
+                savedCall.getId(),
+                event.getAgentId(),
+                instr
+        );
+
+        CallOpeningEvent openingEvent = eventService.createEvent(
+                tenantId,
+                targetUserId,
+                event.getAgentId(),
+                savedCall.getId(),
+                event.getExternalCallId(),
+                providerKey,
+                decision.shouldOpen()
                 ? decision.triggerKey()
                 : "call-connect",
-        instr
-);
+                instr
+        );
+
+        log.info(
+                "Inbound opening event created eventId={} tenant={} "
+                + "user={} callId={} status={}",
+                openingEvent.getId(),
+                openingEvent.getTenantId(),
+                openingEvent.getUserId(),
+                openingEvent.getCallId(),
+                openingEvent.getDeliveryStatus()
+        );
 
         Map<String, Object> metadata = buildConnectMetadata(savedCall, event, providerKey);
         activityService.logSystemActivity(

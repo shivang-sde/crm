@@ -27,10 +27,10 @@ const dashboardRoutes: Record<string, string> = {
 
 const roleRoutePrefixes: Record<string, string[]> = {
   SUPERADMIN: ["/users", "/roles", "/tenants", "/superadmin", "/reseller", "/admin"],
-  RESELLER: ["/tenants", "/reseller",],
+  RESELLER: ["/tenants", "/reseller", "/settings/"],
   ADMIN: ["/users", "/roles", "/admin/dashboard", "/admin/settings", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
-  MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
-  EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
+  MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings", "/settings"],
+  EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings", "/settings"],
 };
 
 const publicRoutes = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/"];

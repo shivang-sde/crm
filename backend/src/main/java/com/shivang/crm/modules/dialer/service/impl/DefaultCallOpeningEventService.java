@@ -56,6 +56,7 @@ public CallOpeningEvent createEvent(
             .instruction(instructionMap)
             .deliveryStatus("PENDING")
             .createdAt(Instant.now())
+            .updatedAt(Instant.now())
             .build();
 
     return repo.save(event);
