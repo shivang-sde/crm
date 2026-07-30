@@ -120,6 +120,15 @@ private final ConnectorInstanceService connectorInstanceService;
         try {
             ObjectNode node = (ObjectNode) objectMapper.readTree(body);
             payloadMap = objectMapper.convertValue(node, Map.class);
+            log.info(
+        "SellSpark raw identifiers trigger={} "
+                + "lead_id={} call_uniqueid={} uniqueid={} call_id={}",
+        triggerKey,
+        payloadMap.get("lead_id"),
+        payloadMap.get("call_uniqueid"),
+        payloadMap.get("uniqueid"),
+        payloadMap.get("call_id")
+);
         } catch (Exception e) {
             // keep empty
         }

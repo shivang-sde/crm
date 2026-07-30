@@ -207,17 +207,58 @@ public class CallWebhookMappingApplier {
         // Decide opening
         var decision = decisionService.decide(tenantId, event, link);
         CallOpeningInstruction instr;
-        if (decision.shouldOpen()) {
+        if (decision.shouldOpen() && decision.instruction() != null) {
             instr = decision.instruction();
-            if (instr.getCallId() == null) {
-                instr.setCallId(savedCall.getId().toString());
+            if (instr.getCallId() == null
+                    || instr.getCallId().isBlank()) {
+
+                instr.setCallId(
+                        savedCall.getId().toString()
+                );
             }
+
+            /*
+     * A connected inbound call must open the active-call workspace.
+     * A matching rule with NO_ACTION must not consume the event silently.
+             */
+            if (instr.getActionType() == null
+                    || instr.getActionType().isBlank()
+                    || "NO_ACTION".equalsIgnoreCase(
+                            instr.getActionType()
+                    )) {
+
+                instr.setActionType(
+                        "OPEN_CALL_LAYOUT"
+                );
+            }
+
+            if (instr.getDisplayMode() == null
+                    || instr.getDisplayMode().isBlank()
+                    || "NONE".equalsIgnoreCase(
+                            instr.getDisplayMode()
+                    )) {
+
+                instr.setDisplayMode("PAGE");
+            }
+
+            if (instr.getRoute() == null
+            || instr.getRoute().isBlank()) {
+
+        instr.setRoute(
+                "/calls/active/"
+                        + savedCall.getId()
+        );
+    }
         } else {
             // Default: open active call page for unknown/unresolved
             instr = CallOpeningInstruction.builder()
                     .actionType("OPEN_CALL_LAYOUT")
                     .callId(savedCall.getId().toString())
                     .externalCallId(event.getExternalCallId())
+                    .route(
+                    "/calls/active/"
+                            + savedCall.getId()
+            )
                     .resolved(false)
                     .reason("Inbound call - no trigger matched, opening active call")
                     .build();
