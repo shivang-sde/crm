@@ -73,6 +73,7 @@ public class CallService {
         Call call = Call.builder()
             .tenantId(tenantId)
             .createdBy(userId)
+            .ownerId(userId)
             .subject(request.getSubject())
             .description(request.getDescription())
             .callType(request.getCallType() != null ? request.getCallType() : Call.CallType.OUTGOING)
@@ -322,24 +323,75 @@ public class CallService {
         }
     }
 
-    private boolean hasWritePermission(Call call, UUID userId, UUID tenantId) {
-        if (permissionEvaluatorService.hasPermission(tenantId, userId, "call:write")) {
-            OwnershipScope scope = permissionEvaluatorService.getOwnershipScope(tenantId, userId, "call");
-            
-            if (scope == OwnershipScope.ALL) {
-                return true;
-            }
-            
-            if (scope == OwnershipScope.TEAM) {
-                return permissionEvaluatorService.isInSameTeam(tenantId, userId, call.getCreatedBy());
-            }
-            
-            if (scope == OwnershipScope.OWN) {
-                return call.getCreatedBy().equals(userId);
-            }
-        }
+    private boolean hasWritePermission(
+        Call call,
+        UUID userId,
+        UUID tenantId
+) {
+    if (call == null || userId == null || tenantId == null) {
         return false;
     }
+
+    if (!permissionEvaluatorService.hasPermission(
+            tenantId,
+            userId,
+            "call:write"
+    )) {
+        return false;
+    }
+
+    OwnershipScope scope =
+            permissionEvaluatorService.getOwnershipScope(
+                    tenantId,
+                    userId,
+                    "call"
+            );
+
+    if (scope == null) {
+        return false;
+    }
+
+
+    UUID effectiveOwnerId = resolveEffectiveOwnerId(call);
+
+    return switch (scope) {
+        case ALL -> true;
+
+        case OWN ->
+                effectiveOwnerId != null
+                        && userId.equals(effectiveOwnerId);
+
+        case TEAM ->
+                effectiveOwnerId != null
+                        && (
+                            userId.equals(effectiveOwnerId)
+                            || permissionEvaluatorService.isInSameTeam(
+                                    tenantId,
+                                    userId,
+                                    effectiveOwnerId
+                            )
+                        );
+    };
+}
+
+private UUID resolveEffectiveOwnerId(Call call) {
+    if (call == null) {
+        return null;
+    }
+
+    /*
+     * Business owner should control OWN/TEAM scope.
+     * Inbound webhook calls have ownerId but createdBy is null.
+     */
+    if (call.getOwnerId() != null) {
+        return call.getOwnerId();
+    }
+
+    /*
+     * Fallback for existing manually created/outbound calls.
+     */
+    return call.getCreatedBy();
+}
 
     private CallResponse toResponse(Call call) {
         CallResponse response = CallResponse.builder()

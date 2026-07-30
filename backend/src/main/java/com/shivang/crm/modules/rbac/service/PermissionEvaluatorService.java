@@ -188,12 +188,16 @@ public class PermissionEvaluatorService {
     /**
      * Check if two users are in the same team
      */
-    @Transactional(readOnly = true)
-    public boolean isInSameTeam(UUID tenantId, UUID user1Id, UUID user2Id) {
-        // Get team members for user1
-        List<UUID> teamMembers = getTeamUserIds(user1Id, tenantId);
-        return teamMembers.contains(user2Id);
-    }
+    public boolean isInSameTeam(
+        UUID tenantId,
+        UUID user1Id,
+        UUID user2Id
+) {
+    List<UUID> teamMembers =
+            getTeamUserIds(user1Id, tenantId);
+
+    return teamMembers.contains(user2Id);
+}
 
     /**
      * Check if a permission is defined in the system

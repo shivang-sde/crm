@@ -158,22 +158,59 @@ public class CallWebhookMappingApplier {
         String phone = event.getCallerNumber();
         Instant startTime = event.getEventTimestamp() != null ? event.getEventTimestamp() : event.getStartedAt();
 
+         UUID targetUserId =
+            connectorUserAgentService.resolveUserId(
+                    tenantId,
+                    connectorInstanceId,
+                    event.getAgentId(),
+                    event.getAgentNumber()
+            ).orElseThrow(() ->
+                    new BusinessException(
+                            "AGENT_NOT_MAPPED",
+                            "No CRM user is mapped to provider agent "
+                                    + event.getAgentId()
+                    )
+            );
+
+             log.info(
+            "Resolved inbound provider agent tenant={} connector={} "
+                    + "agentId={} agentNumber={} targetUserId={}",
+            tenantId,
+            connectorInstanceId,
+            event.getAgentId(),
+            event.getAgentNumber(),
+            targetUserId
+    );
+
         Call call = Call.builder()
-                .tenantId(tenantId)
-                .subject("Inbound Call" + (phone != null ? " from " + phone : ""))
-                .callType(CallType.INCOMING)
-                .status(CallStatus.PLANNED)
-                .phoneNumber(phone)
-                .startTime(startTime)
-                .createdBy(null)
-                .updatedBy(null)
-                .actorType("SYSTEM")
-                .actorSource("WEBHOOK:" + providerKey)
-                .build();
+            .tenantId(tenantId)
+            .subject(
+                    "Inbound Call"
+                            + (phone != null ? " from " + phone : "")
+            )
+            .callType(CallType.INCOMING)
+            .status(CallStatus.PLANNED)
+            .phoneNumber(phone)
+            .startTime(startTime)
+
+            // System audit fields
+            .createdBy(targetUserId)
+            .updatedBy(targetUserId)
+            .actorType("SYSTEM")
+            .actorSource("WEBHOOK:" + providerKey)
+
+            // Business ownership
+            .ownerId(targetUserId)
+            .build();
+
 
         Call savedCall = callRepository.save(call);
-        log.info("Created inbound Call {} for tenant {} from connect webhook", savedCall.getId(), tenantId);
-
+       log.info(
+            "Created inbound Call {} for tenant={} ownerUserId={}",
+            savedCall.getId(),
+            tenantId,
+            targetUserId
+    );
         log.info(
                 "Saving inbound provider link callId={} externalCallId={}",
                 savedCall.getId(),
@@ -272,25 +309,6 @@ public class CallWebhookMappingApplier {
                 decision.triggerKey(),
                 decision.reason()
         );
-
-        // For inbound, userId is null (we don't know which CRM user yet)
-        // The opening event will be delivered to all users in the tenant's pending
-        // queue
-        UUID targetUserId
-                = connectorUserAgentService
-                        .resolveUserId(
-                                tenantId,
-                                connectorInstanceId,
-                                event.getAgentId(),
-                                event.getAgentNumber()
-                        )
-                        .orElseThrow(()
-                                -> new BusinessException(
-                                "AGENT_NOT_MAPPED",
-                                "No CRM user is mapped to provider agent "
-                                + event.getAgentId()
-                        )
-                        );
 
         log.info(
                 "Resolving inbound target user tenant={} connector={} "
