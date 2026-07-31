@@ -106,7 +106,7 @@ public class MeetingService {
         // Apply ownership scope filtering
         List<OwnershipScope> userScopes = permissionEvaluatorService.getUserOwnershipScopes(tenantId, tenantContext.getUserId());
         if (!userScopes.contains(OwnershipScope.ALL)) {
-            spec = spec.and(MeetingSpecifications.hasOwnerOrAssignedTo(tenantContext.getUserId()));
+            spec = spec.and(MeetingSpecifications.hasOwnerOrAssignedToOrCreatedBy(tenantContext.getUserId()));
         }
 
         Page<Meeting> meetingPage = meetingRepository.findAll(spec, pageable);

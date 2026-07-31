@@ -1,9 +1,10 @@
 package com.shivang.crm.modules.meeting.repository;
 
-import com.shivang.crm.modules.meeting.entity.Meeting;
+import java.util.UUID;
+
 import org.springframework.data.jpa.domain.Specification;
 
-import java.util.UUID;
+import com.shivang.crm.modules.meeting.entity.Meeting;
 
 public class MeetingSpecifications {
 
@@ -26,10 +27,11 @@ public class MeetingSpecifications {
         return (root, query, cb) -> cb.equal(root.get("status"), status);
     }
 
-    public static Specification<Meeting> hasOwnerOrAssignedTo(UUID userId) {
+    public static Specification<Meeting> hasOwnerOrAssignedToOrCreatedBy(UUID userId) {
         return (root, query, cb) -> cb.or(
             cb.equal(root.get("createdBy"), userId),
-            cb.equal(root.get("assignedTo"), userId)
+            cb.equal(root.get("assignedTo"), userId),
+            cb.equal(root.get("ownerId"), userId)
         );
     }
 }

@@ -33,7 +33,7 @@ public class CallSpecifications {
     public static Specification<Call> hasOwnerOrAssignedTo(UUID userId) {
         return (root, query, cb) -> cb.or(
             cb.equal(root.get("createdBy"), userId),
-            cb.equal(root.get("assignedTo"), userId)
+            cb.equal(root.get("ownerId"), userId)
         );
     }
 }
