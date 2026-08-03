@@ -23,6 +23,7 @@ export const roleApi = {
 
   createRole: async (data: CreateRoleRequest) => {
     const response = await api.post<ApiResponse<Role>>("/roles", data);
+    console.log("Create role response:", response); // Debugging line
     return unwrapResponse(response);
   },
 

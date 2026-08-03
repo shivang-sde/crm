@@ -7,6 +7,7 @@ import {
   Phone,
   Calendar,
   CheckSquare,
+  Package
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -123,10 +124,10 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
 
   return [
     ...baseItems,
-    ...(canViewDeals? [{ name: "Deals", href: "/deals", icon: Target, show: true }] : []),
     ...(canViewLeads ? [{ name: "Leads", href: "/leads", icon: Target, show: true }] : []),
-    ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),
+    ...(canViewDeals? [{ name: "Deals", href: "/deals", icon: Package, show: true }] : []),
     ...(canViewContacts ? [{ name: "Contacts", href: "/contacts", icon: Users, show: true }] : []),
+    ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),
     ...(canViewTasks ? [{ name: "Tasks", href: "/tasks", icon: CheckSquare, show: true }] : []),
     ...(canViewCalls ? [{ name: "Calls", href: "/calls", icon: Phone, show: true }] : []),
     ...(canViewMeetings ? [{ name: "Meetings", href: "/meetings", icon: Calendar, show: true }] : []),

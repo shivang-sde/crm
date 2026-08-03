@@ -1,37 +1,33 @@
 package com.shivang.crm.modules.call.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.eq;
-
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.shivang.crm.modules.activity.service.ActivityService;
+import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.call.dto.CallCreateRequest;
 import com.shivang.crm.modules.call.dto.CallResponse;
 import com.shivang.crm.modules.call.dto.ClickToCallRequest;
-import com.shivang.crm.modules.call.service.impl.DefaultClickToCallService;
 import com.shivang.crm.modules.call.repository.CallRepository;
+import com.shivang.crm.modules.call.service.impl.DefaultClickToCallService;
 import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionResult;
 import com.shivang.crm.modules.integration.service.ConnectorExecutionService;
-import com.shivang.crm.shared.service.EntityPhoneResolver;
-import com.shivang.crm.modules.auth.security.TenantContext;
-import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.shared.exception.BusinessException;
-
-import org.mockito.ArgumentCaptor;
-
-import static org.mockito.Mockito.times;
+import com.shivang.crm.shared.service.EntityPhoneResolver;
 
 class ClickToCallServiceTest {
 
@@ -87,7 +83,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("LEAD").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
         var resp = svc.clickToCall(req);
 
         assertThat(resp.getExternalCallId()).isNull();
@@ -125,7 +121,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("LEAD").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
@@ -154,7 +150,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("LEAD").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
@@ -202,7 +198,7 @@ class ClickToCallServiceTest {
             com.shivang.crm.shared.service.EntityPhoneResolutionResult.builder().found(true).phone("12345").build()
         );
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("LEAD").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
@@ -243,7 +239,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("LEAD").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
         var resp = svc.clickToCall(req);
 
         assertThat(resp.getStatus()).isEqualTo("success");
@@ -273,7 +269,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("LEAD").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
         var resp = svc.clickToCall(req);
 
         var execCaptor = ArgumentCaptor.forClass(com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest.class);

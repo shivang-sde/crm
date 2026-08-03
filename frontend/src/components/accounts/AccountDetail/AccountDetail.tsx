@@ -97,10 +97,10 @@ export function AccountDetail({ account }: AccountDetailProps) {
                 <p className="text-sm font-medium text-muted-foreground">Website</p>
                 <p>{account.website || "—"}</p>
               </div>
-              <div>
+              {/* <div>
                 <p className="text-sm font-medium text-muted-foreground">Owner</p>
                 <p>{account.ownerUserId || "Unassigned"}</p>
-              </div>
+              </div> */}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -131,17 +131,23 @@ export function AccountDetail({ account }: AccountDetailProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_1fr]">
-            <div className="space-y-6">
-              <AccountTimeline accountId={account.id} />
-            </div>
-            <div className="space-y-6">
-              <AccountNotes accountId={account.id} />
-            </div>
-          </div>
+          <AccountContacts accountId={account.id} />
+          <EntityCallHistory
+            entityType="account"
+            entityId={account.id}
+            title="Account call history"
+            pageSize={10}
+          />
         </div>
 
         <div className="space-y-4">
+          <div className="space-y-6">
+            <AccountNotes accountId={account.id} />
+          </div>
+
+          <div className="space-y-6">
+            <AccountTimeline accountId={account.id} />
+          </div>
           <div className="rounded-lg border bg-white p-6">
             <p className="text-sm font-medium text-muted-foreground">Account details</p>
             <div className="mt-4 grid gap-3">
@@ -158,17 +164,6 @@ export function AccountDetail({ account }: AccountDetailProps) {
                 <p>{new Date(account.updatedAt).toLocaleString()}</p>
               </div>
             </div>
-          </div>
-
-          <div className="rounded-lg border bg-white p-6">
-            <h3 className="text-sm font-semibold">Contacts</h3>
-            <AccountContacts accountId={account.id} />
-            <EntityCallHistory
-              entityType="account"
-              entityId={account.id}
-              title="Account call history"
-              pageSize={10}
-            />
           </div>
         </div>
       </div>

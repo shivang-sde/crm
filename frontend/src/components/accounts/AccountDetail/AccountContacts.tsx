@@ -22,6 +22,9 @@ export function AccountContacts({ accountId }: AccountContactsProps) {
 
   return (
     <div className="overflow-hidden rounded-lg border">
+      <div className="flex items-center justify-between border-b bg-muted px-6 py-3">
+        <p className="text-sm font-medium text-muted-foreground">Contacts</p>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>

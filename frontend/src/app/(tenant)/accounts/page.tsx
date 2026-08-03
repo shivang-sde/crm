@@ -12,10 +12,19 @@ function AccountsPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap justify-between items-center gap-4">
-        <h1 className="text-2xl font-bold tracking-tight">Accounts</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          {canEditAccounts && (
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Accounts
+          </h1>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage companies and organizations associated with
+            your CRM.
+          </p>
+        </div>
+
+         {canEditAccounts && (
             <Button asChild>
               <Link href="/accounts/new">
                 <Plus className="mr-2 h-4 w-4" />
@@ -23,7 +32,6 @@ function AccountsPageContent() {
               </Link>
             </Button>
           )}
-        </div>
       </div>
       <AccountList />
     </div>

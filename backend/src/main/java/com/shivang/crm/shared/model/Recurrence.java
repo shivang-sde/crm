@@ -1,10 +1,17 @@
 package com.shivang.crm.shared.model;
 
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.util.Set;
+
+import com.shivang.crm.shared.enums.CustomFrequency;
+import com.shivang.crm.shared.enums.EndType;
+import com.shivang.crm.shared.enums.RepeatType;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.time.Instant;
 
 /**
  * Recurrence model for scheduling recurring tasks, calls, and meetings.
@@ -15,23 +22,48 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Recurrence {
+
     private RepeatType repeatType;
+
+    /**
+     * Every N units.
+     *
+     * Examples:
+     * interval=2 and frequency=WEEKLY means every 2 weeks.
+     */
+    @Builder.Default
+    private Integer interval = 1;
+
     private CustomFrequency customFrequency;
-    private Integer interval;
+
+    /**
+     * Used for weekly recurrence.
+     * Example: MONDAY, WEDNESDAY, FRIDAY.
+     */
+    private Set<DayOfWeek> daysOfWeek;
+
+    /**
+     * Optional day of month, such as 15.
+     */
+    private Integer dayOfMonth;
+
+    /**
+     * Protects monthly recurrence for dates such as the 31st.
+     */
+    private MonthlyOverflowPolicy monthlyOverflowPolicy;
+
     private EndType endType;
     private Integer endAfterCount;
     private Instant endDate;
-}
 
-enum RepeatType {
-    DAILY, WEEKLY, MONTHLY, YEARLY, CUSTOM
-}
+    /**
+     * IANA timezone, for example Asia/Kolkata.
+     */
+    private String timezone;
 
-enum CustomFrequency {
-    DAILY, WEEKLY, MONTHLY, YEARLY
-}
-
-enum EndType {
-    NEVER, AFTER_N_TIMES, ON_DATE
+    public enum MonthlyOverflowPolicy {
+        SKIP,
+        LAST_DAY_OF_MONTH
+    }
 }
 

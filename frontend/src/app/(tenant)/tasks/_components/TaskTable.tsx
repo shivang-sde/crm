@@ -137,7 +137,7 @@ export default function TaskTable({
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Due Date</TableHead>
-              <TableHead>Entity</TableHead>
+              <TableHead>Task For</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>

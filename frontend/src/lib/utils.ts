@@ -5,8 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-
-
 export  function toIsoString(value?: string): string | undefined {
   if (!value) {
     return undefined;
@@ -49,16 +47,34 @@ export function formatDateTime(value: string | null | undefined) {
   }).format(date);
 }
 
+
+export function formatLabel(value?: string | null) {
+  if (!value) {
+    return 'Not available';
+  }
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map(
+      (part) =>
+        part.charAt(0).toUpperCase() +
+        part.slice(1)
+    )
+    .join(' ');
+}
+
+
 export function formatDuration(
-  durationSeconds: number | null,
-  durationMinutes: number | null
+  durationSeconds?: number | null,
+  durationMinutes?: number | null
 ) {
   if (
     durationSeconds !== null &&
     durationSeconds !== undefined
   ) {
     if (durationSeconds <= 0) {
-      return '0 seconds';
+      return '0 sec';
     }
 
     const hours = Math.floor(durationSeconds / 3600);
@@ -88,10 +104,8 @@ export function formatDuration(
     durationMinutes !== null &&
     durationMinutes !== undefined
   ) {
-    return `${durationMinutes} minute${
-      durationMinutes === 1 ? '' : 's'
-    }`;
+    return `${durationMinutes} min`;
   }
 
-  return 'Not available';
+  return '—';
 }

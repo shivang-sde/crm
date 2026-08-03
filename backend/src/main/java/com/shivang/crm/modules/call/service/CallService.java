@@ -82,7 +82,7 @@ public class CallService {
             .phoneNumber(request.getPhoneNumber())
             .startTime(request.getStartTime())
             .endTime(request.getEndTime())
-            .entityType(request.getEntityType())
+            .entityType(request.getEntityType() != null ? request.getEntityType().toLowerCase(Locale.ROOT) : null)
             .entityId(request.getEntityId())
             .remindAt(request.getRemindAt())
             .recurrence(request.getRecurrence())

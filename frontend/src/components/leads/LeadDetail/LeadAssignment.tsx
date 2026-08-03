@@ -48,7 +48,7 @@ export function LeadAssignment({ lead }: LeadAssignmentProps) {
       <CardHeader>
         <CardTitle className="text-base">Manage</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-row items-center space-x-8 text-sm text-muted-foreground">
         <div>
           <p className="text-sm text-muted-foreground mb-2">Status</p>
           <Select

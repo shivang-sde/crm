@@ -250,6 +250,11 @@ public class RoleManagementService {
     }
 
     private void saveRolePermissions(UUID roleId, List<PermissionScopeRequest> requestedPermissions) {
+        
+        if (requestedPermissions == null || requestedPermissions.isEmpty()) {
+        return; // Nothing to save
+    }
+        
         for (PermissionScopeRequest pr : requestedPermissions) {
             Permission permission = permissionRepository.findById(pr.getPermissionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Permission", pr.getPermissionId().toString()));

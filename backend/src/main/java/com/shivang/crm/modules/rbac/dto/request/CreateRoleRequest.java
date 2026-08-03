@@ -1,10 +1,11 @@
 package com.shivang.crm.modules.rbac.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
-import lombok.Data;
-
+import java.util.ArrayList;
 import java.util.List;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
 @Data
 public class CreateRoleRequest {
@@ -12,7 +13,7 @@ public class CreateRoleRequest {
     private String name;
     
     private String description;
-    
-    @NotEmpty
-    private List<PermissionScopeRequest> permissions;
+
+    @Valid
+    private List<PermissionScopeRequest> permissions = new ArrayList<>();
 }

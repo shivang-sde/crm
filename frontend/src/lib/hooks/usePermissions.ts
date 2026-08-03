@@ -37,8 +37,10 @@ export const usePermissions = () => {
   const canEditLeads = hasPermission('lead', 'write');
   const canViewContacts = hasPermission('contact', 'read');
   const canEditContacts = hasPermission('contact', 'write');
+  const canDeleteContacts = hasPermission('contact', 'delete');
   const canViewAccounts = hasPermission('account', 'read');
   const canEditAccounts = hasPermission('account', 'write');
+  const canDeleteAccounts = hasPermission('account', 'delete');
   const canViewDeals = hasPermission('deal', 'read');
   const canEditDeals = hasPermission('deal', 'write');
   const canViewReports = hasPermission('report', 'read');
@@ -62,8 +64,10 @@ export const usePermissions = () => {
     canEditLeads,
     canViewContacts,
     canEditContacts,
+    canDeleteContacts,
     canViewAccounts,
     canEditAccounts,
+    canDeleteAccounts,
     canViewDeals,
     canEditDeals,
     canViewReports,

@@ -99,8 +99,6 @@ export function LeadDetail({ lead }: LeadDetailProps) {
 
           <LeadCustomFields lead={lead} />
 
-          <LeadTimeline leadId={lead.id} />
-
           <EntityCallHistory
             entityType="lead"
             entityId={lead.id}
@@ -109,9 +107,10 @@ export function LeadDetail({ lead }: LeadDetailProps) {
           />
         </div>
 
-        <div>
+        <div className="space-y-6" >
           <LeadAssignment lead={lead} />
           <LeadNotes leadId={lead.id} />
+          <LeadTimeline leadId={lead.id} />
         </div>
       </div>
 

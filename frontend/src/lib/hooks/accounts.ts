@@ -6,7 +6,6 @@ import { accountApi } from "@/lib/api/accounts";
 import {
   AccountCreateRequest,
   AccountListParams,
-  AccountResponse,
   AccountUpdateRequest,
 } from "@/types/accounts";
 

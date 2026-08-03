@@ -10,6 +10,7 @@ export interface AccountListParams {
   owner?: string;
   page?: number;
   size?: number;
+  sort?: string;
 }
 
 export interface AccountCreateRequest {
