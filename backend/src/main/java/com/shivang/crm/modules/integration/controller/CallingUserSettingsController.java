@@ -40,7 +40,7 @@ public class CallingUserSettingsController {
     private final ConnectorInstanceService connectorInstanceService;
     private final ConnectorCredentialService credentialService;
     private final ConnectorUserAgentService userAgentService;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public record ConnectorResponse(
             UUID id,

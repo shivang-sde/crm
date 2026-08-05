@@ -6,6 +6,7 @@ import java.util.Set;
 
 import com.shivang.crm.shared.enums.CustomFrequency;
 import com.shivang.crm.shared.enums.EndType;
+import com.shivang.crm.shared.enums.MonthlyOverflowPolicy;
 import com.shivang.crm.shared.enums.RepeatType;
 
 import lombok.AllArgsConstructor;
@@ -14,8 +15,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Recurrence model for scheduling recurring tasks, calls, and meetings.
- * Stored as JSONB in database entities.
+ * Recurrence rule for tasks, calls, and meetings.
+ *
+ * This class stores configuration only.
+ * Runtime recurrence state belongs in RecurrenceSchedule.
  */
 @Data
 @Builder
@@ -26,44 +29,66 @@ public class Recurrence {
     private RepeatType repeatType;
 
     /**
-     * Every N units.
+     * Repeat every N units.
      *
      * Examples:
-     * interval=2 and frequency=WEEKLY means every 2 weeks.
+     * 1 = every week
+     * 2 = every two weeks
      */
     @Builder.Default
     private Integer interval = 1;
 
+    /**
+     * Required only when repeatType is CUSTOM.
+     */
     private CustomFrequency customFrequency;
 
     /**
      * Used for weekly recurrence.
-     * Example: MONDAY, WEDNESDAY, FRIDAY.
+     *
+     * If empty, the weekday of the original occurrence is used.
      */
     private Set<DayOfWeek> daysOfWeek;
 
     /**
-     * Optional day of month, such as 15.
+     * Used for monthly recurrence.
+     *
+     * Valid range: 1-31.
+     * If null, the original occurrence day is used.
      */
     private Integer dayOfMonth;
 
     /**
-     * Protects monthly recurrence for dates such as the 31st.
+     * Defines behavior when dayOfMonth does not exist
+     * in the target month.
      */
-    private MonthlyOverflowPolicy monthlyOverflowPolicy;
+    @Builder.Default
+    private MonthlyOverflowPolicy monthlyOverflowPolicy =
+            MonthlyOverflowPolicy.LAST_DAY_OF_MONTH;
 
-    private EndType endType;
+    @Builder.Default
+    private EndType endType = EndType.NEVER;
+
+    /**
+     * Required when endType is AFTER_N_TIMES.
+     *
+     * The initial occurrence counts as occurrence number one.
+     */
     private Integer endAfterCount;
+
+    /**
+     * Required when endType is ON_DATE.
+     *
+     * An occurrence equal to endDate is allowed.
+     * An occurrence after endDate is rejected.
+     */
     private Instant endDate;
 
     /**
      * IANA timezone, for example Asia/Kolkata.
+     *
+     * Fallback order:
+     * recurrence timezone -> tenant timezone -> UTC.
      */
     private String timezone;
-
-    public enum MonthlyOverflowPolicy {
-        SKIP,
-        LAST_DAY_OF_MONTH
-    }
 }
-

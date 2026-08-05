@@ -12,6 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.modules.recurrence.service.RecurrenceScheduleService;
+import com.shivang.crm.modules.reminder.entity.ReminderSourceType;
+import com.shivang.crm.modules.reminder.service.ReminderPlanningService;
 import com.shivang.crm.modules.task.dto.TaskCreateRequest;
 import com.shivang.crm.modules.task.dto.TaskResponse;
 import com.shivang.crm.modules.task.dto.TaskUpdateRequest;
@@ -37,6 +40,8 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
+    private final ReminderPlanningService reminderPlanningService;
+    private final RecurrenceScheduleService recurrenceScheduleService;
 
     private final TenantContext tenantContext;
 
@@ -78,6 +83,18 @@ public class TaskService {
             .build();
 
         Task savedTask = taskRepository.save(task);
+        if (savedTask.getRecurrence() != null) {
+            recurrenceScheduleService.upsertSchedule(
+                    tenantId,
+                    ReminderSourceType.TASK,
+                    savedTask.getId(),
+                    savedTask.getDueDate(),
+                    savedTask.getRemindAt(),
+                    savedTask.getRecurrence(),
+                    null
+            );
+        }
+        reminderPlanningService.planForTask(savedTask);
         log.info("Created task {} for tenant {}", savedTask.getId(), tenantId);
 
         return toResponse(savedTask);
@@ -176,10 +193,25 @@ public class TaskService {
         // }
 
         task.setUpdatedBy(userId);
-        Task updatedTask = taskRepository.save(task);
+        task = taskRepository.save(task);
+        if (task.getRecurrence() != null) {
+            recurrenceScheduleService.upsertSchedule(
+                    tenantId,
+                    ReminderSourceType.TASK,
+                    task.getId(),
+                    task.getDueDate(),
+                    task.getRemindAt(),
+                    task.getRecurrence(),
+                    null
+            );
+        } else {
+            recurrenceScheduleService.deactivateSchedule(tenantId, ReminderSourceType.TASK, task.getId());
+        }
+        reminderPlanningService.cancelPending(tenantId, ReminderSourceType.TASK, task.getId());
+        reminderPlanningService.planForTask(task);
         log.info("Updated task {} for tenant {}", id, tenantId);
 
-        return toResponse(updatedTask);
+        return toResponse(task);
     }
 
     public void deleteTask(UUID id, UUID tenantId, UUID userId) {
@@ -193,6 +225,7 @@ public class TaskService {
         task.setDeleted(true);
         task.setUpdatedBy(userId);
         taskRepository.save(task);
+        recurrenceScheduleService.deactivateSchedule(tenantId, ReminderSourceType.TASK, task.getId());
         log.info("Soft deleted task {} for tenant {}", id, tenantId);
     }
 

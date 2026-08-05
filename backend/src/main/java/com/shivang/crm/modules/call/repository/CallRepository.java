@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -15,6 +16,9 @@ import java.util.UUID;
 public interface CallRepository extends JpaRepository<Call, UUID>, JpaSpecificationExecutor<Call> {
 
     Optional<Call> findByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
+    @Query("SELECT c.ownerId FROM Call c WHERE c.id = :sourceId AND c.tenantId = :tenantId AND c.deleted = false")
+    Optional<UUID> findOwnerIdForReminder(UUID sourceId, UUID tenantId);
 
     Page<Call> findByTenantIdAndDeletedFalse(UUID tenantId, Pageable pageable);
 

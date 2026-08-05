@@ -6,7 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.lead.dto.LeadCustomFieldCreateRequest;
 import com.shivang.crm.modules.lead.dto.LeadCustomFieldResponse;
 import com.shivang.crm.modules.lead.entity.LeadCustomField;

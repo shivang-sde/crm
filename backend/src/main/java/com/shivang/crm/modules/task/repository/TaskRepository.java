@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import com.shivang.crm.modules.task.entity.Task;
@@ -15,6 +16,9 @@ import com.shivang.crm.modules.task.entity.TaskStatus;
 public interface TaskRepository extends JpaRepository<Task, UUID>, JpaSpecificationExecutor<Task> {
 
     Optional<Task> findByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
+    @Query("SELECT t.ownerId FROM Task t WHERE t.id = :sourceId AND t.tenantId = :tenantId AND t.deleted = false")
+    Optional<UUID> findOwnerIdForReminder(UUID sourceId, UUID tenantId);
 
     List<Task> findByTenantIdAndEntityTypeAndEntityId(UUID tenantId, String entityType, UUID entityId);
 

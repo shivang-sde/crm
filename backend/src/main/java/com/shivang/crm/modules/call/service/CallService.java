@@ -23,6 +23,9 @@ import com.shivang.crm.modules.call.repository.CallRepository;
 import com.shivang.crm.modules.call.repository.CallSpecifications;
 import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.modules.recurrence.service.RecurrenceScheduleService;
+import com.shivang.crm.modules.reminder.entity.ReminderSourceType;
+import com.shivang.crm.modules.reminder.service.ReminderPlanningService;
 import com.shivang.crm.shared.enums.OwnershipScope;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
@@ -42,6 +45,8 @@ public class CallService {
     private final EntityResolverService entityResolverService;
     private final ActivityService activityService;
     private final CallProviderLinkService callProviderLinkService;
+    private final ReminderPlanningService reminderPlanningService;
+    private final RecurrenceScheduleService recurrenceScheduleService;
 
     private final TenantContext tenantContext;
 
@@ -90,6 +95,18 @@ public class CallService {
             .build();
 
         Call savedCall = callRepository.save(call);
+        if (savedCall.getRecurrence() != null) {
+            recurrenceScheduleService.upsertSchedule(
+                    tenantId,
+                    ReminderSourceType.CALL,
+                    savedCall.getId(),
+                    savedCall.getStartTime(),
+                    savedCall.getRemindAt(),
+                    savedCall.getRecurrence(),
+                    null
+            );
+        }
+        reminderPlanningService.planForCall(savedCall);
         log.info("Created call {} for tenant {}", savedCall.getId(), tenantId);
 
         return toResponse(savedCall);
@@ -194,6 +211,21 @@ public class CallService {
         }
 
         Call updatedCall = callRepository.save(call);
+        if (updatedCall.getRecurrence() != null) {
+            recurrenceScheduleService.upsertSchedule(
+                    tenantId,
+                    ReminderSourceType.CALL,
+                    updatedCall.getId(),
+                    updatedCall.getStartTime(),
+                    updatedCall.getRemindAt(),
+                    updatedCall.getRecurrence(),
+                    null
+            );
+        } else {
+            recurrenceScheduleService.deactivateSchedule(tenantId, ReminderSourceType.CALL, updatedCall.getId());
+        }
+        reminderPlanningService.cancelPending(tenantId, ReminderSourceType.CALL, updatedCall.getId());
+        reminderPlanningService.planForCall(updatedCall);
         log.info("Updated call {} for tenant {}", id, tenantId);
 
         return toResponse(updatedCall);
@@ -293,6 +325,7 @@ public class CallService {
 
         call.setDeleted(true);
         callRepository.save(call);
+        recurrenceScheduleService.deactivateSchedule(tenantId, ReminderSourceType.CALL, call.getId());
         log.info("Soft deleted call {} for tenant {}", id, tenantId);
     }
 

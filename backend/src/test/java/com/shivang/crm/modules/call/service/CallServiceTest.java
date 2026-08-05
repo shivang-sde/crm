@@ -29,6 +29,8 @@ import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.service.EntityResolverService;
 import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
+import com.shivang.crm.modules.reminder.service.ReminderPlanningService;
+import com.shivang.crm.modules.recurrence.service.RecurrenceScheduleService;
 
 class CallServiceTest {
 
@@ -39,6 +41,8 @@ class CallServiceTest {
     private TenantContext tenantContext;
     private CallService callService;
     private CallProviderLinkService callProviderLinkService;
+    private ReminderPlanningService reminderPlanningService;
+    private RecurrenceScheduleService recurrenceScheduleService;
 
     private UUID tenantId;
     private UUID userId;
@@ -62,8 +66,10 @@ class CallServiceTest {
         when(permissionEvaluatorService.hasPermission(tenantId, userId, "call:write")).thenReturn(true);
         when(permissionEvaluatorService.getOwnershipScope(tenantId, userId, "call")).thenReturn(OwnershipScope.ALL);
 
+        reminderPlanningService = mock(ReminderPlanningService.class);
+        recurrenceScheduleService = mock(RecurrenceScheduleService.class);
         callService = new CallService(callRepository, permissionEvaluatorService, entityResolverService,
-                activityService, callProviderLinkService, tenantContext);
+                activityService, callProviderLinkService, reminderPlanningService, recurrenceScheduleService, tenantContext);
     }
 
     @Test

@@ -169,36 +169,39 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="relative min-h-screen md:flex">
-        <Sidebar
-          tenantName={tenant?.name}
-          roleLabel={roleLabel ?? undefined}
-          navigationItems={navigationItems}
-          activePathname={pathname ?? '/'}
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
+  <div className="h-screen overflow-hidden bg-gray-100">
+    <div className="relative flex h-full overflow-hidden">
+      <Sidebar
+        tenantName={tenant?.name}
+        roleLabel={roleLabel ?? undefined}
+        navigationItems={navigationItems}
+        activePathname={pathname ?? "/"}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        <Header
+          userName={userName}
+          roleName={roleLabel ?? undefined}
+          onLogout={() => logoutMutation.mutate()}
+          logoutPending={logoutMutation.isPending}
+          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+          breadcrumbs={breadcrumbs}
         />
 
-        <div className="flex flex-1 flex-col md:pl-0">
-          <Header
-            userName={userName}
-            roleName={roleLabel ?? undefined}
-            onLogout={() => logoutMutation.mutate()}
-            logoutPending={logoutMutation.isPending}
-            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-            breadcrumbs={breadcrumbs}
-          />
-          <main className="flex-1 overflow-auto bg-gray-50">
-            <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6">
-              {children}
-            </div>
-          </main>
+        {/* Only main content scrolls */}
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
+          <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6">
+            {children}
+          </div>
+        </main>
 
-          <CallOpeningProvider />
-          <Footer />
-        </div>
+        <CallOpeningProvider />
+
+        <Footer />
       </div>
     </div>
-  );
+  </div>
+);
 }

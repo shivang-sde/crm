@@ -20,7 +20,8 @@ public class DefaultRoleConfig {
             "meeting",
             "report",
             "workflow",
-            "admin"
+            "admin",
+            "offering"
     );
 
     public static final Set<String> MANAGER_MODULES = Set.of(
@@ -32,7 +33,8 @@ public class DefaultRoleConfig {
             "task",
             "call",
             "meeting",
-            "report"
+            "report",
+            "offering"
     );
 
     public static final Set<String> MANAGER_ACTIONS = Set.of(

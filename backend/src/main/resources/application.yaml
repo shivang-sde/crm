@@ -80,6 +80,17 @@ app:
     allowed-methods: "GET,POST,PUT,DELETE,OPTIONS"
     allowed-headers: "Authorization,Content-Type"
     allow-credentials: true
+  reminders:
+    enabled: true
+    poll-delay-ms: 5000
+    batch-size: 100
+    max-attempts: 3
+    processing-timeout-seconds: 300
+  recurrence:
+    enabled: true
+    generation-delay-ms: 60000
+    generation-window-days: 30
+    batch-size: 100
 
 # ── JWT Configuration ──
 jwt:

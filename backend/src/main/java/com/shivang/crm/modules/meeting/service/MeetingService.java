@@ -16,6 +16,9 @@ import com.shivang.crm.modules.meeting.dto.MeetingUpdateRequest;
 import com.shivang.crm.modules.meeting.entity.Meeting;
 import com.shivang.crm.modules.meeting.repository.MeetingRepository;
 import com.shivang.crm.modules.meeting.repository.MeetingSpecifications;
+import com.shivang.crm.modules.reminder.entity.ReminderSourceType;
+import com.shivang.crm.modules.reminder.service.ReminderPlanningService;
+import com.shivang.crm.modules.recurrence.service.RecurrenceScheduleService;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.enums.OwnershipScope;
 import com.shivang.crm.shared.exception.NotFoundException;
@@ -34,6 +37,8 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final EntityResolverService entityResolverService;
+    private final ReminderPlanningService reminderPlanningService;
+    private final RecurrenceScheduleService recurrenceScheduleService;
 
     private final TenantContext tenantContext;
 
@@ -79,6 +84,18 @@ public class MeetingService {
                 .build();
 
         Meeting savedMeeting = meetingRepository.save(meeting);
+        if (savedMeeting.getRecurrence() != null) {
+            recurrenceScheduleService.upsertSchedule(
+                    tenantId,
+                    ReminderSourceType.MEETING,
+                    savedMeeting.getId(),
+                    savedMeeting.getStartTime(),
+                    savedMeeting.getRemindAt(),
+                    savedMeeting.getRecurrence(),
+                    null
+            );
+        }
+        reminderPlanningService.planForMeeting(savedMeeting);
         log.info("Created meeting {} for tenant {}", savedMeeting.getId(), tenantId);
 
         return toResponse(savedMeeting);
@@ -207,6 +224,21 @@ public class MeetingService {
 
         meeting.setUpdatedBy(userId);
         Meeting updatedMeeting = meetingRepository.save(meeting);
+        if (updatedMeeting.getRecurrence() != null) {
+            recurrenceScheduleService.upsertSchedule(
+                    tenantId,
+                    ReminderSourceType.MEETING,
+                    updatedMeeting.getId(),
+                    updatedMeeting.getStartTime(),
+                    updatedMeeting.getRemindAt(),
+                    updatedMeeting.getRecurrence(),
+                    null
+            );
+        } else {
+            recurrenceScheduleService.deactivateSchedule(tenantId, ReminderSourceType.MEETING, updatedMeeting.getId());
+        }
+        reminderPlanningService.cancelPending(tenantId, ReminderSourceType.MEETING, updatedMeeting.getId());
+        reminderPlanningService.planForMeeting(updatedMeeting);
         log.info("Updated meeting {} for tenant {}", id, tenantId);
 
         return toResponse(updatedMeeting);
@@ -223,6 +255,7 @@ public class MeetingService {
         meeting.setDeleted(true);
         meeting.setUpdatedBy(userId);
         meetingRepository.save(meeting);
+        recurrenceScheduleService.deactivateSchedule(tenantId, ReminderSourceType.MEETING, meeting.getId());
         log.info("Soft deleted meeting {} for tenant {}", id, tenantId);
     }
 

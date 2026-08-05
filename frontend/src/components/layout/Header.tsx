@@ -3,6 +3,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, Menu } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
 
 export interface BreadcrumbItem {
   label: string;
@@ -50,6 +51,7 @@ export function Header({
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <NotificationBell />
           {breadcrumbs.length > 0 && (
             <nav className="flex max-w-full flex-wrap items-center gap-2 overflow-x-auto text-xs text-gray-500 md:flex-nowrap">
               {breadcrumbs.map((crumb, index) => (
