@@ -14,6 +14,7 @@ import { DealCustomFields } from "./DealCustomFields";
 import { DealTimeline } from "./DealTimeline";
 import { DealNotes } from "./DealNotes";
 import { DealAssignment } from "./DealAssignment";
+import { DealLineItemsSection } from "./DealLineItemsSection";
 
 interface DealDetailProps {
   deal: DealResponse;
@@ -56,6 +57,7 @@ export function DealDetail({ deal }: DealDetailProps) {
         <div className="lg:col-span-2 space-y-6">
           <DealBasicInfo deal={deal} />
           <DealCustomFields deal={deal} />
+          <DealLineItemsSection dealId={deal.id} />
           <DealTimeline dealId={deal.id} />
           <DealNotes dealId={deal.id} />
         </div>

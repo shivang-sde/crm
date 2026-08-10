@@ -12,6 +12,7 @@ import { FieldGroup, Field, FieldLabel, FieldError } from "@/components/ui/field
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { useCreateDeal, useUpdateDeal, useDealStages, useDealCustomFields } from "@/lib/hooks/deals";
+import { useDealLineItems } from "@/lib/hooks/deal-line-items";
 import { useQuery } from "@tanstack/react-query";
 import { userApi } from "@/lib/api/users";
 import { useAccounts } from "@/lib/hooks/accounts";
@@ -38,6 +39,9 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
 
   const createMutation = useCreateDeal();
   const updateMutation = useUpdateDeal();
+  const { data: lineItemsData } = useDealLineItems(initialData?.id);
+  const hasLineItems = Boolean(initialData?.id && (lineItemsData?.length ?? 0) > 0);
+  const amountManagedByLineItems = isEdit && hasLineItems;
 
   const form = useForm<DealFormData>({
     resolver: zodResolver(dealFormSchema) as any,
@@ -158,7 +162,8 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
 
         <Field>
           <FieldLabel>Amount</FieldLabel>
-          <Input type="number" placeholder="0.00" {...form.register("amount")} />
+          <Input type="number" placeholder="0.00" {...form.register("amount")} disabled={amountManagedByLineItems} />
+          {amountManagedByLineItems && <p className="text-sm text-muted-foreground">Amount is managed by line items.</p>}
         </Field>
 
         <Field>

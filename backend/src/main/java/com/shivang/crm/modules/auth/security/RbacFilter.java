@@ -30,7 +30,7 @@ public class RbacFilter extends OncePerRequestFilter {
 
     // List of modules that require RBAC checking (from your seed data)
     private static final Set<String> PROTECTED_MODULES = Set.of(
-            "lead", "contact", "account", "deal", "activity",
+            "lead", "contact", "account", "deal", "activity", "entitlement",
             "report", "workflow", "user", "tenant", "call", "task", "meeting", "offering");
 
     // List of paths that should be excluded from RBAC (internal, public, etc.)

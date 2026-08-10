@@ -7,7 +7,8 @@ import {
   Phone,
   Calendar,
   CheckSquare,
-  Package
+  Package,
+  Boxes
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -29,9 +30,9 @@ const dashboardRoutes: Record<string, string> = {
 const roleRoutePrefixes: Record<string, string[]> = {
   SUPERADMIN: ["/users", "/roles", "/tenants", "/superadmin", "/reseller", "/admin"],
   RESELLER: ["/tenants", "/reseller", "/settings/"],
-  ADMIN: ["/users", "/roles", "/admin/dashboard", "/admin/settings", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings"],
-  MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings", "/settings"],
-  EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/tasks", "/calls", "/meetings", "/settings"],
+  ADMIN: ["/users", "/roles", "/admin/dashboard", "/admin/settings", "/leads", "/accounts", "/contacts", "/deals", "/offerings", "/tasks", "/calls", "/meetings", "/entitlements", "/settings"],
+  MANAGER: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/offerings", "/tasks", "/calls", "/meetings",  "/settings", "/entitlements"],
+  EMPLOYEE: ["/dashboard", "/leads", "/accounts", "/contacts", "/deals", "/offerings", "/tasks", "/calls", "/meetings", "/settings", "/entitlements"],
 };
 
 const publicRoutes = ["/sign-in", "/sign-up", "/forgot-password", "/reset-password", "/"];
@@ -115,6 +116,10 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
 
   const canViewDeals = permissions?.has("deal:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
 
+  const canViewOfferings = permissions?.has("deal:read") || permissions?.has("offer:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
+
+  const canViewEntitlements = permissions?.has("entitlement:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
+
   const canViewTasks = permissions?.has("task:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
 
   const canViewCalls = permissions?.has("call:read") || role === "ADMIN" || role === "MANAGER" || role === "EMPLOYEE";
@@ -126,6 +131,8 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
     ...baseItems,
     ...(canViewLeads ? [{ name: "Leads", href: "/leads", icon: Target, show: true }] : []),
     ...(canViewDeals? [{ name: "Deals", href: "/deals", icon: Package, show: true }] : []),
+    ...(canViewOfferings ? [{ name: "Offerings", href: "/offerings", icon: Boxes, show: true }] : []),
+    ...(canViewEntitlements ? [{ name: "Entitlements", href: "/entitlements", icon: Shield, show: true }] : []),
     ...(canViewContacts ? [{ name: "Contacts", href: "/contacts", icon: Users, show: true }] : []),
     ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),
     ...(canViewTasks ? [{ name: "Tasks", href: "/tasks", icon: CheckSquare, show: true }] : []),

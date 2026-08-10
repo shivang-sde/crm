@@ -35,9 +35,11 @@ import com.shivang.crm.modules.deal.entity.ForecastCategory;
 import com.shivang.crm.modules.deal.entity.RecordCategory;
 import com.shivang.crm.modules.deal.mapper.DealMapper;
 import com.shivang.crm.modules.deal.repository.DealCustomFieldRepository;
+import com.shivang.crm.modules.deal.repository.DealLineItemRepository;
 import com.shivang.crm.modules.deal.repository.DealRepository;
 import com.shivang.crm.modules.deal.repository.DealSpecifications;
 import com.shivang.crm.modules.deal.repository.DealStageRepository;
+import com.shivang.crm.modules.entitlement.service.EntitlementProvisioningService;
 import com.shivang.crm.modules.lead.service.EntityHistoryService;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.exception.BusinessException;
@@ -54,11 +56,13 @@ public class DealService {
 
     private final DealRepository dealRepository;
     private final DealCustomFieldRepository dealCustomFieldRepository;
+    private final DealLineItemRepository dealLineItemRepository;
     private final DealStageRepository dealStageRepository;
     private final DealMapper dealMapper;
 
     private final ActivityService activityService;
     private final EntityHistoryService entityHistoryService;
+    private final EntitlementProvisioningService entitlementProvisioningService;
 
     private final UserRepository userRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
@@ -180,6 +184,7 @@ public class DealService {
 
         // Store old values for activity logging
         Map<String, Object> oldValues = new HashMap<>();
+        RecordCategory previousCategory = deal.getRecordCategory();
         if (request.getStageId() != null && !request.getStageId().equals(deal.getStage().getId())) {
             oldValues.put("oldStageId", deal.getStage().getId());
             oldValues.put("oldStageName", deal.getStage().getName());
@@ -189,6 +194,11 @@ public class DealService {
         }
         if (request.getName() != null && !request.getName().equals(deal.getName())) {
             oldValues.put("oldName", deal.getName());
+        }
+
+        if (request.getAmount() != null && (deal.getAmount() == null || request.getAmount().compareTo(deal.getAmount()) != 0)
+                && dealLineItemRepository.existsByTenantIdAndDealIdAndDeletedFalse(tenantId, id)) {
+            throw new BusinessException("DEAL_AMOUNT_MANAGED_BY_LINE_ITEMS", "Deal amount is managed by line items");
         }
 
         validateCustomData(tenantId, request.getCustomData());
@@ -213,6 +223,11 @@ public class DealService {
         applyStageLifecycle(deal, deal.getStage(), stageChanged, request.getClosedDate(), request.getWonReason(), request.getLostReason());
 
         Deal updatedDeal = dealRepository.save(deal);
+
+        RecordCategory newCategory = updatedDeal.getRecordCategory();
+        if (shouldProvisionEntitlements(previousCategory, newCategory)) {
+            entitlementProvisioningService.provisionFromWonDeal(tenantId, updatedDeal.getId(), userId);
+        }
 
         // Log activity
         if (!oldValues.isEmpty()) {
@@ -416,6 +431,12 @@ public class DealService {
 
         Deal updatedDeal = dealRepository.save(deal);
 
+        RecordCategory previousCategory = oldCategory;
+        RecordCategory newCategory = updatedDeal.getRecordCategory();
+        if (shouldProvisionEntitlements(previousCategory, newCategory)) {
+            entitlementProvisioningService.provisionFromWonDeal(tenantId, updatedDeal.getId(), userId);
+        }
+
         // Log activity
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("oldStageId", oldStageId);
@@ -606,7 +627,7 @@ public class DealService {
      */
     private void logDealActivity(UUID tenantId, UUID dealId, String activityType, 
                                   String description, UUID performedBy, Map<String, Object> metadata) {
-        activityService.logActivity(tenantId, dealId, activityType, activityType, description, performedBy, metadata);
+        activityService.logActivity(tenantId, dealId, "DEAL", activityType, description, performedBy, metadata);
         log.debug("Deal activity logged: {} for deal: {}", activityType, dealId);
     }
 
@@ -707,5 +728,9 @@ public class DealService {
     private void logDealHistory(UUID tenantId, UUID dealId, String eventType,
                                 String description, UUID performedBy, Map<String, Object> metadata) {
         entityHistoryService.logHistoryWithMetadata(tenantId, dealId, "DEAL", eventType, description, performedBy, metadata);
+    }
+
+    private boolean shouldProvisionEntitlements(RecordCategory previousCategory, RecordCategory newCategory) {
+        return previousCategory != RecordCategory.CLOSED_WON && newCategory == RecordCategory.CLOSED_WON;
     }
 }

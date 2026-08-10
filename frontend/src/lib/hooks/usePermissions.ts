@@ -56,6 +56,8 @@ export const usePermissions = () => {
   const canViewActivities = hasPermission('activity', 'read');
   const canEditActivities = hasPermission('activity', 'write');
   const canDeleteActivities = hasPermission('activity', 'delete');
+  const canViewEntitlements = hasPermission('entitlement', 'read');
+  const canEditEntitlements = hasPermission('entitlement', 'update');
 
   return {
     canViewUsers,
@@ -83,6 +85,8 @@ export const usePermissions = () => {
     canViewActivities,
     canEditActivities,
     canDeleteActivities,
+    canViewEntitlements,
+    canEditEntitlements,
     permissions,
     getLeadScope: () => getAccessScope('lead', 'read'),
     getDealScope: () => getAccessScope('deal', 'read'),

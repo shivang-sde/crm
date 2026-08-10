@@ -23,6 +23,7 @@ import { ContactTimeline } from "./ContactTimeline";
 import { ContactNotes } from "./ContactNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
+import { ContactEntitlementsSection } from "@/components/entitlements/ContactEntitlementsSection";
 
 interface ContactDetailProps {
   contact: ContactResponse;
@@ -130,6 +131,8 @@ export function ContactDetail({ contact }: ContactDetailProps) {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_1fr]">
   <div className="space-y-6">
     <ContactTimeline contactId={contact.id} />
+
+    <ContactEntitlementsSection contactId={contact.id} />
 
     <EntityCallHistory
       entityType="contact"

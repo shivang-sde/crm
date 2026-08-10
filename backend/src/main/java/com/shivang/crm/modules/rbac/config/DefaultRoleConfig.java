@@ -21,7 +21,8 @@ public class DefaultRoleConfig {
             "report",
             "workflow",
             "admin",
-            "offering"
+            "offering",
+            "entitlement"
     );
 
     public static final Set<String> MANAGER_MODULES = Set.of(
@@ -34,7 +35,8 @@ public class DefaultRoleConfig {
             "call",
             "meeting",
             "report",
-            "offering"
+            "offering",
+            "entitlement"
     );
 
     public static final Set<String> MANAGER_ACTIONS = Set.of(
@@ -43,7 +45,7 @@ public class DefaultRoleConfig {
             "assign",
             "export"
     );
-
+ 
     public static final Set<String> EMPLOYEE_MODULES = Set.of(
             "lead",
             "contact",
@@ -52,7 +54,8 @@ public class DefaultRoleConfig {
             "activity",
             "task",
             "call",
-            "meeting"
+            "meeting",
+            "entitlement"
     );
 
     public static final Set<String> EMPLOYEE_ACTIONS = Set.of(
