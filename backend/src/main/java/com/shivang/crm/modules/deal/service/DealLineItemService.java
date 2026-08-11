@@ -84,7 +84,6 @@ public class DealLineItemService {
         lineItem.setRenewable(request.getRenewable() != null ? request.getRenewable() : offering.getRenewable());
         lineItem.setRenewalNoticeDays(request.getRenewalNoticeDays());
         lineItem.setCustomData(request.getCustomData());
-        lineItem.setCreatedBy(userId);
         lineItem.setUpdatedBy(userId);
         lineItem.setDeleted(false);
 

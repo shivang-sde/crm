@@ -318,7 +318,7 @@ export default function MeetingDataTable({
       },
       {
         accessorKey: 'entityName',
-        header: 'Linked Entity',
+        header: 'Meeting For',
         cell: ({ row }) => {
           const meeting = row.original;
 

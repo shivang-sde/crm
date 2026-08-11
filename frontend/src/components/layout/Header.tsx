@@ -1,9 +1,26 @@
 "use client";
 
 import React from "react";
-import { Button } from "@/components/ui/button";
-import { ChevronRight, Menu } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import {
+  User,
+  Settings,
+  LogOut,
+  ChevronDown,
+  ChevronRight,
+  Menu,
+} from "lucide-react";
+import Link from "next/link";
 
 export interface BreadcrumbItem {
   label: string;
@@ -67,9 +84,21 @@ export function Header({
             </nav>
           )}
 
-          <Button variant="outline" onClick={onLogout} disabled={logoutPending}>
-            {logoutPending ? "Logging out..." : "Log out"}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {/* <DropdownMenuItem asChild>
+                <Link href="/settings">Profile</Link>
+              </DropdownMenuItem> */}
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onLogout} disabled={logoutPending}>
+                {logoutPending ? "Logging out..." : "Log out"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

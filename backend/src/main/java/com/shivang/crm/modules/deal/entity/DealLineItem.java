@@ -83,8 +83,6 @@ public class DealLineItem extends BaseEntity {
     @Column(name = "custom_data", columnDefinition = "jsonb")
     private Map<String, Object> customData;
 
-    @Column(name = "created_by")
-    private UUID createdBy;
 
     @Column(name = "updated_by")
     private UUID updatedBy;

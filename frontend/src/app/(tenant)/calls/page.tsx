@@ -937,7 +937,7 @@ const handleCallTypeChange = (value: string) => {
                       <TableHead>Call</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Linked Entity</TableHead>
+                      <TableHead>Call For</TableHead>
                       <TableHead>Duration</TableHead>
                       <TableHead>Provider</TableHead>
                       <TableHead>Date</TableHead>

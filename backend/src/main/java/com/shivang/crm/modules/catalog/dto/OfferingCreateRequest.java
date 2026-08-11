@@ -43,7 +43,7 @@ public class OfferingCreateRequest {
     @Schema(example = "199.00")
     private BigDecimal defaultPrice;
 
-    @Schema(example = "USD")
+    @Schema(example = "INR")
     private String currencyCode;
 
     @Schema(example = "30")
