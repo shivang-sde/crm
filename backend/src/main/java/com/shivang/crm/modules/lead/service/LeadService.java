@@ -285,6 +285,8 @@ public class LeadService {
 
     /**
      * Delete a lead (soft delete can be added later)
+     * for now keeo only soft delete, but we can add hard delete if needed.
+     * add different delete methods for soft and hard delete, and use soft delete by default.
      */
     public void deleteLead(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting lead: {} for tenant: {}", id, tenantId);
@@ -292,7 +294,9 @@ public class LeadService {
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
 
-        leadRepository.delete(lead);
+        lead.softDelete(userId);
+        lead.setUpdatedBy(userId);
+        leadRepository.save(lead);
     }
 
     @Transactional

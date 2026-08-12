@@ -47,7 +47,7 @@ export default function SettingPage() {
               from one place.
             </p>
             <Link
-              href="/settings/calling"
+              href="/admin/settings"
               className="mt-4 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white"
             >
               Open settings
