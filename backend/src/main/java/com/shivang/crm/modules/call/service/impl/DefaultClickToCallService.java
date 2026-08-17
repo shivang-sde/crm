@@ -57,8 +57,10 @@ public class DefaultClickToCallService implements ClickToCallService {
      */
     @Override
     public ClickToCallResponse clickToCall(ClickToCallRequest request) {
-        UUID tenantId = tenantContext.getTenantId();
-        UUID userId = tenantContext.getUserId();
+        return clickToCall(tenantContext.getTenantId(), tenantContext.getUserId(), request);
+    }
+
+    public ClickToCallResponse clickToCall(UUID tenantId, UUID actorId, ClickToCallRequest request) {
 
         // ── Step 1: Resolve and normalize phone ──
         String phone = resolveAndNormalizePhone(request, tenantId);
@@ -73,7 +75,7 @@ public class DefaultClickToCallService implements ClickToCallService {
                 .entityId(request.getEntityId())
                 .build();
 
-        CallResponse callResponse = callService.createCall(tenantId, userId, createReq);
+        CallResponse callResponse = callService.createCall(tenantId, actorId, createReq);
         UUID callId = callResponse.getId();
         log.info("Created CRM Call {} before provider execution for tenant {}", callId, tenantId);
 
@@ -82,12 +84,17 @@ public class DefaultClickToCallService implements ClickToCallService {
         try {
             ConnectorExecutionRequest execRequest = new ConnectorExecutionRequest();
             execRequest.setTenantId(tenantId);
-            execRequest.setUserId(userId);
+            execRequest.setUserId(actorId);
             execRequest.setProviderKey("sellspark_voice");
             execRequest.setActionKey("CLICK_TO_CALL");
             execRequest.setEntityType(request.getEntityType());
             execRequest.setEntityId(request.getEntityId());
-            execRequest.setEntityData(Map.of("phone", phone, "id", request.getEntityId().toString()));
+            Map<String, Object> entityData = new HashMap<>();
+            entityData.put("phone", phone);
+            if (request.getEntityId() != null) {
+                entityData.put("id", request.getEntityId().toString());
+            }
+            execRequest.setEntityData(entityData);
             // Use CRM Call ID as leadId for correlation
             execRequest.setInputData(Map.of("phoneNumber", phone, "leadId", callId.toString()));
 
@@ -122,10 +129,10 @@ public class DefaultClickToCallService implements ClickToCallService {
         }
 
         // ── Step 5: Save CallProviderLink (own transaction) ──
-        saveProviderLink(tenantId, userId, callId, result);
+        saveProviderLink(tenantId, actorId, callId, result);
 
         // ── Step 6: Log activity ──
-        logCallInitiatedActivity(tenantId, userId, callId, phone, request, result);
+        logCallInitiatedActivity(tenantId, actorId, callId, phone, request, result);
 
         String message = providerMessage != null ? providerMessage : "Call scheduled successfully";
 
@@ -161,7 +168,7 @@ public class DefaultClickToCallService implements ClickToCallService {
     }
 
     @Transactional
-    protected void saveProviderLink(UUID tenantId, UUID userId, UUID callId, ConnectorExecutionResult result) {
+    protected void saveProviderLink(UUID tenantId, UUID actorId, UUID callId, ConnectorExecutionResult result) {
         Call callEntity = callRepository.findById(callId)
             .orElseThrow(() -> new RuntimeException("Call entity not found after creation: " + callId));
 
@@ -179,7 +186,7 @@ public class DefaultClickToCallService implements ClickToCallService {
             .externalCallId(null) // SellSpark does not return an external call ID
             .correlationKey(callId.toString()) // CRM Call ID as correlation key
             .linkedAt(java.time.Instant.now())
-            .createdBy(userId)
+            .createdBy(actorId)
             .metadata(linkMetadata)
             .build();
 
@@ -209,7 +216,7 @@ public class DefaultClickToCallService implements ClickToCallService {
         }
     }
 
-    private void logCallInitiatedActivity(UUID tenantId, UUID userId, UUID callId, String phone,
+    private void logCallInitiatedActivity(UUID tenantId, UUID actorId, UUID callId, String phone,
                                           ClickToCallRequest request, ConnectorExecutionResult result) {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("crmCallId", callId);
@@ -218,6 +225,6 @@ public class DefaultClickToCallService implements ClickToCallService {
         metadata.put("subType", "CALL_INITIATED");
 
         String description = "Call initiated to " + phone;
-        activityService.logActivity(tenantId, request.getEntityId(), request.getEntityType(), "CALL", description, userId, metadata);
+        activityService.logActivity(tenantId, request.getEntityId(), request.getEntityType(), "CALL", description, actorId, metadata);
     }
 }

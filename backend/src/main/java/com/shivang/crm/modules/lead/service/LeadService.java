@@ -35,6 +35,7 @@ import com.shivang.crm.modules.lead.repository.LeadSpecifications;
 import com.shivang.crm.modules.lead.repository.LeadStatusRepository;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.exception.BusinessException;
+import com.shivang.crm.shared.event.CanonicalCrmEventPublisher;
 import com.shivang.crm.util.UserUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -58,6 +59,7 @@ public class LeadService {
 
     private final UserRepository userRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
 
      /**
      * because service beans are singleton beans created at application startup, before any request exists.
@@ -83,6 +85,11 @@ public class LeadService {
             LeadStatus status = leadStatusRepository.findByIdAndTenantId(request.getStatusId(), tenantId)
                 .orElseThrow(() -> new RuntimeException("Status not found"));
             lead.setStatus(status);
+        } else {
+            // If status is not provided, set to default status for the tenant
+            LeadStatus defaultStatus = leadStatusRepository.findDefaultStatusByTenant(tenantId)
+                .orElseThrow(() -> new RuntimeException("Default status not found for Lead."));
+            lead.setStatus(defaultStatus);
         }
 
         if(request.getEmail() != null && existsWithEmail(request.getEmail(), tenantId)) {
@@ -101,7 +108,65 @@ public class LeadService {
 
         // Log activity
         HistoryService.logEntityCreated(tenantId, savedLead.getId(), "LEAD", userId);
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("source", "MANUAL");
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publishLeadCreated(
+            savedLead.getTenantId(),
+            savedLead.getId(),
+            eventMetadata
+        );
 
+        return leadMapper.toResponse(savedLead);
+    }
+
+    public LeadResponse createLeadInternal(UUID tenantId, UUID createdBy, LeadCreateRequest request) {
+        return createLeadInternal(tenantId, createdBy, request, Map.of("source", "INTERNAL"));
+    }
+
+    public LeadResponse createLeadInternal(
+        UUID tenantId,
+        UUID createdBy,
+        LeadCreateRequest request,
+        Map<String, Object> eventMetadata
+    ) {
+        log.info("Creating ingestion lead for tenant: {} by system actor: {}", tenantId, createdBy);
+
+        Lead lead = leadMapper.toEntity(request);
+        lead.setTenantId(tenantId);
+        lead.setCreatedBy(createdBy);
+        lead.setOwnerId(null);
+        lead.setUpdatedBy(createdBy);
+
+        if (lead.getStatus() == null && request.getStatusId() != null) {
+            LeadStatus status = leadStatusRepository.findByIdAndTenantId(request.getStatusId(), tenantId)
+                .orElseThrow(() -> new RuntimeException("Status not found"));
+            lead.setStatus(status);
+        } else {
+            LeadStatus defaultStatus = leadStatusRepository.findDefaultStatusByTenant(tenantId)
+                .orElseThrow(() -> new RuntimeException("Default status not found for Lead."));
+            lead.setStatus(defaultStatus);
+        }
+
+        if (request.getEmail() != null && existsWithEmail(request.getEmail(), tenantId)) {
+            throw new BusinessException("DUPLICATE", "A lead with this email already exists");
+        }
+        if (request.getPhone() != null && existsWithPhone(request.getPhone(), tenantId)) {
+            throw new BusinessException("DUPLICATE", "A lead with this phone number already exists");
+        }
+
+        Lead savedLead = leadRepository.save(lead);
+        HistoryService.logEntityCreated(tenantId, savedLead.getId(), "LEAD", createdBy);
+        Map<String, Object> enrichedEventMetadata = new HashMap<>();
+        if (eventMetadata != null) enrichedEventMetadata.putAll(eventMetadata);
+        enrichedEventMetadata.put("actorId", createdBy.toString());
+        enrichedEventMetadata.put("actorType", "SYSTEM");
+        canonicalCrmEventPublisher.publishLeadCreated(
+            savedLead.getTenantId(),
+            savedLead.getId(),
+            enrichedEventMetadata
+        );
         return leadMapper.toResponse(savedLead);
     }
 

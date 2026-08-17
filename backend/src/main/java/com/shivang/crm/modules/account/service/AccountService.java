@@ -103,6 +103,14 @@ public class AccountService {
         return accountMapper.toResponse(updated);
     }
 
+    public AccountResponse assignOwner(UUID id, UUID tenantId, UUID ownerUserId, UUID actorId) {
+        Account account = accountRepository.findByIdAndTenantId(id, tenantId)
+            .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
+        account.setOwnerId(ownerUserId);
+        account.setUpdatedBy(actorId);
+        return accountMapper.toResponse(accountRepository.save(account));
+    }
+
     public void deleteAccount(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting account {} for tenant {}", id, tenantId);
         Account account = accountRepository.findByIdAndTenantId(id, tenantId)

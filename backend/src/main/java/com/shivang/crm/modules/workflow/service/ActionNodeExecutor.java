@@ -1,0 +1,104 @@
+package com.shivang.crm.modules.workflow.service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.stereotype.Component;
+
+import com.shivang.crm.modules.workflow.entity.WorkflowEdge;
+import com.shivang.crm.modules.workflow.entity.WorkflowExecution;
+import com.shivang.crm.modules.workflow.entity.WorkflowNode;
+import com.shivang.crm.modules.workflow.entity.WorkflowNodeType;
+
+@Component
+public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExecutorRegistrationProvider {
+
+    private final WorkflowActionExecutorRegistry actionExecutorRegistry;
+    private final WorkflowValueResolver valueResolver;
+
+    public ActionNodeExecutor(
+        WorkflowActionExecutorRegistry actionExecutorRegistry,
+        WorkflowValueResolver valueResolver
+    ) {
+        this.actionExecutorRegistry = actionExecutorRegistry;
+        this.valueResolver = valueResolver;
+    }
+
+    @Override
+    public WorkflowNodeExecutionResult execute(
+        WorkflowExecution execution,
+        WorkflowNode node,
+        List<WorkflowEdge> outgoingEdges,
+        WorkflowExecutionContext context
+    ) {
+        if (outgoingEdges.size() != 1) {
+            throw new WorkflowRuntimeException("WORKFLOW_BRANCH_NOT_SUPPORTED", "ACTION nodes must have exactly one outgoing edge");
+        }
+        Map<String, Object> nodeConfiguration = node.getConfiguration();
+        if (nodeConfiguration == null || nodeConfiguration.get("actionType") == null) {
+            throw new WorkflowRuntimeException("WORKFLOW_ACTION_INVALID_CONFIG", "ACTION node requires actionType");
+        }
+
+        String actionType = String.valueOf(nodeConfiguration.get("actionType"));
+        Object rawConfiguration = nodeConfiguration.get("config");
+        if (rawConfiguration != null && !(rawConfiguration instanceof Map<?, ?>)) {
+            throw new WorkflowRuntimeException("WORKFLOW_ACTION_INVALID_CONFIG", "ACTION config must be an object");
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> configuration = rawConfiguration == null
+            ? Map.of()
+            : (Map<String, Object>) rawConfiguration;
+        Map<String, Object> resolvedConfiguration = resolveMap(configuration, context);
+        WorkflowActionExecutionResult result = actionExecutorRegistry.get(actionType).execute(context, resolvedConfiguration);
+        if (!result.success()) {
+            throw new WorkflowRuntimeException(
+                result.errorCode() == null ? "WORKFLOW_ACTION_EXECUTION_FAILED" : result.errorCode(),
+                result.errorMessage() == null ? "Workflow action failed" : result.errorMessage()
+            );
+        }
+        UUID edgeId = outgoingEdges.get(0).getId();
+        return new WorkflowNodeExecutionResult(
+            com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.COMPLETED,
+            result.output(),
+            List.of(edgeId),
+            null,
+            null
+        );
+    }
+
+    private Map<String, Object> resolveMap(Map<String, Object> configuration, WorkflowExecutionContext context) {
+        Map<String, Object> resolved = new java.util.LinkedHashMap<>();
+        configuration.forEach((key, value) -> resolved.put(key, resolveValue(value, context)));
+        return resolved;
+    }
+
+    private Object resolveValue(Object value, WorkflowExecutionContext context) {
+        if (value instanceof String text && text.startsWith("{{") && text.endsWith("}}")) {
+            String fieldPath = text.substring(2, text.length() - 2).trim();
+            WorkflowResolvedValue resolved = valueResolver.resolve(context, fieldPath);
+            if (!resolved.found()) {
+                throw new WorkflowRuntimeException("WORKFLOW_ACTION_VALUE_RESOLUTION_FAILED", "Action value was not found: " + fieldPath);
+            }
+            return resolved.value();
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> nested = new java.util.LinkedHashMap<>();
+            map.forEach((key, nestedValue) -> nested.put(String.valueOf(key), resolveValue(nestedValue, context)));
+            return nested;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> resolved = new ArrayList<>();
+            list.forEach(item -> resolved.add(resolveValue(item, context)));
+            return resolved;
+        }
+        return value;
+    }
+
+    @Override
+    public WorkflowNodeExecutorRegistration registration() {
+        return new WorkflowNodeExecutorRegistration(WorkflowNodeType.ACTION, this);
+    }
+}

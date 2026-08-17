@@ -46,11 +46,14 @@ public class TaskService {
     private final TenantContext tenantContext;
 
     public TaskResponse createTask(UUID tenantId, UUID userId, TaskCreateRequest request) {
-        // Validate permissions
         if (!permissionEvaluatorService.hasPermission(tenantId, userId, "task:write")) {
             throw new PermissionDeniedException("No permission to create tasks");
         }
 
+        return createTaskInternal(tenantId, userId, request);
+    }
+
+    public TaskResponse createTaskInternal(UUID tenantId, UUID actorId, TaskCreateRequest request) {
         // Validate linked entity if provided
         if (request.getEntityType() != null && request.getEntityId() != null) {
             entityResolverService.validateEntityExists(
@@ -67,7 +70,7 @@ public class TaskService {
 
         Task task = Task.builder()
             .tenantId(tenantId)
-            .createdBy(userId)
+            .createdBy(actorId)
             .subject(request.getSubject())
             .description(request.getDescription())
             .dueDate(request.getDueDate())
@@ -75,6 +78,7 @@ public class TaskService {
             .priority(request.getPriority() != null ? request.getPriority() : TaskPriority.MEDIUM)
             .entityType(request.getEntityType())
             .entityId(request.getEntityId())
+            .ownerId(request.getOwnerUserId())
             .remindAt(request.getRemindAt())
             .recurrence(request.getRecurrence())
             .customData(request.getCustomData())

@@ -10,7 +10,8 @@ import org.springframework.stereotype.Component;
 public class HeaderSanitizer {
 
     private static final List<String> SENSITIVE = List.of(
-        "authorization", "x-api-key", "api-key", "token", "secret", "signature",
+        "authorization", "proxy-authorization", "cookie", "set-cookie",
+        "x-api-key", "api-key", "token", "secret", "signature",
         "x-signature", "x-sellspark-signature", "x-hub-signature-256"
     );
 

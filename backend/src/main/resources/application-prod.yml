@@ -40,8 +40,10 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:rabbitmq}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER}
-    password: ${RABBITMQ_PASSWORD}
+    username: ${RABBITMQ_DEFAULT_USER}
+    password: ${RABBITMQ_DEFAULT_PASS}
+    publisher-confirm-type: correlated
+    publisher-returns: true
 
 app:
   cors:
@@ -60,6 +62,15 @@ app:
     generation-delay-ms: 60000
     generation-window-days: 30
     batch-size: 100
+  outbox:
+    poll-delay-ms: ${OUTBOX_POLL_DELAY_MS:5000}
+    batch-size: ${OUTBOX_BATCH_SIZE:100}
+    stale-after-seconds: ${OUTBOX_STALE_AFTER_SECONDS:300}
+    confirm-timeout-ms: ${OUTBOX_CONFIRM_TIMEOUT_MS:5000}
+    max-retry-delay-seconds: ${OUTBOX_MAX_RETRY_DELAY_SECONDS:300}
+  workflow-runtime:
+    poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:5000}
+    batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:25}
 
 server:
   port: ${SERVER_PORT:8080}

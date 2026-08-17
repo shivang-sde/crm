@@ -100,6 +100,14 @@ public class ContactService {
         return contactMapper.toResponse(updated);
     }
 
+    public ContactResponse assignOwner(UUID id, UUID tenantId, UUID ownerUserId, UUID actorId) {
+        Contact contact = contactRepository.findByIdAndTenantId(id, tenantId)
+            .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
+        contact.setOwnerId(ownerUserId);
+        contact.setUpdatedBy(actorId);
+        return contactMapper.toResponse(contactRepository.save(contact));
+    }
+
     public void deleteContact(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting contact {} for tenant {}", id, tenantId);
         Contact contact = contactRepository.findByIdAndTenantId(id, tenantId)

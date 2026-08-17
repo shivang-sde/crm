@@ -17,6 +17,9 @@ public interface LeadCustomFieldRepository extends JpaRepository<LeadCustomField
     @Query("SELECT lcf FROM LeadCustomField lcf WHERE lcf.tenantId = :tenantId AND lcf.isActive = true ORDER BY lcf.displayOrder ASC")
     List<LeadCustomField> findActiveFieldsByTenant(@Param("tenantId") UUID tenantId);
 
+    @Query("SELECT lcf FROM LeadCustomField lcf WHERE lcf.tenantId = :tenantId AND lcf.fieldKey = :fieldKey AND lcf.isActive = true AND lcf.deleted = false")
+    Optional<LeadCustomField> findActiveByTenantIdAndFieldKey(@Param("tenantId") UUID tenantId, @Param("fieldKey") String fieldKey);
+
     @Query("SELECT lcf FROM LeadCustomField lcf WHERE lcf.tenantId = :tenantId ORDER BY lcf.displayOrder ASC")
     List<LeadCustomField> findByTenantIdOrderByDisplayOrder(@Param("tenantId") UUID tenantId);
 
