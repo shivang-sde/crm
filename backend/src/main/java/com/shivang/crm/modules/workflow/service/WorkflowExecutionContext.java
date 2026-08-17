@@ -3,6 +3,7 @@ package com.shivang.crm.modules.workflow.service;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import com.shivang.crm.modules.workflow.entity.WorkflowExecution;
 
@@ -17,6 +18,7 @@ public class WorkflowExecutionContext {
     private final Map<String, Object> triggerContext;
     private final Map<String, Object> entity;
     private final Map<String, Map<String, Object>> nodeOutputs = new HashMap<>();
+    private UUID workflowNodeExecutionId;
 
     public WorkflowExecutionContext(
         WorkflowExecution execution,
@@ -51,5 +53,9 @@ public class WorkflowExecutionContext {
                 ? Map.of()
                 : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(output))
         );
+    }
+
+    public void setWorkflowNodeExecutionId(UUID workflowNodeExecutionId) {
+        this.workflowNodeExecutionId = workflowNodeExecutionId;
     }
 }

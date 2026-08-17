@@ -155,6 +155,26 @@ public class WorkflowGraphValidationService {
                     errors.add(error("WORKFLOW_CLICK_TO_CALL_PHONE_REQUIRED", "CLICK_TO_CALL requires phoneNumber or entityType and entityId"));
                 }
             }
+            if ("HTTP_API".equalsIgnoreCase(String.valueOf(actionType))
+                && configuration != null && configuration.get("config") instanceof Map<?, ?> httpConfig) {
+                Object method = httpConfig.get("method");
+                if (method == null || !Set.of("GET", "POST", "PUT", "PATCH", "DELETE")
+                    .contains(String.valueOf(method).trim().toUpperCase())) {
+                    errors.add(error("WORKFLOW_HTTP_API_INVALID_METHOD", "HTTP_API requires GET, POST, PUT, PATCH, or DELETE method"));
+                }
+                Object url = httpConfig.get("url");
+                if (url == null || String.valueOf(url).isBlank()) {
+                    errors.add(error("WORKFLOW_HTTP_API_URL_REQUIRED", "HTTP_API requires url"));
+                }
+                validateObjectField(httpConfig, "queryParams", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors);
+                validateObjectField(httpConfig, "headers", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors);
+                validateObjectField(httpConfig, "body", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors);
+                Object connectionId = httpConfig.get("connectionId");
+                if (connectionId != null && !String.valueOf(connectionId).trim().startsWith("{{")) {
+                    try { UUID.fromString(String.valueOf(connectionId)); }
+                    catch (IllegalArgumentException ex) { errors.add(error("WORKFLOW_HTTP_API_INVALID_CONNECTION", "connectionId must be a UUID or runtime expression")); }
+                }
+            }
         }
 
         if (triggers.size() == 1) {
@@ -226,5 +246,11 @@ public class WorkflowGraphValidationService {
 
     private WorkflowGraphValidationError error(String code, String message) {
         return new WorkflowGraphValidationError(code, message);
+    }
+
+    private void validateObjectField(Map<?, ?> configuration, String field, String code, List<WorkflowGraphValidationError> errors) {
+        if (configuration.containsKey(field) && configuration.get(field) != null && !(configuration.get(field) instanceof Map<?, ?>)) {
+            errors.add(error(code, "HTTP_API " + field + " must be an object"));
+        }
     }
 }

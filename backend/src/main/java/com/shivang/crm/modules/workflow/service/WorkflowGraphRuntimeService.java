@@ -119,6 +119,7 @@ public class WorkflowGraphRuntimeService {
 
         WorkflowNodeExecutionResult result;
         try {
+            context.setWorkflowNodeExecutionId(nodeExecution.getId());
             nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.RUNNING);
             nodeExecution.setStartedAt(java.time.Instant.now());
             workflowNodeExecutionRepository.save(nodeExecution);
