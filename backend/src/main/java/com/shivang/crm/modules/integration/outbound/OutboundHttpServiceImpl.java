@@ -16,6 +16,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -208,4 +209,4 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
     }
 
     private record ResponseData(int statusCode, byte[] body) { }
-}
+} 

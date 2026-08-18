@@ -15,15 +15,22 @@ import com.shivang.crm.modules.workflow.entity.WorkflowNodeType;
 @Component
 public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExecutorRegistrationProvider {
 
+    // Marker used by OutboundHttpServiceImpl when no HTTP response was received (network/timeout failure);
+    // the remote side effect outcome is unknown, so it must not be recorded as a known FAILED idempotency state.
+    private static final String AMBIGUOUS_OUTBOUND_HTTP_ERROR_CODE = "OUTBOUND_HTTP_FAILED";
+
     private final WorkflowActionExecutorRegistry actionExecutorRegistry;
     private final WorkflowValueResolver valueResolver;
+    private final WorkflowNodeIdempotencyService idempotencyService;
 
     public ActionNodeExecutor(
         WorkflowActionExecutorRegistry actionExecutorRegistry,
-        WorkflowValueResolver valueResolver
+        WorkflowValueResolver valueResolver,
+        WorkflowNodeIdempotencyService idempotencyService
     ) {
         this.actionExecutorRegistry = actionExecutorRegistry;
         this.valueResolver = valueResolver;
+        this.idempotencyService = idempotencyService;
     }
 
     @Override
@@ -52,12 +59,44 @@ public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
             ? Map.of()
             : (Map<String, Object>) rawConfiguration;
         Map<String, Object> resolvedConfiguration = resolveMap(configuration, context);
-        WorkflowActionExecutionResult result = actionExecutorRegistry.get(actionType).execute(context, resolvedConfiguration);
+        if (context.getWorkflowNodeExecutionId() == null) {
+            throw new WorkflowRuntimeException("WORKFLOW_IDEMPOTENCY_CLAIM_FAILED", "Workflow node execution identity is missing");
+        }
+
+        WorkflowNodeIdempotencyService.WorkflowNodeIdempotencyClaim claim = idempotencyService.claim(
+            context.getIdentity().tenantId(),
+            context.getExecution().getId(),
+            context.getWorkflowNodeExecutionId()
+        );
+        WorkflowActionExecutionResult result;
+        if (!claim.execute()) {
+            result = WorkflowActionExecutionResult.completed(
+                claim.record().getResult() == null ? Map.of() : claim.record().getResult()
+            );
+        } else {
+            try {
+                result = actionExecutorRegistry.get(actionType).execute(context, resolvedConfiguration);
+            } catch (WorkflowRuntimeException ex) {
+                if (!isAmbiguousOutcome(ex.getErrorCode())) {
+                    idempotencyService.fail(claim.record(), ex.getErrorCode(), ex.getMessage());
+                }
+                throw ex;
+            } catch (RuntimeException ex) {
+                idempotencyService.fail(claim.record(), "WORKFLOW_ACTION_EXECUTION_FAILED", "Workflow action failed");
+                throw ex;
+            }
+            if (!result.success()) {
+                idempotencyService.fail(claim.record(), result.errorCode(), result.errorMessage());
+            }
+        }
         if (!result.success()) {
             throw new WorkflowRuntimeException(
                 result.errorCode() == null ? "WORKFLOW_ACTION_EXECUTION_FAILED" : result.errorCode(),
                 result.errorMessage() == null ? "Workflow action failed" : result.errorMessage()
             );
+        }
+        if (claim.execute()) {
+            idempotencyService.complete(claim.record(), result.output());
         }
         UUID edgeId = outgoingEdges.get(0).getId();
         return new WorkflowNodeExecutionResult(
@@ -69,8 +108,11 @@ public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
         );
     }
 
-    private Map<String, Object> resolveMap(Map<String, Object> configuration, WorkflowExecutionContext context) {
-        Map<String, Object> resolved = new java.util.LinkedHashMap<>();
+    private boolean isAmbiguousOutcome(String errorCode) {
+        return AMBIGUOUS_OUTBOUND_HTTP_ERROR_CODE.equals(errorCode);
+    }
+
+    private Map<String, Object> resolveMap(Map<String, Object> configuration, WorkflowExecutionContext context) {        Map<String, Object> resolved = new java.util.LinkedHashMap<>();
         configuration.forEach((key, value) -> resolved.put(key, resolveValue(value, context)));
         return resolved;
     }

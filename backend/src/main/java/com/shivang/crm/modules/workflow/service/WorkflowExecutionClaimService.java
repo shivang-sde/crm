@@ -18,7 +18,7 @@ public class WorkflowExecutionClaimService {
 
     @Transactional
     public boolean claim(UUID executionId) {
-        return workflowExecutionRepository.claimPending(
+        return workflowExecutionRepository.claimPendingWithLease(
             executionId,
             WorkflowExecutionStatus.PENDING,
             WorkflowExecutionStatus.RUNNING

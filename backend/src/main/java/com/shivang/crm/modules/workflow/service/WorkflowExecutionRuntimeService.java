@@ -20,6 +20,7 @@ public class WorkflowExecutionRuntimeService {
 
     private final WorkflowExecutionRepository workflowExecutionRepository;
     private final WorkflowGraphRuntimeService workflowGraphRuntimeService;
+    private final WorkflowExecutionLeaseService leaseService;
 
     @Transactional
     public void execute(UUID executionId) {
@@ -31,13 +32,23 @@ public class WorkflowExecutionRuntimeService {
         try {
             validateExecutionOwnership(execution);
             validateExecutionIdentity(execution);
+            leaseService.heartbeatExecution(execution.getId());
             workflowGraphRuntimeService.execute(execution);
             execution.setStatus(WorkflowExecutionStatus.COMPLETED);
             execution.setCompletedAt(Instant.now());
+            execution.setLastHeartbeatAt(Instant.now());
             execution.setErrorCode(null);
             execution.setErrorMessage(null);
+            execution.setLastErrorCode(null);
+            execution.setLastErrorMessage(null);
         } catch (WorkflowRuntimeException ex) {
-            markFailed(execution, ex.getErrorCode(), ex.getMessage(), ex);
+            if (ex instanceof WorkflowNodeRetryScheduledException) {
+                execution.setLastErrorCode(ex.getErrorCode());
+                execution.setLastErrorMessage(ex.getMessage());
+                execution.setLastHeartbeatAt(Instant.now());
+            } else {
+                markFailed(execution, ex.getErrorCode(), ex.getMessage(), ex);
+            }
         } catch (RuntimeException ex) {
             markFailed(execution, "WORKFLOW_RUNTIME_FAILED", "Workflow runtime failed", ex);
         }
@@ -66,7 +77,10 @@ public class WorkflowExecutionRuntimeService {
         log.error("Workflow execution {} failed with {}", execution.getId(), errorCode, cause);
         execution.setStatus(WorkflowExecutionStatus.FAILED);
         execution.setCompletedAt(Instant.now());
+        execution.setLastHeartbeatAt(Instant.now());
         execution.setErrorCode(errorCode);
         execution.setErrorMessage(message);
+        execution.setLastErrorCode(errorCode);
+        execution.setLastErrorMessage(message);
     }
 }

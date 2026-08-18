@@ -8,7 +8,6 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.shivang.crm.modules.integration.outbound.OutboundHttpMethod;
 import com.shivang.crm.modules.integration.outbound.OutboundHttpRequest;
 import com.shivang.crm.modules.integration.outbound.OutboundHttpResult;
@@ -37,6 +36,8 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
         OutboundHttpMethod method = method(resolved.get("method"));
         String url = requiredText(resolved.get("url"), "WORKFLOW_HTTP_API_URL_REQUIRED", "HTTP_API URL is required");
         UUID connectionId = optionalUuid(resolved.get("connectionId"));
+        Map<String, String> headers = headers(resolved.get("headers"));
+        applyConfiguredIdempotencyHeader(resolved.get("idempotency"), headers, context);
 
         OutboundHttpRequest request = new OutboundHttpRequest(
             context.getIdentity().tenantId(),
@@ -46,7 +47,7 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
             method,
             url,
             queryParams(resolved.get("queryParams")),
-            headers(resolved.get("headers")),
+            headers,
             resolved.get("body"),
             connectionId
         );
@@ -140,6 +141,14 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
         Map<String, String> headers = new LinkedHashMap<>();
         map.forEach((key, item) -> headers.put(String.valueOf(key), String.valueOf(item)));
         return headers;
+    }
+
+    private void applyConfiguredIdempotencyHeader(Object value, Map<String, String> headers, WorkflowExecutionContext context) {
+        if (!(value instanceof Map<?, ?> config) || !Boolean.parseBoolean(String.valueOf(config.get("enabled")))) {
+            return;
+        }
+        String headerName = config.get("headerName") == null ? "Idempotency-Key" : String.valueOf(config.get("headerName"));
+        headers.put(headerName, context.getExecution().getId() + ":" + context.getWorkflowNodeExecutionId());
     }
 
     private boolean isCredentialField(String key) {

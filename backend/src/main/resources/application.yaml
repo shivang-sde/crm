@@ -102,6 +102,27 @@ app:
   workflow-runtime:
     poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:5000}
     batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:25}
+    retry:
+      enabled: ${WORKFLOW_NODE_RETRY_ENABLED:false}
+      max-attempts: ${WORKFLOW_NODE_RETRY_MAX_ATTEMPTS:3}
+      initial-delay-seconds: ${WORKFLOW_NODE_RETRY_INITIAL_DELAY_SECONDS:5}
+      max-delay-seconds: ${WORKFLOW_NODE_RETRY_MAX_DELAY_SECONDS:300}
+      jitter: ${WORKFLOW_NODE_RETRY_JITTER:true}
+      batch-size: ${WORKFLOW_NODE_RETRY_BATCH_SIZE:25}
+      poll-delay-ms: ${WORKFLOW_NODE_RETRY_POLL_DELAY_MS:5000}
+    retry:
+      enabled: ${WORKFLOW_NODE_RETRY_ENABLED:false}
+      max-attempts: ${WORKFLOW_NODE_RETRY_MAX_ATTEMPTS:3}
+      initial-delay-seconds: ${WORKFLOW_NODE_RETRY_INITIAL_DELAY_SECONDS:5}
+      max-delay-seconds: ${WORKFLOW_NODE_RETRY_MAX_DELAY_SECONDS:300}
+      jitter: ${WORKFLOW_NODE_RETRY_JITTER:true}
+      batch-size: ${WORKFLOW_NODE_RETRY_BATCH_SIZE:25}
+      poll-delay-ms: ${WORKFLOW_NODE_RETRY_POLL_DELAY_MS:5000}
+    execution-recovery:
+      enabled: ${WORKFLOW_EXECUTION_RECOVERY_ENABLED:true}
+      stale-after-seconds: ${WORKFLOW_EXECUTION_RECOVERY_STALE_AFTER_SECONDS:300}
+      batch-size: ${WORKFLOW_EXECUTION_RECOVERY_BATCH_SIZE:100}
+      fixed-delay-ms: ${WORKFLOW_EXECUTION_RECOVERY_FIXED_DELAY_MS:60000}
   outbound-http:
     connect-timeout-ms: ${OUTBOUND_HTTP_CONNECT_TIMEOUT_MS:5000}
     read-timeout-ms: ${OUTBOUND_HTTP_READ_TIMEOUT_MS:10000}

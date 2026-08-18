@@ -28,6 +28,8 @@ public class WorkflowGraphRuntimeService {
     private final WorkflowNodeExecutionRepository workflowNodeExecutionRepository;
     private final WorkflowNodeExecutorRegistry workflowNodeExecutorRegistry;
     private final WorkflowEntityContextProviderRegistry workflowEntityContextProviderRegistry;
+    private final WorkflowNodeExecutionClaimService workflowNodeExecutionClaimService;
+    private final WorkflowNodeRetryPolicyService workflowNodeRetryPolicyService;
 
     public void execute(WorkflowExecution execution) {
         UUID tenantId = execution.getTenantId();
@@ -119,10 +121,19 @@ public class WorkflowGraphRuntimeService {
 
         WorkflowNodeExecutionResult result;
         try {
+            if (nodeExecution.getId() == null) {
+                nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.PENDING);
+                workflowNodeExecutionRepository.saveAndFlush(nodeExecution);
+            }
+            if (!workflowNodeExecutionClaimService.claim(nodeExecution.getId())) {
+                throw runtimeFailure("WORKFLOW_NODE_CLAIM_FAILED", "Workflow node execution could not be claimed");
+            }
             context.setWorkflowNodeExecutionId(nodeExecution.getId());
             nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.RUNNING);
-            nodeExecution.setStartedAt(java.time.Instant.now());
-            workflowNodeExecutionRepository.save(nodeExecution);
+            nodeExecution.setStartedAt(nodeExecution.getStartedAt() == null ? java.time.Instant.now() : nodeExecution.getStartedAt());
+            nodeExecution.setLastHeartbeatAt(java.time.Instant.now());
+            int claimedAttempts = Integer.parseInt(java.util.Objects.toString(nodeExecution.getAttemptCount(), "0")) + 1;
+            nodeExecution.setAttemptCount(claimedAttempts);
             WorkflowNodeExecutor executor = workflowNodeExecutorRegistry.get(node.getNodeType());
             result = executor.execute(execution, node, outgoingEdges, context);
             nodeExecution.setStatus(result.status());
@@ -132,14 +143,31 @@ public class WorkflowGraphRuntimeService {
             }
             nodeExecution.setOutputContext(outputContext);
             nodeExecution.setCompletedAt(java.time.Instant.now());
+            nodeExecution.setLastHeartbeatAt(java.time.Instant.now());
             nodeExecution.setErrorCode(result.errorCode());
             nodeExecution.setErrorMessage(result.errorMessage());
         } catch (WorkflowRuntimeException ex) {
-            nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.FAILED);
+            WorkflowNodeRetryPolicy policy = workflowNodeRetryPolicyService.resolve(node);
+            String attemptText = java.util.Objects.toString(nodeExecution.getAttemptCount(), "1");
+            int attempts = Integer.parseInt(attemptText);
+            boolean canRetry = ex.getDisposition() == WorkflowFailureDisposition.RETRYABLE
+                && policy.enabled()
+                && attempts < policy.maxAttempts();
+            if (canRetry) {
+                nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.PENDING);
+                nodeExecution.setNextAttemptAt(java.time.Instant.now().plusSeconds(workflowNodeRetryPolicyService.delaySeconds(policy, attempts)));
+                nodeExecution.setCompletedAt(null);
+            } else {
+                nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.FAILED);
+                nodeExecution.setCompletedAt(java.time.Instant.now());
+            }
             nodeExecution.setErrorCode(ex.getErrorCode());
             nodeExecution.setErrorMessage(ex.getMessage());
-            nodeExecution.setCompletedAt(java.time.Instant.now());
+            nodeExecution.setLastErrorCode(ex.getErrorCode());
+            nodeExecution.setLastErrorMessage(ex.getMessage());
+            nodeExecution.setLastHeartbeatAt(java.time.Instant.now());
             workflowNodeExecutionRepository.save(nodeExecution);
+            if (canRetry) throw new WorkflowNodeRetryScheduledException("Node retry scheduled");
             throw ex;
         }
         workflowNodeExecutionRepository.save(nodeExecution);
