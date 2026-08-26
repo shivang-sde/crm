@@ -217,6 +217,9 @@ public class RbacFilter extends OncePerRequestFilter {
             case "meetings", "meeting" -> "meeting";
             case "reports", "report" -> "report";
             case "workflows", "workflow" -> "workflow";
+            // Analytics endpoints are governed by the existing report
+            // permissions (report:read / report:export).
+            case "analytics" -> "report";
             default -> {
                 // For unknown resources, return the resource name without trailing 's'
                 String result = resource.endsWith("s") ? resource.substring(0, resource.length() - 1) : resource;
