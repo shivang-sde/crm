@@ -1,10 +1,14 @@
 "use client";
 
-import { useAuthStore } from "@/lib/store/authStore";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import Link from "next/link";
 
 export default function SettingPage() {
-  const userRole = useAuthStore((state) => state.userRole);
+  const { hasPermission } = usePermissions();
+  // Capability gates use existing catalog permissions, mirroring what each
+  // destination page itself requires — never role names.
+  const canInstallDemoData = hasPermission("tenant", "write");
+  const canManageCallingAdminSettings = hasPermission("admin", "settings");
   return (
     <div className="space-y-6">
       <div>
@@ -25,7 +29,20 @@ export default function SettingPage() {
         </Link>
       </div>
 
-      {userRole === "ADMIN" && (
+      <div className="rounded-lg border bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-medium">Outbound HTTP connections</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Manage credential references used by HTTP API workflow actions.
+        </p>
+        <Link
+          href="/settings/http-connections"
+          className="mt-4 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white"
+        >
+          Open settings
+        </Link>
+      </div>
+
+      {canInstallDemoData && (
         <>
           <div className="rounded-lg border bg-white p-6 shadow-sm">
             <h2 className="text-lg font-medium">Demo Data</h2>
@@ -41,17 +58,19 @@ export default function SettingPage() {
           </div>
 
           <div className="rounded-lg border bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-medium">Calling configuration</h2>
+            <h2 className="text-lg font-medium">Calling configuration (admin)</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Configure providers, webhook endpoints, and call opening behavior
               from one place.
             </p>
-            <Link
-              href="/admin/settings"
-              className="mt-4 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white"
-            >
-              Open settings
-            </Link>
+            {canManageCallingAdminSettings && (
+              <Link
+                href="/admin/settings"
+                className="mt-4 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white"
+              >
+                Open settings
+              </Link>
+            )}
           </div>
         </>
       )}

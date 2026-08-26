@@ -27,6 +27,7 @@ import {
 import { toIsoString, emptyToUndefined } from '@/lib/utils';
 import { useCreateTask } from '@/lib/hooks/tasks';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { RecordCombobox } from '@/components/common/RecordCombobox';
 import { TaskCreateRequest, taskSchema } from '@/types/tasks';
 
 type TaskFormData = z.infer<typeof taskSchema>;
@@ -287,7 +288,8 @@ export default function NewTaskPage() {
 
                 <Select
                   value={entityType}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    setValue('entityId', '', { shouldDirty: true });
                     setValue(
                       'entityType',
                       value as TaskFormData['entityType'],
@@ -295,8 +297,8 @@ export default function NewTaskPage() {
                         shouldDirty: true,
                         shouldValidate: true,
                       },
-                    )
-                  }
+                    );
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select entity type" />
@@ -314,17 +316,20 @@ export default function NewTaskPage() {
 
             {entityType && (
               <div className="space-y-2">
-                <label
-                  htmlFor="entityId"
-                  className="text-sm font-medium"
-                >
-                  Entity ID
+                <label className="text-sm font-medium">
+                  Linked {entityType.charAt(0) + entityType.slice(1).toLowerCase()}
                 </label>
 
-                <Input
-                  id="entityId"
-                  {...register('entityId')}
-                  placeholder={`Enter ${entityType.toLowerCase()} UUID`}
+                <RecordCombobox
+                  entityType={entityType as 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'DEAL'}
+                  value={watch('entityId') || undefined}
+                  onChange={(id) =>
+                    setValue('entityId', id ?? '', {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  placeholder={`Search and link a ${entityType.toLowerCase()}...`}
                 />
 
                 {errors.entityId && (

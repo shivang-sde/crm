@@ -150,6 +150,8 @@ export const meetingSchema = z
 
     remindAt: z.string().optional(),
 
+    recurrence: z.any().optional(),
+
     assignedTo: z
       .string()
       .uuid('Invalid assigned user ID')

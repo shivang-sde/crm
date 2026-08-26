@@ -20,6 +20,10 @@ public class AccountWorkflowEntityUpdateAdapter implements WorkflowEntityUpdateA
 
     @Override
     public WorkflowEntityUpdateResult update(UUID tenantId, UUID actorId, UUID entityId, String field, Object value, Map<String, Object> currentCustomFields) {
+        if ("owner".equals(field)) {
+            accountService.assignOwner(entityId, tenantId, WorkflowUpdateValueSupport.uuid(value, field), actorId);
+            return WorkflowUpdateValueSupport.result("ACCOUNT", entityId, field, value);
+        }
         AccountUpdateRequest.AccountUpdateRequestBuilder request = AccountUpdateRequest.builder();
         switch (field) {
             case "name" -> request.name(WorkflowUpdateValueSupport.text(value, field));

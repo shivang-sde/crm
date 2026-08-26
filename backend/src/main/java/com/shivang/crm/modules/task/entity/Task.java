@@ -122,6 +122,6 @@ public class Task extends TenantOwnedEntity {
     }
 
     public static boolean isStatusClosed(TaskStatus status) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        return status == TaskStatus.COMPLETED;
     }
 }

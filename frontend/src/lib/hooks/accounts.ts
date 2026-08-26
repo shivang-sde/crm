@@ -91,7 +91,8 @@ export function useCreateAccount() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       toast.success("Account created successfully");
     },
-    onError: () => toast.error("Failed to create account"),
+    onError: (error: { response?: { data?: { error?: { message?: string } } } }) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to create account"),
   });
 }
 
@@ -105,7 +106,8 @@ export function useUpdateAccount() {
       queryClient.invalidateQueries({ queryKey: ["accounts", id] });
       toast.success("Account updated successfully");
     },
-    onError: () => toast.error("Failed to update account"),
+    onError: (error: { response?: { data?: { error?: { message?: string } } } }) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to update account"),
   });
 }
 

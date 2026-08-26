@@ -44,6 +44,7 @@ public class UserManagementService {
     private final TenantContext tenantContext;
     private final TenantRepository tenantRepository;
     private final UserManagementMapper userManagementMapper;
+    private final com.shivang.crm.modules.rbac.service.PermissionCacheEvictor permissionCacheEvictor;
 
     public Page<UserResponse> getUsers(
             UUID currentUserId,
@@ -259,6 +260,9 @@ public class UserManagementService {
             userRole.setRoleId(targetRole.getId());
 
             userRoleRepository.save(userRole);
+
+            // RBAC-8: role assignment changed -> evict this user's cache.
+            permissionCacheEvictor.evictUserAfterCommit(userId, user.getTenantId());
         } else {
             userRepository.save(user);
         }

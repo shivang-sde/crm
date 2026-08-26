@@ -42,6 +42,7 @@ public class DealLineItemService {
     private final OfferingRepository offeringRepository;
     private final DealLineItemMapper dealLineItemMapper;
     private final ActivityService activityService;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
 
     @Transactional(readOnly = true)
     public List<DealLineItemResponse> listLineItems(UUID tenantId, UUID dealId) {
@@ -59,7 +60,8 @@ public class DealLineItemService {
     }
 
     public DealLineItemResponse createLineItem(UUID tenantId, UUID dealId, UUID userId, DealLineItemCreateRequest request) {
-        ensureDealExists(tenantId, dealId);
+        // RBAC-7: parent deal must be within the caller's deal:write scope.
+        ensureDealAccessible(tenantId, dealId, "write");
         validateCreateRequest(request);
 
         Offering offering = offeringRepository.findByIdAndTenantIdAndDeletedFalse(request.getOfferingId(), tenantId)
@@ -95,7 +97,8 @@ public class DealLineItemService {
     }
 
     public DealLineItemResponse updateLineItem(UUID tenantId, UUID dealId, UUID lineItemId, UUID userId, DealLineItemUpdateRequest request) {
-        ensureDealExists(tenantId, dealId);
+        // RBAC-7: parent deal must be within the caller's deal:write scope.
+        ensureDealAccessible(tenantId, dealId, "write");
         DealLineItem lineItem = dealLineItemRepository.findByIdAndTenantIdAndDealIdAndDeletedFalse(lineItemId, tenantId, dealId)
                 .orElseThrow(() -> new BusinessException("DEAL_LINE_ITEM_NOT_FOUND", "Deal line item not found"));
 
@@ -139,7 +142,10 @@ public class DealLineItemService {
     }
 
     public void deleteLineItem(UUID tenantId, UUID dealId, UUID lineItemId, UUID userId) {
-        ensureDealExists(tenantId, dealId);
+        // RBAC-7: parent deal must be within the caller's deal:write scope
+        // (line items are components of the deal; the catalog defines no
+        // separate line-item permission).
+        ensureDealAccessible(tenantId, dealId, "write");
         DealLineItem lineItem = dealLineItemRepository.findByIdAndTenantIdAndDealIdAndDeletedFalse(lineItemId, tenantId, dealId)
                 .orElseThrow(() -> new BusinessException("DEAL_LINE_ITEM_NOT_FOUND", "Deal line item not found"));
 
@@ -151,9 +157,22 @@ public class DealLineItemService {
     }
 
     private void ensureDealExists(UUID tenantId, UUID dealId) {
-        if (!dealRepository.existsByIdAndTenantId(dealId, tenantId)) {
-            throw new BusinessException("DEAL_NOT_FOUND", "Deal not found");
-        }
+        ensureDealAccessible(tenantId, dealId, "read");
+    }
+
+    /**
+     * RBAC-7: line items inherit the parent deal's scope. The caller must
+     * hold the parent deal permission at a scope that covers the record.
+     */
+    private void ensureDealAccessible(UUID tenantId, UUID dealId, String action) {
+        UUID currentUserId = com.shivang.crm.util.UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "deal", action);
+
+        Deal deal = dealRepository.findByIdAndTenantId(dealId, tenantId)
+                .orElseThrow(() -> new BusinessException("DEAL_NOT_FOUND", "Deal not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, deal.getOwnerId(), deal.getCreatedBy());
     }
 
     private void validateCreateRequest(DealLineItemCreateRequest request) {

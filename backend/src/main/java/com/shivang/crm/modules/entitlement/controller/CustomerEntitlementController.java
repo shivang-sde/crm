@@ -19,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.entitlement.dto.CustomerEntitlementResponse;
 import com.shivang.crm.modules.entitlement.dto.CustomerEntitlementUpdateRequest;
+import com.shivang.crm.modules.entitlement.dto.UpcomingRenewalResponse;
 import com.shivang.crm.modules.entitlement.entity.EntitlementStatus;
 import com.shivang.crm.modules.entitlement.service.CustomerEntitlementService;
 import com.shivang.crm.shared.dto.ApiResponse;
+import com.shivang.crm.shared.exception.BusinessException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -60,6 +62,28 @@ public class CustomerEntitlementController {
                 search,
                 page,
                 size);
+        Map<String, Object> meta = Map.of(
+                "page", result.getNumber(),
+                "size", result.getSize(),
+                "total", result.getTotalElements(),
+                "totalPages", result.getTotalPages());
+        return ResponseEntity.ok(ApiResponse.success(result.getContent(), meta));
+    }
+
+    @GetMapping("/upcoming-renewals")
+    public ResponseEntity<ApiResponse<java.util.List<UpcomingRenewalResponse>>> upcomingRenewals(
+            @RequestParam(required = false) UUID accountId,
+            @RequestParam(required = false) UUID ownerUserId,
+            @RequestParam(required = false) EntitlementStatus status,
+            @RequestParam(defaultValue = "30") int daysAhead,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (daysAhead < 1 || daysAhead > 365) {
+            throw new BusinessException("INVALID_DAYS_AHEAD", "daysAhead must be between 1 and 365");
+        }
+        UUID tenantId = currentTenantId();
+        Page<UpcomingRenewalResponse> result = entitlementService.findUpcomingRenewals(
+                tenantId, accountId, ownerUserId, status, daysAhead, page, size);
         Map<String, Object> meta = Map.of(
                 "page", result.getNumber(),
                 "size", result.getSize(),

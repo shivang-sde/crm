@@ -10,7 +10,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.shivang.crm.modules.workflow.entity.WorkflowNodeIdempotency;
-import com.shivang.crm.modules.workflow.entity.WorkflowNodeIdempotencyStatus;
 
 @Repository
 public interface WorkflowNodeIdempotencyRepository extends JpaRepository<WorkflowNodeIdempotency, UUID> {

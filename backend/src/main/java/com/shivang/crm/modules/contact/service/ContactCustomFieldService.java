@@ -49,12 +49,8 @@ public class ContactCustomFieldService {
     public ContactCustomFieldResponse updateField(UUID id, UUID tenantId, ContactCustomFieldCreateRequest request) {
         log.info("Updating contact custom field: {} for tenant: {}", id, tenantId);
 
-        ContactCustomField field = contactCustomFieldRepository.findById(id)
+        ContactCustomField field = contactCustomFieldRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Custom field not found"));
-
-        if (!field.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to field");
-        }
 
         field.setFieldLabel(request.getFieldLabel());
         field.setFieldType(request.getFieldType());
@@ -73,12 +69,8 @@ public class ContactCustomFieldService {
     public void deleteField(UUID id, UUID tenantId) {
         log.info("Deleting contact custom field: {} for tenant: {}", id, tenantId);
 
-        ContactCustomField field = contactCustomFieldRepository.findById(id)
+        ContactCustomField field = contactCustomFieldRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Custom field not found"));
-
-        if (!field.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to field");
-        }
 
         contactCustomFieldRepository.delete(field);
     }

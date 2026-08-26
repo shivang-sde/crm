@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useEntitlements } from "@/lib/hooks/entitlements";
+import { useUserLookup } from "@/lib/hooks/useUserLookup";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { CustomerEntitlementResponse, EntitlementStatus } from "@/types/entitlements";
 
@@ -93,6 +94,7 @@ function EntitlementsPageContent() {
 
   const { data, isLoading } = useEntitlements(params);
   const entitlements = useMemo(() => data?.data ?? [], [data]);
+  const { resolveUserName, users } = useUserLookup();
 
   return (
     <div className="space-y-6">
@@ -149,7 +151,19 @@ function EntitlementsPageContent() {
                 <SelectItem value="false">Non-renewable</SelectItem>
               </SelectContent>
             </Select>
-            <Input value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} placeholder="Owner user id" />
+            <Select value={ownerUserId || "all"} onValueChange={(value) => setOwnerUserId(value === "all" ? "" : value)}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="All owners" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All owners</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {resolveUserName(user.id)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Input type="date" value={endDateFrom} onChange={(event) => setEndDateFrom(event.target.value)} />
             <Input type="date" value={endDateTo} onChange={(event) => setEndDateTo(event.target.value)} />
           </div>
@@ -218,7 +232,7 @@ function EntitlementsPageContent() {
                           </div>
                         </TableCell>
                         <TableCell>{entitlement.renewable ? "Yes" : "No"}</TableCell>
-                        <TableCell>{entitlement.owner_user_id || "Unassigned"}</TableCell>
+                        <TableCell>{entitlement.owner_user_id ? resolveUserName(entitlement.owner_user_id) : "Unassigned"}</TableCell>
                         <TableCell>
                           <Button variant="outline" size="sm" asChild>
                             <Link href={`/entitlements/${entitlement.id}`}>View</Link>

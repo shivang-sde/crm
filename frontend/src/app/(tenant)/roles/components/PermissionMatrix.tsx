@@ -1,12 +1,8 @@
 "use client";
 
 import React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { X } from "lucide-react";
 
-import { roleApi } from "@/lib/api/roles";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
@@ -16,83 +12,68 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { RolePermission } from "@/types/rbac";
+import { Permission, RolePermission, AccessScope } from "@/types/rbac";
 
-interface PermissionMatrixProps {
-  roleId: string;
-}
+const SCOPES: AccessScope[] = ["ALL", "TEAM", "OWN", "NONE"];
 
 const SCOPE_COLORS: Record<string, string> = {
   ALL: "bg-green-100 text-green-800 hover:bg-green-200 border-green-200",
   TEAM: "bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200",
   OWN: "bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-200",
-  NONE: "bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-200",
+  NONE: "bg-gray-100 text-gray-500 hover:bg-gray-200 border-gray-200",
 };
 
-export function PermissionMatrix({ roleId }: PermissionMatrixProps) {
-  const queryClient = useQueryClient();
+const ACTION_ORDER = ["read", "write", "delete", "assign", "export"];
 
-  const { data: rolePermissions, isLoading } = useQuery({
-    queryKey: ["role-permissions", roleId],
-    queryFn: () => roleApi.getRolePermissions(roleId),
-  });
+const SCOPE_RANK: Record<AccessScope, number> = { NONE: 0, OWN: 1, TEAM: 2, ALL: 3 };
 
-  const updateScopeMutation = useMutation({
-    mutationFn: ({ permissionId, scope }: { permissionId: string; scope: string }) =>
-      roleApi.updatePermissionScope(roleId, permissionId, scope),
-    onSuccess: () => {
-      toast.success("Permission scope updated");
-      queryClient.invalidateQueries({ queryKey: ["role-permissions", roleId] });
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || "Failed to update scope");
-    },
-  });
+interface PermissionMatrixProps {
+  catalog: Permission[];
+  draft: RolePermission[];
+  /** Permissions the draft started from; drives the change indicators. */
+  baseline?: RolePermission[];
+  onScopeChange: (permissionId: string, scope: AccessScope) => void;
+  onRemove: (permissionId: string) => void;
+}
 
-  if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center border rounded-md bg-white">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
+/**
+ * Catalog-driven module × action matrix over a local permission draft.
+ * A cell renders only when the backend permission catalog defines that
+ * module+action pair; "-" means the permission is not assigned to the role.
+ */
+export function PermissionMatrix({ catalog, draft, baseline = [], onScopeChange, onRemove }: PermissionMatrixProps) {
+  const draftById = new Map(draft.map((p) => [p.id, p]));
+  const baselineById = new Map(baseline.map((p) => [p.id, p]));
 
-  // Transform permissions array into matrix format: Record<Module, Record<Action, RolePermission>>
-  const matrix: Record<string, Record<string, RolePermission>> = {};
-  
-  if (rolePermissions) {
-    rolePermissions.forEach(permission => {
-      // TypeScript safety: as any here because we are treating PermissionResponse somewhat loosely 
-      // where accessScope might be returned or we fall back if missing
-      const p = permission as any; 
-      if (!matrix[p.module]) {
-        matrix[p.module] = {};
-      }
-      matrix[p.module][p.action] = {
-        id: p.id,
-        module: p.module,
-        action: p.action,
-        accessScope: p.accessScope || "NONE",
-        description: p.description
-      };
-    });
-  }
+  const catalogByModuleAction = new Map<string, Permission>();
+  catalog.forEach((p) => catalogByModuleAction.set(`${p.module}:${p.action}`, p));
 
-  const modules = Object.keys(matrix).sort();
-  const allActions = ["read", "write", "delete", "assign", "export"];
+  const modules = Array.from(new Set(catalog.map((p) => p.module))).sort();
+  const actions = Array.from(new Set(catalog.map((p) => p.action))).sort(
+    (a, b) =>
+      (ACTION_ORDER.indexOf(a) === -1 ? ACTION_ORDER.length : ACTION_ORDER.indexOf(a)) -
+        (ACTION_ORDER.indexOf(b) === -1 ? ACTION_ORDER.length : ACTION_ORDER.indexOf(b)) ||
+      a.localeCompare(b)
+  );
 
-  const handleScopeChange = (permissionId: string, newScope: string) => {
-    updateScopeMutation.mutate({ permissionId, scope: newScope });
+  // Change indicator relative to the baseline: + added, ↑ raised, ↓ lowered.
+  const diffIndicator = (permission: RolePermission): string | null => {
+    const before = baselineById.get(permission.id);
+    if (!before) return "+";
+    if (before.accessScope !== permission.accessScope) {
+      return SCOPE_RANK[permission.accessScope] > SCOPE_RANK[before.accessScope] ? "↑" : "↓";
+    }
+    return null;
   };
 
   return (
-    <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+    <div className="border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>
               <TableHead className="font-semibold text-gray-700 w-48">Module</TableHead>
-              {allActions.map(action => (
+              {actions.map((action) => (
                 <TableHead key={action} className="font-semibold text-gray-700 capitalize text-center">
                   {action}
                 </TableHead>
@@ -102,41 +83,80 @@ export function PermissionMatrix({ roleId }: PermissionMatrixProps) {
           <TableBody>
             {modules.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={allActions.length + 1} className="h-32 text-center text-gray-500">
+                <TableCell colSpan={actions.length + 1} className="h-32 text-center text-gray-500">
                   No permissions assigned to this role yet.
                 </TableCell>
               </TableRow>
             ) : (
-              modules.map(module => (
+              modules.map((module) => (
                 <TableRow key={module} className="hover:bg-gray-50">
-                  <TableCell className="font-medium capitalize text-gray-800">
-                    {module}
-                  </TableCell>
-                  {allActions.map(action => {
-                    const permission = matrix[module][action];
-                    
+                  <TableCell className="font-medium capitalize text-gray-800">{module}</TableCell>
+                  {actions.map((action) => {
+                    const catalogPermission = catalogByModuleAction.get(`${module}:${action}`);
+                    if (!catalogPermission) {
+                      return (
+                        <TableCell key={`${module}-${action}`} className="text-center">
+                          <span className="text-gray-300" aria-hidden>
+                            –
+                          </span>
+                        </TableCell>
+                      );
+                    }
+
+                    const assigned = draftById.get(catalogPermission.id);
                     return (
                       <TableCell key={`${module}-${action}`} className="text-center">
-                        {permission ? (
-                          <div className="flex justify-center">
-                            <Select 
-                              defaultValue={permission.accessScope}
-                              onValueChange={(val) => handleScopeChange(permission.id, val)}
-                              disabled={updateScopeMutation.isPending}
+                        {assigned ? (
+                          <div className="flex justify-center items-center gap-1">
+                            <Select
+                              value={assigned.accessScope}
+                              onValueChange={(val) => onScopeChange(assigned.id, val as AccessScope)}
                             >
-                              <SelectTrigger className={`w-[100px] h-8 text-xs font-semibold ${SCOPE_COLORS[permission.accessScope] || SCOPE_COLORS['NONE']} focus:ring-0 border-0`}>
+                              <SelectTrigger
+                                title={
+                                  diffIndicator(assigned)
+                                    ? `${module}:${action} ${diffIndicator(assigned)} was ${
+                                        baselineById.get(assigned.id)?.accessScope ?? "not set"
+                                      }`
+                                    : undefined
+                                }
+                                className={`w-[92px] h-8 text-xs font-semibold ${SCOPE_COLORS[assigned.accessScope]} focus:ring-0 border-0`}
+                              >
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="ALL">ALL</SelectItem>
-                                <SelectItem value="TEAM">TEAM</SelectItem>
-                                <SelectItem value="OWN">OWN</SelectItem>
-                                <SelectItem value="NONE">NONE</SelectItem>
+                                {SCOPES.map((scope) => (
+                                  <SelectItem key={scope} value={scope}>
+                                    {scope}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
+                            <button
+                              type="button"
+                              onClick={() => onRemove(assigned.id)}
+                              aria-label={`Remove ${module} ${action} permission`}
+                              title={`Remove ${module}:${action}`}
+                              className="text-gray-400 hover:text-red-600 transition-colors"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                            {diffIndicator(assigned) && (
+                              <span
+                                className="text-xs font-semibold text-gray-500 w-2"
+                                aria-label={`Changed ${diffIndicator(assigned) === "+" ? "(added)" : diffIndicator(assigned) === "↑" ? "(scope increased)" : "(scope reduced)"}`}
+                                title={
+                                  diffIndicator(assigned) === "+"
+                                    ? "Added"
+                                    : `Was ${baselineById.get(assigned.id)?.accessScope}`
+                                }
+                              >
+                                {diffIndicator(assigned)}
+                              </span>
+                            )}
                           </div>
                         ) : (
-                          <div className="text-gray-300 text-sm">-</div>
+                          <span className="text-gray-300 text-sm">-</span>
                         )}
                       </TableCell>
                     );

@@ -161,7 +161,7 @@ public class ConnectorExecutionServiceImpl implements ConnectorExecutionService 
         if (decrypted != null && !decrypted.isBlank()) {
             try {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(decrypted, Map.class);
+                Map<String, Object> parsed = new tools.jackson.databind.ObjectMapper().readValue(decrypted, Map.class);
                 credentials.putAll(parsed);
             } catch (Exception e) {
                 // Fallback

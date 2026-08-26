@@ -8,12 +8,7 @@ import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.acquisition.config.LeadIngestionConfig;
 import com.shivang.crm.modules.acquisition.config.LeadIngestionTransportType;
 import com.shivang.crm.modules.acquisition.dto.LeadIngestionAcceptedResponse;
@@ -27,11 +22,14 @@ import com.shivang.crm.shared.exception.NotFoundException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class LeadIngestionIngressService {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
@@ -40,6 +38,7 @@ public class LeadIngestionIngressService {
     private final LeadIngestionConfigRepository leadIngestionConfigRepository;
     private final LeadIngestionEventRepository leadIngestionEventRepository;
     private final LeadIngestionProcessingService leadIngestionProcessingService;
+    private final LeadIngestionFailureService leadIngestionFailureService;
     private final HeaderSanitizer headerSanitizer;
     private final ObjectMapper objectMapper;
 
@@ -92,7 +91,23 @@ public class LeadIngestionIngressService {
             config.getId(),
             savedEvent.getId());
 
-        LeadIngestionEvent processedEvent = leadIngestionProcessingService.processEvent(config.getTenantId(), config.getId(), savedEvent.getId());
+        LeadIngestionEvent processedEvent;
+        try {
+            processedEvent = leadIngestionProcessingService.processEvent(config.getTenantId(), config.getId(), savedEvent.getId());
+        } catch (Exception ex) {
+            log.error("Processing failed for ingestion event {} tenant={} configId={}",
+                savedEvent.getId(), config.getTenantId(), config.getId(), ex);
+            LeadIngestionEvent failedEvent = leadIngestionFailureService.markFailed(
+                config.getTenantId(),
+                savedEvent.getId(),
+                "PROCESSING_ERROR",
+                ex.getMessage()
+            );
+            if (failedEvent == null) {
+                throw ex;
+            }
+            processedEvent = failedEvent;
+        }
 
         return LeadIngestionAcceptedResponse.builder()
             .eventId(processedEvent.getId())
@@ -136,7 +151,7 @@ public class LeadIngestionIngressService {
         JsonNode root;
         try {
             root = objectMapper.readTree(rawBody);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new BusinessException("VALIDATION_ERROR", "Invalid JSON payload. Expected a JSON object");
         }
 

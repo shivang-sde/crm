@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTask, useUpdateTask } from '@/lib/hooks/tasks';
+import { RecordCombobox } from '@/components/common/RecordCombobox';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -124,6 +125,19 @@ export default function EditTaskPage() {
               </div>
             </div>
 
+            {(watch('entityType') || '') !== '' && (
+              <div className='space-y-2'>
+                <label className='text-sm font-medium'>Linked Record</label>
+                <RecordCombobox
+                  entityType={watch('entityType') as 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'DEAL'}
+                  value={watch('entityId') || undefined}
+                  onChange={(id) => setValue('entityId', id ?? '')}
+                  fallbackLabel={task?.entityName ?? undefined}
+                  placeholder={'Search and link a record...'}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Description</label>
               <Textarea
@@ -169,7 +183,10 @@ export default function EditTaskPage() {
                 <label className="text-sm font-medium">Link to Entity</label>
                 <Select
                   value={watch('entityType') || ''}
-                  onValueChange={(value) => setValue('entityType', value as any)}
+                  onValueChange={(value) => {
+                    setValue('entityId', '', { shouldDirty: true });
+                    setValue('entityType', value as any);
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select entity type" />
@@ -184,6 +201,19 @@ export default function EditTaskPage() {
                 </Select>
               </div>
             </div>
+
+            {(watch('entityType') || '') !== '' && (
+              <div className='space-y-2'>
+                <label className='text-sm font-medium'>Linked Record</label>
+                <RecordCombobox
+                  entityType={watch('entityType') as 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'DEAL'}
+                  value={watch('entityId') || undefined}
+                  onChange={(id) => setValue('entityId', id ?? '')}
+                  fallbackLabel={task?.entityName ?? undefined}
+                  placeholder={'Search and link a record...'}
+                />
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => router.push(`/tasks/${id}`)}>

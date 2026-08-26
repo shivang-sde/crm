@@ -14,9 +14,11 @@ import com.shivang.crm.modules.contact.repository.ContactRepository;
 public class ContactWorkflowEntityContextProvider implements WorkflowEntityContextProvider {
 
     private final ContactRepository contactRepository;
+    private final WorkflowRelatedRecordResolver relatedRecordResolver;
 
-    public ContactWorkflowEntityContextProvider(ContactRepository contactRepository) {
+    public ContactWorkflowEntityContextProvider(ContactRepository contactRepository, WorkflowRelatedRecordResolver relatedRecordResolver) {
         this.contactRepository = contactRepository;
+        this.relatedRecordResolver = relatedRecordResolver;
     }
 
     @Override
@@ -48,6 +50,10 @@ public class ContactWorkflowEntityContextProvider implements WorkflowEntityConte
         context.put("isPrimary", contact.getIsPrimary());
         context.put("isActive", contact.getIsActive());
         context.put("customFields", contact.getCustomData() == null ? Map.of() : contact.getCustomData());
+        // Controlled one-hop relationship: Contact → Account (tenant-scoped).
+        context.put("account", relatedRecordResolver
+            .account(contact.getTenantId(), contact.getAccountId())
+            .orElse(null));
         return context;
     }
 }

@@ -54,12 +54,8 @@ public class LeadSourceService {
     public LeadSourceResponse updateSource(UUID id, UUID tenantId, LeadSourceCreateRequest request) {
         log.info("Updating lead source: {} for tenant: {}", id, tenantId);
 
-        LeadSource source = leadSourceRepository.findById(id)
+        LeadSource source = leadSourceRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Source not found"));
-
-        if (!source.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to source");
-        }
 
         source.setName(request.getName());
         source.setIsActive(request.getIsActive());
@@ -74,12 +70,8 @@ public class LeadSourceService {
     public void deleteSource(UUID id, UUID tenantId) {
         log.info("Deleting lead source: {} for tenant: {}", id, tenantId);
 
-        LeadSource source = leadSourceRepository.findById(id)
+        LeadSource source = leadSourceRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Source not found"));
-
-        if (!source.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to source");
-        }
 
         leadSourceRepository.delete(source);
     }

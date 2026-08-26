@@ -6,6 +6,7 @@ import { DealResponse } from "@/types/deals";
 import { useAccount } from "@/lib/hooks/accounts";
 import { useContact } from "@/lib/hooks/contacts";
 import { useLead } from "@/lib/hooks/leads";
+import { useUserLookup } from "@/lib/hooks/useUserLookup";
 import Link from "next/link";
 import { Calendar, DollarSign, Percent, User, Building2, UserCircle2, ArrowRightLeft } from "lucide-react";
 
@@ -17,6 +18,7 @@ export function DealBasicInfo({ deal }: DealBasicInfoProps) {
   const { data: account } = useAccount(deal.accountId || undefined);
   const { data: contact } = useContact(deal.contactId || undefined);
   const { data: lead } = useLead(deal.leadId || undefined);
+  const { resolveUserName } = useUserLookup();
 
   return (
     <Card className="shadow-sm border border-muted">
@@ -193,9 +195,9 @@ export function DealBasicInfo({ deal }: DealBasicInfoProps) {
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Owner ID:</span>
-                <span className="font-medium text-foreground truncate max-w-[120px]" title={deal.ownerUserId || "Unassigned"}>
-                  {deal.ownerUserId || "Unassigned"}
+                <span className="text-muted-foreground">Owner:</span>
+                <span className="font-medium text-foreground">
+                  {deal.ownerUserId ? resolveUserName(deal.ownerUserId) : "Unassigned"}
                 </span>
               </div>
               {deal.closedDate && (

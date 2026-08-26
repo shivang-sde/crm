@@ -30,4 +30,6 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
 
     @Query("SELECT COUNT(d) FROM Deal d WHERE d.tenantId = :tenantId AND d.stage.recordCategory = com.shivang.crm.modules.deal.entity.RecordCategory.CLOSED_LOST AND d.deleted = false")
     Integer countLostDeals(@Param("tenantId") UUID tenantId);
-}
+    boolean existsByTenantIdAndAccountIdAndDeletedFalse(UUID tenantId, UUID accountId);
+
+    boolean existsByTenantIdAndStage_IdAndDeletedFalse(UUID tenantId, UUID stageId);}

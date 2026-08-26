@@ -2,6 +2,7 @@ package com.shivang.crm.modules.entitlement.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,12 +24,15 @@ import com.shivang.crm.modules.deal.repository.DealLineItemRepository;
 import com.shivang.crm.modules.deal.repository.DealRepository;
 import com.shivang.crm.modules.entitlement.dto.CustomerEntitlementResponse;
 import com.shivang.crm.modules.entitlement.dto.CustomerEntitlementUpdateRequest;
+import com.shivang.crm.modules.entitlement.dto.UpcomingRenewalResponse;
 import com.shivang.crm.modules.entitlement.entity.CustomerEntitlement;
 import com.shivang.crm.modules.entitlement.entity.EntitlementStatus;
 import com.shivang.crm.modules.entitlement.mapper.CustomerEntitlementMapper;
 import com.shivang.crm.modules.entitlement.repository.CustomerEntitlementRepository;
 import com.shivang.crm.modules.entitlement.repository.CustomerEntitlementSpecifications;
+import com.shivang.crm.modules.rbac.service.RecordScopeGuard;
 import com.shivang.crm.shared.exception.BusinessException;
+import com.shivang.crm.util.UserUtil;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,10 +48,18 @@ public class CustomerEntitlementService {
     private final DealRepository dealRepository;
     private final DealLineItemRepository dealLineItemRepository;
     private final ActivityService activityService;
+    private final RecordScopeGuard recordScopeGuard;
 
     public CustomerEntitlementResponse getById(UUID id, UUID tenantId) {
+        UUID currentUserId = UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "entitlement", "read");
+
         CustomerEntitlement entitlement = entitlementRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
                 .orElseThrow(() -> new BusinessException("NOT_FOUND", "Entitlement not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, entitlement.getOwnerId(), entitlement.getCreatedBy());
+
         return toResponse(entitlement);
     }
 
@@ -66,13 +79,53 @@ public class CustomerEntitlementService {
             int size) {
         Specification<CustomerEntitlement> spec = CustomerEntitlementSpecifications.buildSpecification(
                 tenantId, accountId, contactId, offeringId, status, ownerUserId, renewable, endDateFrom, endDateTo, search);
+        spec = andScopeFilter(spec, tenantId, "entitlement", "read");
         Pageable pageable = PageRequest.of(page, size);
         return entitlementRepository.findAll(spec, pageable).map(this::toResponse);
     }
 
+    @Transactional(readOnly = true)
+    public Page<UpcomingRenewalResponse> findUpcomingRenewals(
+            UUID tenantId,
+            UUID accountId,
+            UUID ownerUserId,
+            EntitlementStatus status,
+            int daysAhead,
+            int page,
+            int size) {
+        LocalDate today = LocalDate.now();
+        LocalDate windowEnd = today.plusDays(daysAhead);
+        Specification<CustomerEntitlement> spec = CustomerEntitlementSpecifications.buildUpcomingRenewalSpecification(
+                tenantId, accountId, ownerUserId, status, today, windowEnd);
+        spec = andScopeFilter(spec, tenantId, "entitlement", "read");
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "endDate"));
+        return entitlementRepository.findAll(spec, pageable).map(entitlement -> toUpcomingRenewalResponse(entitlement, today));
+    }
+
+    /**
+     * RBAC-7: ANDs the caller's entitlement:read scope into a specification.
+     * ALL adds no constraint (the tenant predicate is already present);
+     * NONE/missing throws; OWN/TEAM constrain owner/creator/team.
+     */
+    private Specification<CustomerEntitlement> andScopeFilter(
+            Specification<CustomerEntitlement> spec, UUID tenantId, String module, String action) {
+        UUID currentUserId = UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, module, action);
+        if ("ALL".equals(scope)) {
+            return spec;
+        }
+        List<UUID> teamUserIds = "TEAM".equals(scope)
+                ? recordScopeGuard.teamMemberIds(tenantId, currentUserId)
+                : List.of();
+        return spec.and(CustomerEntitlementSpecifications.visibleToUser(scope, currentUserId, teamUserIds));
+    }
+
     public CustomerEntitlementResponse update(UUID id, UUID tenantId, UUID userId, CustomerEntitlementUpdateRequest request) {
+        String writeScope = recordScopeGuard.requireScope(tenantId, userId, "entitlement", "write");
         CustomerEntitlement entitlement = entitlementRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
                 .orElseThrow(() -> new BusinessException("NOT_FOUND", "Entitlement not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                writeScope, tenantId, userId, entitlement.getOwnerId(), entitlement.getCreatedBy());
 
         entitlementMapper.updateEntity(request, entitlement);
         if (request.getOwnerUserId() != null) {
@@ -89,6 +142,9 @@ public class CustomerEntitlementService {
     public void activate(UUID id, UUID tenantId, UUID userId) {
         CustomerEntitlement entitlement = entitlementRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
                 .orElseThrow(() -> new BusinessException("NOT_FOUND", "Entitlement not found"));
+        String activateScope = recordScopeGuard.requireScope(tenantId, userId, "entitlement", "write");
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                activateScope, tenantId, userId, entitlement.getOwnerId(), entitlement.getCreatedBy());
         if (entitlement.getStatus() != EntitlementStatus.PENDING && entitlement.getStatus() != EntitlementStatus.SUSPENDED) {
             throw new BusinessException("INVALID_STATUS_TRANSITION", "Only pending or suspended entitlements can be activated");
         }
@@ -102,6 +158,9 @@ public class CustomerEntitlementService {
     public void suspend(UUID id, UUID tenantId, UUID userId) {
         CustomerEntitlement entitlement = entitlementRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
                 .orElseThrow(() -> new BusinessException("NOT_FOUND", "Entitlement not found"));
+        String suspendScope = recordScopeGuard.requireScope(tenantId, userId, "entitlement", "write");
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                suspendScope, tenantId, userId, entitlement.getOwnerId(), entitlement.getCreatedBy());
         if (entitlement.getStatus() != EntitlementStatus.ACTIVE) {
             throw new BusinessException("INVALID_STATUS_TRANSITION", "Only active entitlements can be suspended");
         }
@@ -115,6 +174,9 @@ public class CustomerEntitlementService {
     public void terminate(UUID id, UUID tenantId, UUID userId) {
         CustomerEntitlement entitlement = entitlementRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
                 .orElseThrow(() -> new BusinessException("NOT_FOUND", "Entitlement not found"));
+        String terminateScope = recordScopeGuard.requireScope(tenantId, userId, "entitlement", "write");
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                terminateScope, tenantId, userId, entitlement.getOwnerId(), entitlement.getCreatedBy());
         if (entitlement.getStatus() != EntitlementStatus.ACTIVE
                 && entitlement.getStatus() != EntitlementStatus.PENDING
                 && entitlement.getStatus() != EntitlementStatus.SUSPENDED) {
@@ -233,6 +295,23 @@ public class CustomerEntitlementService {
                 .ownerUserId(entitlement.getOwnerId())
                 .createdAt(entitlement.getCreatedAt())
                 .updatedAt(entitlement.getUpdatedAt())
+                .build();
+    }
+
+    private UpcomingRenewalResponse toUpcomingRenewalResponse(CustomerEntitlement entitlement, LocalDate today) {
+        return UpcomingRenewalResponse.builder()
+                .entitlementId(entitlement.getId())
+                .name(entitlement.getName())
+                .accountId(entitlement.getAccountId())
+                .contactId(entitlement.getContactId())
+                .offeringId(entitlement.getOfferingId())
+                .ownerUserId(entitlement.getOwnerId())
+                .startDate(entitlement.getStartDate())
+                .endDate(entitlement.getEndDate())
+                .renewalDueDate(entitlement.getRenewalDueDate())
+                .daysUntilExpiry((int) ChronoUnit.DAYS.between(today, entitlement.getEndDate()))
+                .status(entitlement.getStatus())
+                .renewable(entitlement.getRenewable())
                 .build();
     }
 

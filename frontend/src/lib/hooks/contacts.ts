@@ -79,7 +79,8 @@ export function useCreateContact() {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       toast.success("Contact created successfully");
     },
-    onError: () => toast.error("Failed to create contact"),
+    onError: (error: { response?: { data?: { error?: { message?: string } } } }) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to create contact"),
   });
 }
 
@@ -93,7 +94,8 @@ export function useUpdateContact() {
       queryClient.invalidateQueries({ queryKey: ["contacts", id] });
       toast.success("Contact updated successfully");
     },
-    onError: () => toast.error("Failed to update contact"),
+    onError: (error: { response?: { data?: { error?: { message?: string } } } }) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to update contact"),
   });
 }
 

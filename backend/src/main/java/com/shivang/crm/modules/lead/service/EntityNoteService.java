@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.shivang.crm.modules.account.repository.AccountRepository;
 import com.shivang.crm.modules.contact.repository.ContactRepository;
+import com.shivang.crm.modules.deal.repository.DealRepository;
 import com.shivang.crm.modules.lead.dto.EntityNoteResponse;
 import com.shivang.crm.modules.lead.entity.EntityNote;
 import com.shivang.crm.modules.lead.entity.Lead;
@@ -33,6 +34,7 @@ public class EntityNoteService {
     private final LeadRepository leadRepository;
     private final AccountRepository accountRepository;
     private final ContactRepository contactRepository;
+    private final DealRepository dealRepository;
     private final EntityNoteMapper entityNoteMapper;
     private final ActivityService activityService;
 
@@ -148,6 +150,8 @@ public class EntityNoteService {
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
             case "CONTACT" -> contactRepository.findByIdAndTenantId(entityId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
+            case "DEAL" -> dealRepository.findByIdAndTenantId(entityId, tenantId)
+                    .orElseThrow(() -> new BusinessException("NOT_FOUND", "Deal not found"));
             default -> throw new BusinessException("INVALID_ENTITY_TYPE", "Unsupported entity type: " + entityType);
         }
     }

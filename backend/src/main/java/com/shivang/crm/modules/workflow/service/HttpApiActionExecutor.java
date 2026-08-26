@@ -12,15 +12,23 @@ import com.shivang.crm.modules.integration.outbound.OutboundHttpMethod;
 import com.shivang.crm.modules.integration.outbound.OutboundHttpRequest;
 import com.shivang.crm.modules.integration.outbound.OutboundHttpResult;
 
+import tools.jackson.databind.ObjectMapper;
+
 @Component
 public class HttpApiActionExecutor implements WorkflowActionExecutor {
 
     private final WorkflowHttpApiService workflowHttpApiService;
     private final WorkflowValueResolver valueResolver;
+    private final ObjectMapper objectMapper;
 
-    public HttpApiActionExecutor(WorkflowHttpApiService workflowHttpApiService, WorkflowValueResolver valueResolver) {
+    public HttpApiActionExecutor(
+        WorkflowHttpApiService workflowHttpApiService,
+        WorkflowValueResolver valueResolver,
+        ObjectMapper objectMapper
+    ) {
         this.workflowHttpApiService = workflowHttpApiService;
         this.valueResolver = valueResolver;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -70,7 +78,9 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
         Map<String, Object> output = new LinkedHashMap<>();
         output.put("success", result.success());
         output.put("statusCode", result.statusCode());
-        output.put("response", result.response());
+        // Convert the parsed JSON tree to plain Java types so downstream
+        // CONDITION/BRANCH nodes can traverse it via nodeOutputs.<key>.response...
+        output.put("response", result.response() == null ? null : objectMapper.convertValue(result.response(), Object.class));
         output.put("correlationId", result.correlationId() == null ? null : result.correlationId().toString());
         if (!result.success()) {
             output.put("errorCode", result.errorCode());

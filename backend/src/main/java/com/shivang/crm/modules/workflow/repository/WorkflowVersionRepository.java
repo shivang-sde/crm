@@ -20,6 +20,10 @@ public interface WorkflowVersionRepository extends JpaRepository<WorkflowVersion
 
     List<WorkflowVersion> findByWorkflowIdAndTenantIdAndDeletedFalseOrderByVersionNumberDesc(UUID workflowId, UUID tenantId);
 
+    Optional<WorkflowVersion> findFirstByWorkflowIdAndTenantIdAndStatusAndDeletedFalse(UUID workflowId, UUID tenantId, WorkflowVersionStatus status);
+
+    List<WorkflowVersion> findByTenantIdAndStatusAndDeletedFalse(UUID tenantId, WorkflowVersionStatus status);
+
     @Query("""
         SELECT version
         FROM WorkflowVersion version

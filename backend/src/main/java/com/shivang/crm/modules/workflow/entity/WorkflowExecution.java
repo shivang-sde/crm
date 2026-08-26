@@ -98,4 +98,20 @@ public class WorkflowExecution extends BaseEntity {
 
     @Column(name = "last_error_message", columnDefinition = "TEXT")
     private String lastErrorMessage;
+
+    @Column(name = "replayed_from_execution_id")
+    private UUID replayedFromExecutionId;
+
+    // BE-WF-8 causal lineage. Root executions (created directly from domain
+    // events) have a null causer and chainDepth 0; executions caused by another
+    // execution's actions inherit lineage so cross-workflow loops can be bounded.
+    @Column(name = "caused_by_execution_id")
+    private UUID causedByExecutionId;
+
+    @Column(name = "caused_by_event_id")
+    private UUID causedByEventId;
+
+    @Column(name = "chain_depth", nullable = false)
+    @Builder.Default
+    private Integer chainDepth = 0;
 }

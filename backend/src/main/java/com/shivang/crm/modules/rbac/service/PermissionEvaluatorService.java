@@ -48,12 +48,20 @@ public class PermissionEvaluatorService {
         // Get all permissions for this role
         List<RolePermission> rolePermissions = rolePermissionRepository.findByRoleId(userRole.getRoleId());
 
-        // Build permission map
+        // Build permission map. Only recognized scopes are treated as grants:
+        // a missing/corrupt scope or an explicit NONE must never appear as a
+        // granted key (fail-closed).
         Map<String, String> permissionScopeMap = new HashMap<>();
         for (RolePermission rp : rolePermissions) {
+            String scope = normalizeGrantedScope(rp.getAccessScope());
+            if (scope == null) {
+                log.warn("Ignoring role_permission {} with invalid accessScope '{}' for role {}",
+                        rp.getId(), rp.getAccessScope(), userRole.getRoleId());
+                continue;
+            }
             Permission permission = rp.getPermission();
             String key = permission.getModule() + ":" + permission.getAction();
-            permissionScopeMap.put(key, rp.getAccessScope());
+            permissionScopeMap.put(key, scope);
         }
 
         return UserPermissionContext.builder()
@@ -71,23 +79,16 @@ public class PermissionEvaluatorService {
 
     @Transactional(readOnly = true)
     public boolean hasPermission(UUID userId, UUID tenantId, String module, String action) {
-        // Allow all read operations on admin module (role_read, etc.)
-        // This allows users to read their own role info without explicit permission
-        if ("admin".equals(module) && action.contains("read")) {
-            log.debug("Allowing read access on admin module for action: {}", action);
-            return true;
-        }
-
-        // Check if this permission exists in the system
-        if (!isPermissionDefined(module, action)) {
-            // Permission not defined in DB - allow access (no RBAC required)
-            log.debug("Permission {}/{} not defined in system, allowing access", module, action);
-            return true;
-        }
-
-        // Superadmin bypass (only if permission exists)
+        // Platform bypass: SUPERADMIN retains full access (including modules
+        // whose permissions are not yet seeded).
         if (isSuperadmin(userId)) {
             return true;
+        }
+
+        // FAIL-CLOSED: a permission that is not defined in the catalog is denied.
+        if (!isPermissionDefined(module, action)) {
+            log.debug("Permission {}/{} not defined in system, denying access", module, action);
+            return false;
         }
 
         try {
@@ -122,14 +123,14 @@ public class PermissionEvaluatorService {
 
     @Transactional(readOnly = true)
     public String getAccessScope(UUID userId, UUID tenantId, String module, String action) {
-        // If permission doesn't exist, return ALL (full access)
-        if (!isPermissionDefined(module, action)) {
-            return "ALL";
-        }
-
         // Superadmin gets ALL scope
         if (isSuperadmin(userId)) {
             return "ALL";
+        }
+
+        // FAIL-CLOSED: undefined permission resolves to no access
+        if (!isPermissionDefined(module, action)) {
+            return "NONE";
         }
 
         try {
@@ -148,21 +149,20 @@ public class PermissionEvaluatorService {
     public OwnershipScope getOwnershipScope(UUID tenantId, UUID userId, String module) {
         try {
             UserPermissionContext ctx = getUserPermissions(userId, tenantId);
-            
+
             // Check for write permission scope
             String writeKey = module + ":write";
             if (ctx.getPermissions().containsKey(writeKey)) {
-                String scope = ctx.getPermissions().get(writeKey);
-                return OwnershipScope.fromString(scope);
+                return OwnershipScope.fromString(ctx.getPermissions().get(writeKey));
             }
-            
+
             // Check for read permission scope as fallback
             String readKey = module + ":read";
             if (ctx.getPermissions().containsKey(readKey)) {
-                String scope = ctx.getPermissions().get(readKey);
-                return OwnershipScope.fromString(scope);
+                return OwnershipScope.fromString(ctx.getPermissions().get(readKey));
             }
-            
+
+            // No grant at all: OWN is the most restrictive scope and never elevates access.
             return OwnershipScope.OWN;
         } catch (BusinessException e) {
             return OwnershipScope.OWN;
@@ -206,7 +206,27 @@ public class PermissionEvaluatorService {
         return permissionRepository.existsByModuleAndAction(module, action);
     }
 
-    private boolean isSuperadmin(UUID userId) {
+    /**
+     * Returns the granted scope in canonical form (ALL/TEAM/OWN) or null when the
+     * stored scope must NOT be treated as a grant (null, NONE or unrecognized).
+     */
+    private String normalizeGrantedScope(String accessScope) {
+        if (accessScope == null) {
+            return null;
+        }
+        String normalized = accessScope.trim().toUpperCase();
+        if ("ALL".equals(normalized) || "TEAM".equals(normalized) || "OWN".equals(normalized)) {
+            return normalized;
+        }
+        return null;
+    }
+
+    /**
+     * Centralized SUPERADMIN platform-role check (single authorization path).
+     * Public so role-management delegation logic can reuse it without
+     * introducing a second superadmin mechanism.
+     */
+    public boolean isSuperadmin(UUID userId) {
         // Check if user has SUPERADMIN role
         return userRoleRepository.findPlatformRole(userId).stream()
                 .anyMatch(ur -> "SUPERADMIN".equals(ur.getRole().getName()));

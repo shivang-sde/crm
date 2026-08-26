@@ -38,7 +38,7 @@ public class UserManagementController {
     private final UserManagementService userManagementService;
 
     @GetMapping
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'read')")
     public ResponseEntity<ApiResponse<Page<UserResponse>>> getUsers(
             Authentication authentication,
             @RequestParam(required = false) String search,
@@ -53,20 +53,20 @@ public class UserManagementController {
 
 
     @GetMapping("/managers")
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'read')")
     public ResponseEntity<ApiResponse<List<UserResponse>>> getManagers() {
         return ResponseEntity.ok(ApiResponse.success(userManagementService.getManagers()));
     }
 
     @GetMapping("/{userId}")
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'read')")
     public ResponseEntity<ApiResponse<UserResponse>> getUser(@PathVariable UUID userId) {
         return ResponseEntity.ok(ApiResponse.success(
                 userManagementService.getUser(userId)));
     }
 
     @PostMapping
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'write')")
     public ResponseEntity<ApiResponse<UserResponse>> createUser(
             @Valid @RequestBody CreateUserRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -74,7 +74,7 @@ public class UserManagementController {
     }
 
     @PutMapping("/{userId}")
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'write')")
     public ResponseEntity<ApiResponse<UserResponse>> updateUser(
             @PathVariable UUID userId,
             @Valid @RequestBody UpdateUserRequest request) {
@@ -83,7 +83,7 @@ public class UserManagementController {
     }
 
     @DeleteMapping("/{userId}")
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'delete')")
     public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable UUID
     userId) {
     userManagementService.deleteUser(userId);
@@ -91,14 +91,14 @@ public class UserManagementController {
     }
 
     @PostMapping("/{userId}/activate")
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'write')")
     public ResponseEntity<ApiResponse<Void>> activateUser(@PathVariable UUID userId) {
         userManagementService.activateUser(userId, true);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PostMapping("/{userId}/deactivate")
-    @PreAuthorize("hasPermission('admin', 'user_manage')")
+    @PreAuthorize("@rbac.has(authentication, 'admin', 'user_manage') or @rbac.has(authentication, 'user', 'write')")
     public ResponseEntity<ApiResponse<Void>> deactivateUser(@PathVariable UUID userId) {
         userManagementService.activateUser(userId, false);
         return ResponseEntity.ok(ApiResponse.success(null));

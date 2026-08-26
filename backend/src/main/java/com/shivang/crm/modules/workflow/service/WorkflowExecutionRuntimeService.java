@@ -41,6 +41,12 @@ public class WorkflowExecutionRuntimeService {
             execution.setErrorMessage(null);
             execution.setLastErrorCode(null);
             execution.setLastErrorMessage(null);
+        } catch (WorkflowWaitScheduledException waitEx) {
+            execution.setStatus(WorkflowExecutionStatus.PENDING);
+            execution.setNextAttemptAt(waitEx.getResumeAt());
+            execution.setLastHeartbeatAt(Instant.now());
+            execution.setLastErrorCode(null);
+            execution.setLastErrorMessage("Waiting until " + waitEx.getResumeAt());
         } catch (WorkflowRuntimeException ex) {
             if (ex instanceof WorkflowNodeRetryScheduledException) {
                 execution.setLastErrorCode(ex.getErrorCode());

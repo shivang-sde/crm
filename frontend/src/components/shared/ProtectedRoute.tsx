@@ -4,7 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store/authStore";
 import { usePermissions } from "@/lib/hooks/usePermissions";
-import { getDashboardRoute } from "@/lib/constants/navigation";
+import { getDefaultRoute } from "@/lib/constants/navigation";
 import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
@@ -53,7 +53,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
               This area is restricted to specific roles. Your current role does not have access.
             </p>
             <button
-              onClick={() => router.push(getDashboardRoute(userRole))}
+              onClick={() => router.push(getDefaultRoute(permissions, userRole))}
               className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
             >
               Return Home
@@ -84,7 +84,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             You do not have permission to view this page. You need {requiredPermission.action} access to {requiredPermission.module}.
           </p>
           <button
-            onClick={() => router.push(getDashboardRoute(userRole))}
+            onClick={() => router.push(getDefaultRoute(permissions, userRole))}
             className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
           >
             Return Home

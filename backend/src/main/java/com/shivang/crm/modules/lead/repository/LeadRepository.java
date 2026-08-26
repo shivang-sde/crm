@@ -58,4 +58,10 @@ Optional<Lead> findByTenantIdAndPhoneAndIdNot(
     );
 
     public boolean existsByIdAndTenantId(UUID entityId, UUID tenantId);
-}
+    boolean existsByTenantIdAndStatus_IdAndDeletedFalse(UUID tenantId, UUID statusId);
+
+    boolean existsByTenantIdAndSource_IdAndDeletedFalse(UUID tenantId, UUID sourceId);
+
+    boolean existsByTenantIdAndConvertedContactIdAndDeletedFalse(UUID tenantId, UUID convertedContactId);
+
+    boolean existsByTenantIdAndConvertedAccountIdAndDeletedFalse(UUID tenantId, UUID convertedAccountId);}

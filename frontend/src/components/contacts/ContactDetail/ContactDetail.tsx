@@ -17,6 +17,7 @@ import {
 import { useState } from "react";
 import { useDeleteContact } from "@/lib/hooks/contacts";
 import { useAccount } from "@/lib/hooks/accounts";
+import { useUserLookup } from "@/lib/hooks/useUserLookup";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { ContactResponse } from "@/types/contacts";
 import { ContactTimeline } from "./ContactTimeline";
@@ -24,6 +25,7 @@ import { ContactNotes } from "./ContactNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
 import { ContactEntitlementsSection } from "@/components/entitlements/ContactEntitlementsSection";
+import { EntityDealsSection } from "@/components/deals/EntityDealsSection";
 
 interface ContactDetailProps {
   contact: ContactResponse;
@@ -36,6 +38,7 @@ export function ContactDetail({ contact }: ContactDetailProps) {
   const [showDelete, setShowDelete] = useState(false);
 
   const { data: account } = useAccount(contact.accountId);
+  const { resolveUserName } = useUserLookup();
 
   return (
     <div className="space-y-6">
@@ -105,7 +108,7 @@ export function ContactDetail({ contact }: ContactDetailProps) {
 
           <div>
             <p className="text-sm font-medium text-muted-foreground">Owner</p>
-            <p>{contact.ownerUserId || "Unassigned"}</p>
+            <p>{contact.ownerUserId ? resolveUserName(contact.ownerUserId) : "Unassigned"}</p>
           </div>
 
           <div>
@@ -127,6 +130,8 @@ export function ContactDetail({ contact }: ContactDetailProps) {
           </div>
         </div>
       </div>
+
+      <EntityDealsSection entityType="CONTACT" entityId={contact.id} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_1fr]">
   <div className="space-y-6">

@@ -11,6 +11,8 @@ import com.shivang.crm.modules.account.entity.AccountCustomField;
 
 public interface AccountCustomFieldRepository extends JpaRepository<AccountCustomField, UUID> {
 
+    java.util.Optional<AccountCustomField> findByIdAndTenantId(java.util.UUID id, java.util.UUID tenantId);
+
     @Query("SELECT field FROM AccountCustomField field WHERE field.tenantId = :tenantId AND field.isActive = true ORDER BY field.displayOrder ASC")
     List<AccountCustomField> findActiveFieldsByTenant(@Param("tenantId") UUID tenantId);
 

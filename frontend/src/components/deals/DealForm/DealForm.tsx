@@ -13,10 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { useCreateDeal, useUpdateDeal, useDealStages, useDealCustomFields } from "@/lib/hooks/deals";
 import { useDealLineItems } from "@/lib/hooks/deal-line-items";
+import { RecordCombobox } from "@/components/common/RecordCombobox";
 import { useQuery } from "@tanstack/react-query";
 import { userApi } from "@/lib/api/users";
-import { useAccounts } from "@/lib/hooks/accounts";
-import { useContacts } from "@/lib/hooks/contacts";
+import { useAccount } from "@/lib/hooks/accounts";
+import { useContact } from "@/lib/hooks/contacts";
 
 import { DealResponse } from "@/types/deals";
 import { DynamicFieldRenderer } from "./DynamicFieldRenderer";
@@ -34,8 +35,8 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
   const { data: stages, isLoading: stagesLoading } = useDealStages();
   const { data: customFields } = useDealCustomFields();
   const { data: usersData } = useQuery({ queryKey: ["users", "deal-form"], queryFn: () => userApi.getUsers({ page: 0, isActive: true }) });
-  const { data: accountsData } = useAccounts({ page: 0, size: 100 });
-  const { data: contactsData } = useContacts({ page: 0, size: 100 });
+  const { data: initialAccount } = useAccount(isEdit ? initialData?.accountId || undefined : undefined);
+  const { data: initialContact } = useContact(isEdit ? initialData?.contactId || undefined : undefined);
 
   const createMutation = useCreateDeal();
   const updateMutation = useUpdateDeal();
@@ -200,19 +201,13 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
             control={form.control}
             name="accountId"
             render={({ field }) => (
-              <Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {accountsData?.data.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <RecordCombobox
+                entityType="ACCOUNT"
+                value={field.value || undefined}
+                onChange={(id) => field.onChange(id ?? "")}
+                fallbackLabel={initialAccount?.name}
+                placeholder="Search account..."
+              />
             )}
           />
         </Field>
@@ -223,19 +218,18 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
             control={form.control}
             name="contactId"
             render={({ field }) => (
-              <Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select contact" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {contactsData?.data.map((contact) => (
-                    <SelectItem key={contact.id} value={contact.id}>
-                      {[contact.firstName, contact.lastName].filter(Boolean).join(" ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <RecordCombobox
+                entityType="CONTACT"
+                value={field.value || undefined}
+                onChange={(id) => field.onChange(id ?? "")}
+                fallbackLabel={
+                  initialContact
+                    ? [initialContact.firstName, initialContact.lastName].filter(Boolean).join(" ").trim() ||
+                      initialContact.email
+                    : undefined
+                }
+                placeholder="Search contact..."
+              />
             )}
           />
         </Field>

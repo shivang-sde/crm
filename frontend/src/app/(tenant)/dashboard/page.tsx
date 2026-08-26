@@ -1,11 +1,15 @@
-import Link from "next/link";
-import React from "react";
+import { SalesDashboard } from "@/components/dashboard/SalesDashboard";
 
 export default function TenantDashboard() {
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">Tenant Dashboard</h1>
-      <p className="text-sm text-muted-foreground">Welcome to the tenant dashboard.</p>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Sales Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          Pipeline, forecast and funnel metrics scoped to your visibility.
+        </p>
+      </div>
+      <SalesDashboard />
     </div>
   );
 }

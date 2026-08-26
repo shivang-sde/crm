@@ -67,12 +67,8 @@ public class LeadCustomFieldService {
     public LeadCustomFieldResponse updateField(UUID id, UUID tenantId, LeadCustomFieldCreateRequest request) {
         log.info("Updating custom field: {} for tenant: {}", id, tenantId);
 
-        LeadCustomField field = leadCustomFieldRepository.findById(id)
+        LeadCustomField field = leadCustomFieldRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Custom field not found"));
-
-        if (!field.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to field");
-        }
 
         field.setFieldLabel(request.getFieldLabel());
         field.setFieldType(request.getFieldType());
@@ -94,12 +90,8 @@ public class LeadCustomFieldService {
     public void deleteField(UUID id, UUID tenantId) {
         log.info("Deleting custom field: {} for tenant: {}", id, tenantId);
 
-        LeadCustomField field = leadCustomFieldRepository.findById(id)
+        LeadCustomField field = leadCustomFieldRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Custom field not found"));
-
-        if (!field.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to field");
-        }
 
         leadCustomFieldRepository.delete(field);
     }

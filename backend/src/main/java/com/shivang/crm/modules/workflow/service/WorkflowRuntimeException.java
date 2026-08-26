@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.workflow.service;
 
 import lombok.Getter;
+import tools.jackson.core.JacksonException;
 
 @Getter
 public class WorkflowRuntimeException extends RuntimeException {
@@ -16,5 +17,9 @@ public class WorkflowRuntimeException extends RuntimeException {
         super(message);
         this.errorCode = errorCode;
         this.disposition = disposition;
+    }
+
+    WorkflowRuntimeException(String workflow_context_serialization_failed, String unable_to_serialize_canonical_event_metad, JacksonException ex) {
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 }

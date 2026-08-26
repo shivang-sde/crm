@@ -88,6 +88,11 @@ app:
     batch-size: 100
     max-attempts: 3
     processing-timeout-seconds: 300
+  entitlements:
+    expiry-enabled: true
+    expiry-delay-ms: ${ENTITLEMENT_EXPIRY_DELAY_MS:86400000}
+    renewal-task-enabled: true
+    renewal-task-delay-ms: ${ENTITLEMENT_RENEWAL_TASK_DELAY_MS:86400000}
   recurrence:
     enabled: true
     generation-delay-ms: 60000
@@ -102,14 +107,7 @@ app:
   workflow-runtime:
     poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:5000}
     batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:25}
-    retry:
-      enabled: ${WORKFLOW_NODE_RETRY_ENABLED:false}
-      max-attempts: ${WORKFLOW_NODE_RETRY_MAX_ATTEMPTS:3}
-      initial-delay-seconds: ${WORKFLOW_NODE_RETRY_INITIAL_DELAY_SECONDS:5}
-      max-delay-seconds: ${WORKFLOW_NODE_RETRY_MAX_DELAY_SECONDS:300}
-      jitter: ${WORKFLOW_NODE_RETRY_JITTER:true}
-      batch-size: ${WORKFLOW_NODE_RETRY_BATCH_SIZE:25}
-      poll-delay-ms: ${WORKFLOW_NODE_RETRY_POLL_DELAY_MS:5000}
+    max-chain-depth: ${WORKFLOW_MAX_CHAIN_DEPTH:5}
     retry:
       enabled: ${WORKFLOW_NODE_RETRY_ENABLED:false}
       max-attempts: ${WORKFLOW_NODE_RETRY_MAX_ATTEMPTS:3}

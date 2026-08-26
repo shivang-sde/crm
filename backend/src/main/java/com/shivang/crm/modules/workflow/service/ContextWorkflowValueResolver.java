@@ -57,11 +57,18 @@ public class ContextWorkflowValueResolver implements WorkflowValueResolver {
         }
 
         Object current = values;
-        for (String segment : path.split("\\.")) {
-            if (!(current instanceof Map<?, ?> map) || !map.containsKey(segment)) {
+        String[] segments = path.split("\\.");
+        for (int i = 0; i < segments.length; i++) {
+            if (!(current instanceof Map<?, ?> map) || !map.containsKey(segments[i])) {
                 return WorkflowResolvedValue.missing();
             }
-            current = map.get(segment);
+            current = map.get(segments[i]);
+            // Navigating THROUGH a null related record resolves to a safe null
+            // leaf instead of a hard "field not found" failure, so conditions
+            // like entity.account.name IS_NULL work for missing relationships.
+            if (current == null && i < segments.length - 1) {
+                return WorkflowResolvedValue.of(null);
+            }
         }
         return WorkflowResolvedValue.of(current);
     }

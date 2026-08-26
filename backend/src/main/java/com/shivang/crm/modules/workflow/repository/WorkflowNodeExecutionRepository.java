@@ -51,4 +51,18 @@ public interface WorkflowNodeExecutionRepository extends JpaRepository<WorkflowN
 
     @org.springframework.data.jpa.repository.Query("SELECT execution FROM WorkflowNodeExecution execution JOIN FETCH execution.workflowExecution workflowExecution JOIN FETCH execution.workflowNode node WHERE execution.id = :id AND execution.deleted = false")
     java.util.Optional<WorkflowNodeExecution> findRuntimeNodeExecution(@Param("id") UUID id);
+
+    // Tenant-scoped independently of the parent execution's own tenant check, per node execution.
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT execution FROM WorkflowNodeExecution execution
+        JOIN FETCH execution.workflowNode node
+        WHERE execution.tenantId = :tenantId
+          AND execution.workflowExecution.id = :workflowExecutionId
+          AND execution.deleted = false
+        ORDER BY execution.createdAt ASC
+        """)
+    java.util.List<WorkflowNodeExecution> findByTenantIdAndWorkflowExecutionIdAndDeletedFalseOrderByCreatedAtAsc(
+        @Param("tenantId") UUID tenantId,
+        @Param("workflowExecutionId") UUID workflowExecutionId
+    );
 }

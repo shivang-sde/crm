@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Loader2 } from "lucide-react";
+import { Loader2, DollarSign } from "lucide-react";
 import { useDeals, useDealStages, useChangeDealStage } from "@/lib/hooks/deals";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { DealResponse } from "@/types/deals";
@@ -168,6 +168,19 @@ export function DealKanban() {
           Drag cards between columns to update deal stage.
         </p>
       )}
+      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Pipeline total</span>
+        <span>
+          {localDeals.length} deal{localDeals.length === 1 ? "" : "s"}
+        </span>
+        <span aria-hidden>·</span>
+        <span className="flex items-center gap-1 font-semibold text-foreground">
+          <DollarSign className="h-4 w-4" />
+          {localDeals
+            .reduce((sum, d) => sum + (d.amount ?? 0), 0)
+            .toLocaleString()}
+        </span>
+      </div>
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}

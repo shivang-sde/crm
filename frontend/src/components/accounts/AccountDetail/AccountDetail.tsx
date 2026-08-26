@@ -20,6 +20,7 @@ import { usePermissions } from "@/lib/hooks/usePermissions";
 import { AccountResponse } from "@/types/accounts";
 import { AccountContacts } from "./AccountContacts";
 import { AccountTimeline } from "./AccountTimeline";
+import { EntityDealsSection } from "@/components/deals/EntityDealsSection";
 import { AccountNotes } from "./AccountNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
@@ -133,6 +134,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
           </div>
 
           <AccountEntitlementsSection accountId={account.id} />
+          <EntityDealsSection entityType="ACCOUNT" entityId={account.id} />
           <AccountContacts accountId={account.id} />
           <EntityCallHistory
             entityType="account"

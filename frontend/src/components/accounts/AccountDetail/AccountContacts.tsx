@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAccountContacts } from "@/lib/hooks/accounts";
+import { useUserLookup } from "@/lib/hooks/useUserLookup";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface AccountContactsProps {
@@ -11,6 +12,7 @@ interface AccountContactsProps {
 export function AccountContacts({ accountId }: AccountContactsProps) {
   const { data: contactsResult, isLoading } = useAccountContacts(accountId, { page: 0, size: 20 });
   const contacts = contactsResult?.data ?? [];
+  const { resolveUserName } = useUserLookup();
 
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading contacts…</div>;
@@ -46,7 +48,7 @@ export function AccountContacts({ accountId }: AccountContactsProps) {
               <TableCell>{contact.email || "—"}</TableCell>
               <TableCell>{contact.phone || "—"}</TableCell>
               <TableCell>{contact.title || "—"}</TableCell>
-              <TableCell>{contact.ownerUserId || "—"}</TableCell>
+              <TableCell>{contact.ownerUserId ? resolveUserName(contact.ownerUserId) : "—"}</TableCell>
             </TableRow>
           ))}
         </TableBody>

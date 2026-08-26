@@ -30,6 +30,13 @@ export function LeadAssignment({ lead }: LeadAssignmentProps) {
     enabled: canEditLeads,
   });
 
+  const resolveOwnerName = (ownerId?: string | null): string => {
+    if (!ownerId) return "Unassigned";
+    const user = (usersData?.content ?? []).find((u) => u.id === ownerId);
+    if (!user) return "Unknown User";
+    return [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || "Unknown User";
+  };
+
   if (!canEditLeads) {
     return (
       <Card>
@@ -37,7 +44,7 @@ export function LeadAssignment({ lead }: LeadAssignmentProps) {
           <CardTitle className="text-base">Assignment</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          Owner: {lead.ownerUserId || "Unassigned"}
+          Owner: {resolveOwnerName(lead.ownerUserId)}
         </CardContent>
       </Card>
     );

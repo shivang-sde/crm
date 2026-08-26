@@ -16,14 +16,15 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shivang.crm.modules.integration.entity.ConnectorCredential;
-import com.shivang.crm.modules.integration.service.ConnectorCredentialService;
+import tools.jackson.databind.ObjectMapper;
+
+import com.shivang.crm.modules.integration.service.CredentialEncryptionService;
+
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+
 
 @Service
 public class OutboundHttpServiceImpl implements OutboundHttpService {
@@ -31,7 +32,8 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
 
     private final OutboundHttpConnectionRepository connectionRepository;
-    private final ConnectorCredentialService credentialService;
+    private final OutboundHttpConnectionCredentialRepository connectionCredentialRepository;
+    private final CredentialEncryptionService encryptionService;
     private final OutboundHttpSecurityPolicy securityPolicy;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
@@ -44,14 +46,16 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
 
     public OutboundHttpServiceImpl(
         OutboundHttpConnectionRepository connectionRepository,
-        ConnectorCredentialService credentialService,
+        OutboundHttpConnectionCredentialRepository connectionCredentialRepository,
+        CredentialEncryptionService encryptionService,
         OutboundHttpSecurityPolicy securityPolicy,
         ObjectMapper objectMapper,
         @Value("${app.outbound-http.connect-timeout-ms:5000}") int connectTimeoutMs,
         @Value("${app.outbound-http.read-timeout-ms:10000}") int readTimeoutMs
     ) {
         this.connectionRepository = connectionRepository;
-        this.credentialService = credentialService;
+        this.connectionCredentialRepository = connectionCredentialRepository;
+        this.encryptionService = encryptionService;
         this.securityPolicy = securityPolicy;
         this.objectMapper = objectMapper;
         HttpClient httpClient = HttpClient.newBuilder()
@@ -99,6 +103,7 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
                 ));
 
             JsonNode responseBody = parseResponse(response.body());
+            responseBody = redactCredentials(responseBody, credentials);
             return new OutboundHttpResult(
                 response.statusCode() >= 200 && response.statusCode() < 300,
                 response.statusCode(),
@@ -112,7 +117,7 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
             return new OutboundHttpResult(
                 false,
                 0,
-                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
+                tools.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
                 Duration.between(started, Instant.now()).toMillis(),
                 correlationId,
                 "OUTBOUND_HTTP_FAILED",
@@ -138,9 +143,15 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
 
     private OutboundHttpConnection resolveConnection(OutboundHttpRequest request) {
         if (request.connectionId() == null) return null;
-        return connectionRepository
-            .findByIdAndTenantIdAndActiveTrueAndDeletedFalse(request.connectionId(), request.tenantId())
+        OutboundHttpConnection connection = connectionRepository
+            .findByIdAndTenantIdAndDeletedFalse(request.connectionId(), request.tenantId())
             .orElseThrow(() -> new IllegalArgumentException("Outbound HTTP connection not found"));
+        if (!Boolean.TRUE.equals(connection.getActive())) {
+            // Inactive connections are observable and controlled — the workflow
+            // never falls back to direct endpoint mode.
+            throw new IllegalArgumentException("Outbound HTTP connection is inactive");
+        }
+        return connection;
     }
 
     private Map<String, Object> resolveCredentials(OutboundHttpRequest request, OutboundHttpConnection connection) {
@@ -152,11 +163,11 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
         }
         if ("OAUTH2".equals(authType) || "CUSTOM".equals(authType)) throw new IllegalArgumentException("Outbound authentication type is not supported");
         if (connection.getCredentialId() == null) throw new IllegalArgumentException("Outbound authentication requires a credential");
-        ConnectorCredential credential = credentialService.findById(request.tenantId(), connection.getCredentialId())
-            .filter(item -> Boolean.TRUE.equals(item.getIsActive()) && !Boolean.TRUE.equals(item.getDeleted()))
+        OutboundHttpConnectionCredential credential = connectionCredentialRepository
+            .findByIdAndTenantIdAndIsActiveTrueAndDeletedFalse(connection.getCredentialId(), request.tenantId())
             .orElseThrow(() -> new IllegalArgumentException("Outbound HTTP credential not found"));
         try {
-            return objectMapper.readValue(credentialService.decryptValue(credential), MAP_TYPE);
+            return objectMapper.readValue(encryptionService.decrypt(credential.getEncryptedValue()), MAP_TYPE);
         } catch (Exception ex) {
             throw new IllegalArgumentException("Outbound HTTP credential could not be resolved");
         }
@@ -206,6 +217,29 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
         if (body == null || body.length == 0) return objectMapper.nullNode();
         try { return objectMapper.readTree(body); }
         catch (Exception ignored) { return objectMapper.getNodeFactory().textNode(new String(body, java.nio.charset.StandardCharsets.UTF_8)); }
+    }
+
+    /**
+     * Echo-style endpoints and debug proxies can reflect the credential we
+     * just sent. Scrub any credential value from the stored response so
+     * secrets never reach nodeOutputs or execution records.
+     */
+    private JsonNode redactCredentials(JsonNode body, Map<String, Object> credentials) {
+        if (credentials == null || credentials.isEmpty() || body == null) return body;
+        String text = objectMapper.writeValueAsString(body);
+        boolean changed = false;
+        for (Object value : credentials.values()) {
+            if (value == null) continue;
+            String secret = String.valueOf(value);
+            if (secret.length() < 4) continue;
+            if (text.contains(secret)) {
+                text = text.replace(secret, "***");
+                changed = true;
+            }
+        }
+        if (!changed) return body;
+        try { return objectMapper.readTree(text); }
+        catch (Exception ignored) { return objectMapper.getNodeFactory().textNode("***"); }
     }
 
     private record ResponseData(int statusCode, byte[] body) { }

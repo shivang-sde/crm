@@ -1,7 +1,9 @@
 package com.shivang.crm.modules.task.service;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -24,6 +26,8 @@ import com.shivang.crm.modules.task.entity.TaskStatus;
 import com.shivang.crm.modules.task.repository.TaskRepository;
 import com.shivang.crm.modules.task.specification.TaskSpecification;
 import com.shivang.crm.shared.enums.OwnershipScope;
+import com.shivang.crm.shared.event.CanonicalCrmEvent;
+import com.shivang.crm.shared.event.CanonicalCrmEventPublisher;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.service.EntityResolverService;
@@ -39,9 +43,11 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
     private final EntityResolverService entityResolverService;
     private final ReminderPlanningService reminderPlanningService;
     private final RecurrenceScheduleService recurrenceScheduleService;
+    private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
 
     private final TenantContext tenantContext;
 
@@ -50,10 +56,17 @@ public class TaskService {
             throw new PermissionDeniedException("No permission to create tasks");
         }
 
-        return createTaskInternal(tenantId, userId, request);
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("source", "MANUAL");
+        eventMetadata.put("actorType", "USER");
+        return createTaskInternal(tenantId, userId, request, eventMetadata);
     }
 
     public TaskResponse createTaskInternal(UUID tenantId, UUID actorId, TaskCreateRequest request) {
+        return createTaskInternal(tenantId, actorId, request, Map.of("source", "INTERNAL"));
+    }
+
+    public TaskResponse createTaskInternal(UUID tenantId, UUID actorId, TaskCreateRequest request, Map<String, Object> eventMetadata) {
         // Validate linked entity if provided
         if (request.getEntityType() != null && request.getEntityId() != null) {
             entityResolverService.validateEntityExists(
@@ -101,6 +114,20 @@ public class TaskService {
         reminderPlanningService.planForTask(savedTask);
         log.info("Created task {} for tenant {}", savedTask.getId(), tenantId);
 
+        Map<String, Object> enrichedEventMetadata = new HashMap<>();
+        if (eventMetadata != null) enrichedEventMetadata.putAll(eventMetadata);
+        enrichedEventMetadata.put("actorId", actorId.toString());
+        if (!enrichedEventMetadata.containsKey("actorType")) {
+            enrichedEventMetadata.put("actorType", "SYSTEM");
+        }
+        canonicalCrmEventPublisher.publish(
+            savedTask.getTenantId(),
+            CanonicalCrmEvent.TASK_ENTITY_TYPE,
+            CanonicalCrmEvent.CREATED_EVENT_TYPE,
+            savedTask.getId(),
+            enrichedEventMetadata
+        );
+
         return toResponse(savedTask);
     }
 
@@ -136,7 +163,33 @@ public class TaskService {
     @Transactional(readOnly = true)
     public TaskResponse getTask(UUID id, UUID tenantId) {
         Task task = findTaskByIdAndTenant(id, tenantId);
+
+        // RBAC-7: single-record read must respect the task:read scope using
+        // the module's established ownership convention (creator/owner).
+        UUID currentUserId = tenantContext.getUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "task", "read");
+        assertTaskInScope(scope, task, currentUserId, tenantId);
+
         return toResponse(task);
+    }
+
+    /**
+     * RBAC-7 ownership convention for tasks (mirrors hasWritePermission):
+     * OWN -> creator or owner is the caller; TEAM -> creator within the
+     * caller's team (owner-based TEAM coverage comes from the list spec).
+     */
+    private void assertTaskInScope(String scope, Task task, UUID userId, UUID tenantId) {
+        boolean allowed = switch (scope) {
+            case "ALL" -> true;
+            case "OWN" -> userId.equals(task.getCreatedBy()) || userId.equals(task.getOwnerId());
+            case "TEAM" -> userId.equals(task.getCreatedBy())
+                    || permissionEvaluatorService.isInSameTeam(tenantId, userId, task.getCreatedBy());
+            default -> false;
+        };
+        if (!allowed) {
+            throw new com.shivang.crm.shared.exception.PermissionDeniedException("SCOPE_DENIED",
+                    "Record is outside your access scope");
+        }
     }
 
     public TaskResponse updateTask(UUID id, UUID tenantId, UUID userId, TaskUpdateRequest request) {
@@ -160,6 +213,7 @@ public class TaskService {
         }
 
         // Update fields
+        TaskStatus previousStatus = task.getStatus();
         if (request.getSubject() != null) {
             task.setSubject(request.getSubject());
         }
@@ -215,6 +269,14 @@ public class TaskService {
         reminderPlanningService.planForTask(task);
         log.info("Updated task {} for tenant {}", id, tenantId);
 
+        if (task.getStatus() != previousStatus) {
+            if (task.getStatus() == TaskStatus.COMPLETED && previousStatus != TaskStatus.COMPLETED) {
+                publishTaskCompleted(task, previousStatus, userId);
+            } else if (previousStatus != null) {
+                publishTaskStatusChanged(task, previousStatus, userId);
+            }
+        }
+
         return toResponse(task);
     }
 
@@ -240,9 +302,14 @@ public class TaskService {
             throw new PermissionDeniedException("No permission to complete this task");
         }
 
+        TaskStatus previousStatus = task.getStatus();
         task.complete(userId);
         Task completedTask = taskRepository.save(task);
         log.info("Completed task {} for tenant {}", id, tenantId);
+
+        if (previousStatus != TaskStatus.COMPLETED) {
+            publishTaskCompleted(completedTask, previousStatus, userId);
+        }
 
         return toResponse(completedTask);
     }
@@ -254,9 +321,14 @@ public class TaskService {
             throw new PermissionDeniedException("No permission to reopen this task");
         }
 
+        TaskStatus previousStatus = task.getStatus();
         task.reopen(userId);
         Task reopenedTask = taskRepository.save(task);
         log.info("Reopened task {} for tenant {}", id, tenantId);
+
+        if (previousStatus != reopenedTask.getStatus()) {
+            publishTaskStatusChanged(reopenedTask, previousStatus, userId);
+        }
 
         return toResponse(reopenedTask);
     }
@@ -264,6 +336,40 @@ public class TaskService {
     private Task findTaskByIdAndTenant(UUID id, UUID tenantId) {
         return taskRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new NotFoundException("Task not found with id: " + id));
+    }
+
+    private void publishTaskCompleted(Task task, TaskStatus previousStatus, UUID userId) {
+        Map<String, Object> eventMetadata = new HashMap<>();
+        if (previousStatus != null) {
+            eventMetadata.put("previousStatus", previousStatus.name());
+        }
+        eventMetadata.put("newStatus", task.getStatus().name());
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+            task.getTenantId(),
+            CanonicalCrmEvent.TASK_ENTITY_TYPE,
+            CanonicalCrmEvent.COMPLETED_EVENT_TYPE,
+            task.getId(),
+            eventMetadata
+        );
+    }
+
+    private void publishTaskStatusChanged(Task task, TaskStatus previousStatus, UUID userId) {
+        Map<String, Object> eventMetadata = new HashMap<>();
+        if (previousStatus != null) {
+            eventMetadata.put("previousStatus", previousStatus.name());
+        }
+        eventMetadata.put("newStatus", task.getStatus().name());
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+            task.getTenantId(),
+            CanonicalCrmEvent.TASK_ENTITY_TYPE,
+            CanonicalCrmEvent.STATUS_CHANGED_EVENT_TYPE,
+            task.getId(),
+            eventMetadata
+        );
     }
 
     private boolean hasWritePermission(Task task, UUID userId, UUID tenantId) {

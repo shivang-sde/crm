@@ -731,19 +731,19 @@ export default function CallingSettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label htmlFor="ruleEntity">Target entity type</Label>
                   <Input id="ruleEntity" value={triggerForm.entityType} onChange={(event) => setTriggerForm((previous) => ({ ...previous, entityType: event.target.value }))} />
-                </div>
+                </div> */}
                 <div className="space-y-2">
                   <Label htmlFor="ruleOpenAction">Open action</Label>
                   <Select value={triggerForm.openAction} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, openAction: value }))}>
                     <SelectTrigger id="ruleOpenAction"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="OPEN_PAGE">Open page</SelectItem>
-                      <SelectItem value="OPEN_CALL_LAYOUT">Open call layout</SelectItem>
+                      {/* <SelectItem value="OPEN_CALL_LAYOUT">Open call layout</SelectItem>
                       <SelectItem value="OPEN_MODAL">Open modal</SelectItem>
-                      <SelectItem value="OPEN_SIDEBAR">Open sidebar</SelectItem>
+                      <SelectItem value="OPEN_SIDEBAR">Open sidebar</SelectItem> */}
                       <SelectItem value="NO_ACTION">No action</SelectItem>
                     </SelectContent>
                   </Select>
@@ -754,15 +754,15 @@ export default function CallingSettingsPage() {
                     <SelectTrigger id="ruleDisplayMode"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="PAGE">Page</SelectItem>
-                      <SelectItem value="MODAL">Modal</SelectItem>
-                      <SelectItem value="SIDEBAR">Sidebar</SelectItem>
+                      {/* <SelectItem value="MODAL">Modal</SelectItem>
+                      <SelectItem value="SIDEBAR">Sidebar</SelectItem> */}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label htmlFor="ruleRoute">Target route</Label>
                   <Input id="ruleRoute" value={triggerForm.route} onChange={(event) => setTriggerForm((previous) => ({ ...previous, route: event.target.value }))} />
-                </div>
+                </div> */}
                 <div className="space-y-2">
                   <Label htmlFor="rulePriority">Priority</Label>
                   <Input id="rulePriority" type="number" value={triggerForm.priority} onChange={(event) => setTriggerForm((previous) => ({ ...previous, priority: Number(event.target.value) }))} />

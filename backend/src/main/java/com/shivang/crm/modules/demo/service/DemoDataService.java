@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -46,10 +47,12 @@ import com.shivang.crm.modules.deal.service.DealService;
 import com.shivang.crm.modules.deal.service.DealStageService;
 import com.shivang.crm.modules.demo.dto.DemoDataStatusResponse;
 import com.shivang.crm.modules.demo.dto.DemoInstallationResponse;
+import com.shivang.crm.modules.demo.dto.DemoResetResponse;
 import com.shivang.crm.modules.demo.entity.DemoDataRecord;
 import com.shivang.crm.modules.demo.entity.TenantDemoInstallation;
 import com.shivang.crm.modules.demo.repository.DemoDataRecordRepository;
 import com.shivang.crm.modules.demo.repository.TenantDemoInstallationRepository;
+import com.shivang.crm.modules.entitlement.repository.CustomerEntitlementRepository;
 import com.shivang.crm.modules.lead.dto.LeadCreateRequest;
 import com.shivang.crm.modules.lead.dto.LeadResponse;
 import com.shivang.crm.modules.lead.dto.LeadSourceCreateRequest;
@@ -76,7 +79,22 @@ public class DemoDataService {
     private final TenantDemoInstallationRepository installationRepository;
     private final DemoDataRecordRepository recordRepository;
     private final UserRepository userRepository;
-    
+    private final CustomerEntitlementRepository entitlementRepository;
+
+    // Repositories used only by reset for registry-driven, tenant-safe deletion.
+    private final com.shivang.crm.modules.lead.repository.LeadRepository leadRepository;
+    private final com.shivang.crm.modules.lead.repository.LeadStatusRepository leadStatusRepoForReset;
+    private final com.shivang.crm.modules.lead.repository.LeadSourceRepository leadSourceRepoForReset;
+    private final com.shivang.crm.modules.account.repository.AccountRepository accountRepository;
+    private final com.shivang.crm.modules.contact.repository.ContactRepository contactRepoForReset;
+    private final com.shivang.crm.modules.deal.repository.DealStageRepository dealStageRepoForReset;
+    private final com.shivang.crm.modules.deal.repository.DealRepository dealRepoForReset;
+    private final com.shivang.crm.modules.deal.repository.DealLineItemRepository dealLineItemRepoForReset;
+    private final com.shivang.crm.modules.catalog.repository.OfferingRepository offeringRepoForReset;
+    private final com.shivang.crm.modules.task.repository.TaskRepository taskRepoForReset;
+    private final com.shivang.crm.modules.call.repository.CallRepository callRepoForReset;
+    private final com.shivang.crm.modules.meeting.repository.MeetingRepository meetingRepoForReset;
+
     private final LeadStatusService leadStatusService;
     private final LeadSourceService leadSourceService;
     private final LeadService leadService;
@@ -544,7 +562,179 @@ public class DemoDataService {
             } else if (willLose) {
                 dealService.markDealLost(deal.getId(), tenantId, adminUserId, "Price too high");
             }
+
+            // Track entitlements provisioned by the won-deal lifecycle so reset
+            // can remove exactly what the demo created.
+            for (var ent : entitlementRepository.findByTenantIdAndDealIdAndDeletedFalse(tenantId, deal.getId())) {
+                trackRecord(tenantId, "CUSTOMER_ENTITLEMENT", ent.getId(), records, counts);
+            }
             i++;
+        }
+    }
+
+    /**
+     * Removes the generic-sales v1 demo workspace for the tenant.
+     *
+     * Ownership rule: a business record is deleted only when it is registered
+     * in demo_data_records for this tenant + template. Demo-created parents
+     * (accounts, offerings, stages, statuses, sources) are PRESERVED — and
+     * reported in preservedCounts — when non-demo tenant data references them.
+     */
+    @Transactional
+    public DemoResetResponse resetGenericSalesDemo(UUID tenantId) {
+        Map<String, Integer> deleted = new HashMap<>();
+        Map<String, Integer> preserved = new HashMap<>();
+
+        Optional<TenantDemoInstallation> installationOpt =
+                installationRepository.findByTenantIdAndTemplateKeyAndTemplateVersion(tenantId, TEMPLATE_KEY, TEMPLATE_VERSION);
+
+        List<DemoDataRecord> registry = recordRepository.findAll().stream()
+                .filter(r -> tenantId.equals(r.getTenantId()) && TEMPLATE_KEY.equals(r.getTemplateKey()))
+                .collect(Collectors.toList());
+
+        if (installationOpt.isEmpty() && registry.isEmpty()) {
+            return DemoResetResponse.builder()
+                    .templateKey(TEMPLATE_KEY)
+                    .templateVersion(TEMPLATE_VERSION)
+                    .reset(false)
+                    .deletedCounts(deleted)
+                    .preservedCounts(preserved)
+                    .build();
+        }
+
+        Map<String, Set<UUID>> owned = new HashMap<>();
+        for (DemoDataRecord r : registry) {
+            owned.computeIfAbsent(r.getEntityType(), k -> new java.util.HashSet<>()).add(r.getEntityId());
+        }
+
+        // Dependents first, then parents, then reference/configuration data.
+        deleteAll(owned, "CUSTOMER_ENTITLEMENT", id -> entitlementRepository.findById(id)
+                .filter(e -> tenantId.equals(e.getTenantId()) && !e.isDeleted()), deleted, entitlementRepository::delete);
+        deleteAll(owned, "DEAL_LINE_ITEM", id -> dealLineItemRepoForReset.findById(id)
+                .filter(li -> tenantId.equals(li.getTenantId())), deleted, dealLineItemRepoForReset::delete);
+        deleteAll(owned, "MEETING", id -> meetingRepoForReset.findById(id)
+                .filter(m -> tenantId.equals(m.getTenantId()) && !m.isDeleted()), deleted, meetingRepoForReset::delete);
+        deleteAll(owned, "TASK", id -> taskRepoForReset.findById(id)
+                .filter(t -> tenantId.equals(t.getTenantId()) && !t.isDeleted()), deleted, taskRepoForReset::delete);
+        deleteAll(owned, "CALL", id -> callRepoForReset.findById(id)
+                .filter(c -> tenantId.equals(c.getTenantId()) && !c.isDeleted()), deleted, callRepoForReset::delete);
+
+        // Deals: keep any demo deal that surviving (non-demo) entitlements still
+        // reference — demo entitlements were already deleted above.
+        for (UUID id : owned.getOrDefault("DEAL", Set.of())) {
+            if (entitlementRepository.existsByTenantIdAndDealIdAndDeletedFalse(tenantId, id)) {
+                preserved.merge("deals", 1, Integer::sum);
+                continue;
+            }
+            dealRepoForReset.findById(id)
+                    .filter(d -> tenantId.equals(d.getTenantId()) && !d.isDeleted())
+                    .ifPresent(deal -> { dealRepoForReset.delete(deal); deleted.merge("deals", 1, Integer::sum); });
+        }
+
+        // Contacts: only demo-owned ones; accounts stay protected below.
+        deleteAll(owned, "CONTACT", id -> contactRepoForReset.findById(id)
+                .filter(c -> tenantId.equals(c.getTenantId()) && !c.isDeleted()), deleted, contactRepoForReset::delete);
+
+        // Accounts: preserve when surviving contacts/deals/entitlements remain.
+        for (UUID id : owned.getOrDefault("ACCOUNT", Set.of())) {
+            if (contactRepoForReset.existsByTenantIdAndAccountIdAndDeletedFalse(tenantId, id)
+                    || dealRepoForReset.existsByTenantIdAndAccountIdAndDeletedFalse(tenantId, id)
+                    || entitlementRepository.existsByTenantIdAndAccountIdAndDeletedFalse(tenantId, id)) {
+                preserved.merge("accounts", 1, Integer::sum);
+                continue;
+            }
+            accountRepository.findById(id)
+                    .filter(a -> tenantId.equals(a.getTenantId()) && !a.isDeleted())
+                    .ifPresent(a -> { accountRepository.delete(a); deleted.merge("accounts", 1, Integer::sum); });
+        }
+
+        // Offerings: preserve when non-demo line items or entitlements exist.
+        for (UUID id : owned.getOrDefault("OFFERING", Set.of())) {
+            if (dealLineItemRepoForReset.existsByTenantIdAndOfferingIdAndDeletedFalse(tenantId, id)
+                    || entitlementRepository.existsByTenantIdAndOfferingIdAndDeletedFalse(tenantId, id)) {
+                preserved.merge("offerings", 1, Integer::sum);
+                continue;
+            }
+            offeringRepoForReset.findById(id)
+                    .filter(o -> tenantId.equals(o.getTenantId()) && !o.isDeleted())
+                    .ifPresent(o -> { offeringRepoForReset.delete(o); deleted.merge("offerings", 1, Integer::sum); });
+        }
+
+        // Leads.
+        deleteAll(owned, "LEAD", id -> leadRepository.findById(id)
+                .filter(l -> tenantId.equals(l.getTenantId()) && !l.isDeleted()), deleted, leadRepository::delete);
+
+        // Demo-created configuration: preserve if non-demo records depend on it.
+        Set<UUID> demoLeads = owned.getOrDefault("LEAD", Set.of());
+        for (UUID id : owned.getOrDefault("DEAL_STAGE", Set.of())) {
+            if (dealRepoForReset.existsByTenantIdAndStage_IdAndDeletedFalse(tenantId, id)) {
+                preserved.merge("dealStages", 1, Integer::sum);
+                continue;
+            }
+            dealStageRepoForReset.findById(id).ifPresent(s -> { dealStageRepoForReset.delete(s); deleted.merge("dealStages", 1, Integer::sum); });
+        }
+        for (UUID id : owned.getOrDefault("LEAD_SOURCE", Set.of())) {
+            if (leadRepository.existsByTenantIdAndSource_IdAndDeletedFalse(tenantId, id)) {
+                preserved.merge("leadSources", 1, Integer::sum);
+                continue;
+            }
+            leadSourceRepoForReset.findById(id).ifPresent(s -> { leadSourceRepoForReset.delete(s); deleted.merge("leadSources", 1, Integer::sum); });
+        }
+        for (UUID id : owned.getOrDefault("LEAD_STATUS", Set.of())) {
+            if (leadRepository.existsByTenantIdAndStatus_IdAndDeletedFalse(tenantId, id)) {
+                preserved.merge("leadStatuses", 1, Integer::sum);
+                continue;
+            }
+            leadStatusRepoForReset.findById(id).ifPresent(s -> { leadStatusRepoForReset.delete(s); deleted.merge("leadStatuses", 1, Integer::sum); });
+        }
+
+        // Registry + installation cleanup last.
+        recordRepository.deleteAll(registry);
+        installationOpt.ifPresent(installationRepository::delete);
+
+        log.info("Demo reset complete for tenant {}: deleted={} preserved={}", tenantId, deleted, preserved);
+        return DemoResetResponse.builder()
+                .templateKey(TEMPLATE_KEY)
+                .templateVersion(TEMPLATE_VERSION)
+                .reset(true)
+                .deletedCounts(deleted)
+                .preservedCounts(preserved)
+                .build();
+    }
+
+    private interface RepoFinder<T> {
+        Optional<T> find(UUID id);
+    }
+
+    private interface RepoDeleter<T> {
+        void delete(T entity);
+    }
+
+    private <T> void deleteAll(
+            Map<String, Set<UUID>> owned,
+            String entityType,
+            RepoFinder<T> finder,
+            Map<String, Integer> deleted,
+            RepoDeleter<T> deleter
+    ) {
+        String key = countsKey(entityType);
+        for (UUID id : owned.getOrDefault(entityType, Set.of())) {
+            Optional<T> entity = finder.find(id);
+            if (entity.isPresent()) {
+                deleter.delete(entity.get());
+                deleted.merge(key, 1, Integer::sum);
+            }
+        }
+    }
+
+    private static String countsKey(String entityType) {
+        switch (entityType) {
+            case "DEAL_LINE_ITEM": return "dealLineItems";
+            case "LEAD_STATUS": return "leadStatuses";
+            case "LEAD_SOURCE": return "leadSources";
+            case "DEAL_STAGE": return "dealStages";
+            case "CUSTOMER_ENTITLEMENT": return "entitlements";
+            default: return entityType.toLowerCase() + "s";
         }
     }
 

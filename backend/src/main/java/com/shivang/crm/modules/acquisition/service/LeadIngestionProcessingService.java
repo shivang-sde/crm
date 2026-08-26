@@ -56,45 +56,36 @@ public class LeadIngestionProcessingService {
         event.setStatus(LeadIngestionEventStatus.PROCESSING);
         leadIngestionEventRepository.save(event);
 
-        try {
-            MappedLeadData mappedLeadData = leadIngestionMappingService.preview(tenantId, configId, eventId);
-            ValidatedLeadIngestionData validated = leadIngestionValidationService.validateAndNormalize(tenantId, mappedLeadData);
+        MappedLeadData mappedLeadData = leadIngestionMappingService.preview(tenantId, configId, eventId);
+        ValidatedLeadIngestionData validated = leadIngestionValidationService.validateAndNormalize(tenantId, mappedLeadData);
 
-            if (!validated.getErrors().isEmpty()) {
-                event.setStatus(LeadIngestionEventStatus.REJECTED);
-                event.setErrorCode("VALIDATION_ERROR");
-                event.setErrorMessage(getValidationMessage(validated));
-                event.setProcessedAt(Instant.now());
-                return leadIngestionEventRepository.save(event);
-            }
-
-            LeadCreateRequest request = buildLeadCreateRequest(validated);
-            UUID systemActorId = leadIngestionSystemActorService.ensureSystemActor(tenantId);
-            LeadResponse created = leadService.createLeadInternal(
-                tenantId,
-                systemActorId,
-                request,
-                Map.of(
-                    "source", "UNIVERSAL_LEAD_INGESTION",
-                    "ingestionConfigId", configId,
-                    "ingestionEventId", eventId
-                )
-            );
-
-            event.setLeadId(created.getId());
-            event.setStatus(LeadIngestionEventStatus.PROCESSED);
-            event.setProcessedAt(Instant.now());
-            event.setErrorCode(null);
-            event.setErrorMessage(null);
-            return leadIngestionEventRepository.save(event);
-        } catch (Exception ex) {
-            log.error("Failed to process ingestion event {} for tenant={} configId={}", eventId, tenantId, configId, ex);
-            event.setStatus(LeadIngestionEventStatus.FAILED);
-            event.setErrorCode("PROCESSING_ERROR");
-            event.setErrorMessage(ex.getMessage());
+        if (!validated.getErrors().isEmpty()) {
+            event.setStatus(LeadIngestionEventStatus.REJECTED);
+            event.setErrorCode("VALIDATION_ERROR");
+            event.setErrorMessage(getValidationMessage(validated));
             event.setProcessedAt(Instant.now());
             return leadIngestionEventRepository.save(event);
         }
+
+        LeadCreateRequest request = buildLeadCreateRequest(validated);
+        UUID systemActorId = leadIngestionSystemActorService.ensureSystemActor(tenantId);
+        LeadResponse created = leadService.createLeadInternal(
+            tenantId,
+            systemActorId,
+            request,
+            Map.of(
+                "source", "UNIVERSAL_LEAD_INGESTION",
+                "ingestionConfigId", configId,
+                "ingestionEventId", eventId
+            )
+        );
+
+        event.setLeadId(created.getId());
+        event.setStatus(LeadIngestionEventStatus.PROCESSED);
+        event.setProcessedAt(Instant.now());
+        event.setErrorCode(null);
+        event.setErrorMessage(null);
+        return leadIngestionEventRepository.save(event);
     }
 
     private LeadCreateRequest buildLeadCreateRequest(ValidatedLeadIngestionData validated) {

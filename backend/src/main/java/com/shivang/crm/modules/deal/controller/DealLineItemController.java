@@ -39,7 +39,7 @@ public class DealLineItemController {
     private final TenantContext tenantContext;
 
     @GetMapping
-    @PreAuthorize("hasPermission('deal', 'read')")
+    @PreAuthorize("@rbac.has(authentication, 'deal', 'read')")
     @Operation(summary = "List deal line items", description = "List line items for a deal")
     public ResponseEntity<ApiResponse<java.util.List<DealLineItemResponse>>> listLineItems(
             @Parameter(description = "Deal UUID") @PathVariable UUID dealId) {
@@ -48,7 +48,7 @@ public class DealLineItemController {
     }
 
     @GetMapping("/{lineItemId}")
-    @PreAuthorize("hasPermission('deal', 'read')")
+    @PreAuthorize("@rbac.has(authentication, 'deal', 'read')")
     @Operation(summary = "Get deal line item", description = "Get a line item for a deal")
     public ResponseEntity<ApiResponse<DealLineItemResponse>> getLineItem(
             @Parameter(description = "Deal UUID") @PathVariable UUID dealId,
@@ -58,7 +58,7 @@ public class DealLineItemController {
     }
 
     @PostMapping
-    @PreAuthorize("hasPermission('deal', 'create') or hasPermission('deal', 'update')")
+    @PreAuthorize("@rbac.has(authentication, 'deal', 'write')")
     @Operation(summary = "Create deal line item", description = "Create a line item for a deal")
     public ResponseEntity<ApiResponse<DealLineItemResponse>> createLineItem(
             @Parameter(description = "Deal UUID") @PathVariable UUID dealId,
@@ -70,7 +70,7 @@ public class DealLineItemController {
     }
 
     @PutMapping("/{lineItemId}")
-    @PreAuthorize("hasPermission('deal', 'update')")
+    @PreAuthorize("@rbac.has(authentication, 'deal', 'write')")
     @Operation(summary = "Update deal line item", description = "Update a line item for a deal")
     public ResponseEntity<ApiResponse<DealLineItemResponse>> updateLineItem(
             @Parameter(description = "Deal UUID") @PathVariable UUID dealId,
@@ -82,7 +82,7 @@ public class DealLineItemController {
     }
 
     @DeleteMapping("/{lineItemId}")
-    @PreAuthorize("hasPermission('deal', 'delete') or hasPermission('deal', 'update')")
+    @PreAuthorize("@rbac.has(authentication, 'deal', 'delete')")
     @Operation(summary = "Delete deal line item", description = "Soft delete a line item from a deal")
     public ResponseEntity<ApiResponse<String>> deleteLineItem(
             @Parameter(description = "Deal UUID") @PathVariable UUID dealId,

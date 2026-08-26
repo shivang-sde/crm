@@ -54,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/spinner";
+import { useAccounts } from "@/lib/hooks/accounts";
 
 export interface ContactFilters {
   page: number;
@@ -169,6 +170,12 @@ export function ContactDataTable({
   onEdit,
   onDelete,
 }: ContactDataTableProps) {
+  const { data: accountsData } = useAccounts({ page: 0, size: 100 });
+  const accountsMap = useMemo(
+    () => new Map((accountsData?.data ?? []).map((account) => [account.id, account.name])),
+    [accountsData]
+  );
+
   const columns = useMemo<ColumnDef<ContactResponse>[]>(
     () => [
       {
@@ -270,11 +277,9 @@ export function ContactDataTable({
         cell: ({ row }) => {
           const contact = row.original;
 
-          const accountName =
-            "accountName" in contact &&
-            typeof contact.accountName === "string"
-              ? contact.accountName
-              : null;
+          const accountName = contact.accountId
+            ? accountsMap.get(contact.accountId) ?? "Account"
+            : null;
 
           if (!contact.accountId && !accountName) {
             return (
@@ -293,9 +298,8 @@ export function ContactDataTable({
                   href={`/accounts/${contact.accountId}`}
                   className="truncate text-sm hover:text-primary hover:underline"
                   onClick={(event) => event.stopPropagation()}
-                  title={accountName || contact.accountId}
                 >
-                  {accountName || contact.accountId}
+                  {accountName}
                 </Link>
               ) : (
                 <span className="truncate text-sm">{accountName}</span>

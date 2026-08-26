@@ -5,6 +5,7 @@ import { CalendarRange, CircleAlert, Package2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerEntitlementResponse, EntitlementStatus } from "@/types/entitlements";
+import { useUserLookup } from "@/lib/hooks/useUserLookup";
 
 interface EntitlementDetailViewProps {
   entitlement: CustomerEntitlementResponse;
@@ -56,6 +57,7 @@ function getStatusBadge(status?: EntitlementStatus | null) {
 }
 
 export function EntitlementDetailView({ entitlement }: EntitlementDetailViewProps) {
+  const { resolveUserName } = useUserLookup();
   const expiry = getExpiryLabel(entitlement);
 
   return (
@@ -143,7 +145,7 @@ export function EntitlementDetailView({ entitlement }: EntitlementDetailViewProp
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Owner</p>
-              <p>{entitlement.owner_user_id || "Unassigned"}</p>
+              <p>{entitlement.owner_user_id ? resolveUserName(entitlement.owner_user_id) : "Unassigned"}</p>
             </div>
           </CardContent>
         </Card>

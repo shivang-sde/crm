@@ -9,9 +9,15 @@ import {
   DealActivityResponse,
   DealNoteResponse,
 } from "@/types/deals";
+import { SalesDashboardResponse } from "@/types/sales-dashboard";
 import { unwrapResponse, unwrapListResponse } from "./api-utils";
 
 export const dealApi = {
+  getDashboard: async () => {
+    const response = await api.get<ApiResponse<SalesDashboardResponse>>("/deals/dashboard");
+    return unwrapResponse(response);
+  },
+
   listDeals: async (params: DealListParams = {}) => {
     const response = await api.get<ApiResponse<DealResponse[]>>("/deals", { params });
     return unwrapListResponse<DealResponse, DealListMeta>(response);

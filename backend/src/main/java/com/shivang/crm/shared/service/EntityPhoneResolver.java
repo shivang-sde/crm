@@ -30,36 +30,40 @@ public class EntityPhoneResolver {
 
         switch (entityType.toUpperCase()) {
             case "LEAD":
-                return leadRepository.findById(entityId)
+                return leadRepository.findByIdAndTenantId(entityId, tenantId)
                     .map(lead -> EntityPhoneResolutionResult.builder().found(true).phone(lead.getPhone()).resolvedEntityType("LEAD").resolvedEntityId(entityId).build())
                     .orElse(EntityPhoneResolutionResult.builder().found(false).build());
             case "CONTACT":
-                return contactRepository.findById(entityId)
+                return contactRepository.findByIdAndTenantId(entityId, tenantId)
                     .map(contact -> EntityPhoneResolutionResult.builder().found(true).phone(contact.getPhone()).resolvedEntityType("CONTACT").resolvedEntityId(entityId).build())
                     .orElse(EntityPhoneResolutionResult.builder().found(false).build());
             case "ACCOUNT":
-                return accountRepository.findById(entityId)
+                return accountRepository.findByIdAndTenantId(entityId, tenantId)
                     .map(account -> EntityPhoneResolutionResult.builder().found(true).phone(account.getPhone()).resolvedEntityType("ACCOUNT").resolvedEntityId(entityId).build())
                     .orElse(EntityPhoneResolutionResult.builder().found(false).build());
             case "DEAL":
-                return dealRepository.findById(entityId).map(deal -> {
-                    // Prefer deal.contactId -> accountId
+                return dealRepository.findByIdAndTenantId(entityId, tenantId).map(deal -> {
+                    // Prefer deal.contactId -> accountId; every lookup stays
+                    // tenant-scoped so another tenant's record is never read.
                     if (deal.getContactId() != null) {
-                        Optional.ofNullable(contactRepository.findById(deal.getContactId()))
-                            .flatMap(opt -> opt.map(c -> Optional.of(c)).orElse(Optional.empty()));
-                        return contactRepository.findById(deal.getContactId())
+                        return contactRepository.findByIdAndTenantId(deal.getContactId(), tenantId)
                             .map(contact -> EntityPhoneResolutionResult.builder().found(true).phone(contact.getPhone()).resolvedEntityType("CONTACT").resolvedEntityId(contact.getId()).build())
-                            .orElseGet(() -> accountRepository.findById(deal.getAccountId())
-                                .map(acc -> EntityPhoneResolutionResult.builder().found(true).phone(acc.getPhone()).resolvedEntityType("ACCOUNT").resolvedEntityId(acc.getId()).build())
-                                .orElse(EntityPhoneResolutionResult.builder().found(false).build()));
+                            .orElseGet(() -> resolveAccountPhone(tenantId, deal.getAccountId()));
                     } else {
-                        return accountRepository.findById(deal.getAccountId())
-                            .map(acc -> EntityPhoneResolutionResult.builder().found(true).phone(acc.getPhone()).resolvedEntityType("ACCOUNT").resolvedEntityId(acc.getId()).build())
-                            .orElse(EntityPhoneResolutionResult.builder().found(false).build());
+                        return resolveAccountPhone(tenantId, deal.getAccountId());
                     }
                 }).orElse(EntityPhoneResolutionResult.builder().found(false).build());
             default:
                 return EntityPhoneResolutionResult.builder().found(false).build();
         }
+    }
+
+    private EntityPhoneResolutionResult resolveAccountPhone(UUID tenantId, UUID accountId) {
+        if (accountId == null) {
+            return EntityPhoneResolutionResult.builder().found(false).build();
+        }
+        return accountRepository.findByIdAndTenantId(accountId, tenantId)
+            .map(acc -> EntityPhoneResolutionResult.builder().found(true).phone(acc.getPhone()).resolvedEntityType("ACCOUNT").resolvedEntityId(acc.getId()).build())
+            .orElse(EntityPhoneResolutionResult.builder().found(false).build());
     }
 }

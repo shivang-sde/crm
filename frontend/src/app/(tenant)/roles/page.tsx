@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Plus, Search, Shield, Users, Edit, Trash2 } from "lucide-react";
 
 import { roleApi } from "@/lib/api/roles";
+import { apiErrorMessage } from "@/lib/api/api-utils";
 import { ProtectedRoute } from "@/components/shared/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,8 +42,8 @@ function RoleList() {
       queryClient.invalidateQueries({ queryKey: ["roles"] });
       setRoleToDelete(null);
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || "Failed to delete role");
+    onError: (error: unknown) => {
+      toast.error(apiErrorMessage(error, "Failed to delete role"));
       setRoleToDelete(null);
     },
   });
@@ -141,7 +142,7 @@ function RoleList() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Role</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the role "{roleToDelete?.name}"? 
+              Are you sure you want to delete the role &quot;{roleToDelete?.name}&quot;? 
               This action cannot be undone. Users assigned to this role might lose access.
             </AlertDialogDescription>
           </AlertDialogHeader>

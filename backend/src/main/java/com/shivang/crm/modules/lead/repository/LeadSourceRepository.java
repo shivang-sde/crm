@@ -19,6 +19,7 @@ public interface LeadSourceRepository extends JpaRepository<LeadSource, UUID> {
 
     @Query("SELECT ls FROM LeadSource ls WHERE ls.tenantId = :tenantId AND ls.name = :name")
     Optional<LeadSource> findByTenantIdAndName(@Param("tenantId") UUID tenantId, @Param("name") String name);
+    Optional<LeadSource> findByIdAndTenantId(UUID id, UUID tenantId);
 
     @Query("SELECT COUNT(ls) FROM LeadSource ls WHERE ls.tenantId = :tenantId")
     Integer countByTenantId(@Param("tenantId") UUID tenantId);

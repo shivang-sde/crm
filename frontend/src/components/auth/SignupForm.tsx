@@ -19,7 +19,6 @@ import { useAuthStore } from "@/lib/store/authStore";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getDashboardRoute } from "@/lib/constants/navigation";
 import { RegisterRequest } from "@/types/auth";
 
 const formSchema = z.object({
@@ -60,7 +59,8 @@ export function SignupForm() {
 
       setAuth(data.user, data.accessToken, data.user.role || 'EMPLOYEE', data.tenant);
       toast.success("Account created successfully!");
-      router.replace(getDashboardRoute(data.user.role || 'EMPLOYEE'));
+      // Entry resolver performs the permission-driven default redirect.
+      router.replace("/home");
     },
     onError: (error: unknown) => {
       const responseError = error as {

@@ -20,11 +20,13 @@ export interface Permission {
   description: string;
 }
 
+export type AccessScope = 'ALL' | 'TEAM' | 'OWN' | 'NONE';
+
 export interface RolePermission {
   id: string;
   module: string;
   action: string;
-  accessScope: 'ALL' | 'TEAM' | 'OWN' | 'NONE';
+  accessScope: AccessScope;
   description: string;
 
 }
@@ -70,19 +72,26 @@ export interface UpdateUserRequest {
   managerId?: string | null;
 }
 
+// Mirrors backend PermissionScopeRequest: the only permission payload shape
+// create/update accept. The full explicit set is submitted on every save.
+export interface PermissionScopeRequest {
+  permissionId: string;
+  accessScope: AccessScope;
+}
+
 export interface CreateRoleRequest {
   name: string;
   description?: string;
-  parentRoleId?: string;
+  permissions?: PermissionScopeRequest[];
 }
 
 export interface UpdateRoleRequest {
-  name?: string;
+  name: string;
   description?: string;
-  parentRoleId?: string;
+  permissions: PermissionScopeRequest[];
 }
 
 export interface AssignPermissionRequest {
   permissionId: string;
-  accessScope: 'ALL' | 'TEAM' | 'OWN' | 'NONE';
+  accessScope: AccessScope;
 }

@@ -3,6 +3,7 @@ package com.shivang.crm.modules.demo.controller;
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.demo.dto.DemoDataStatusResponse;
 import com.shivang.crm.modules.demo.dto.DemoInstallationResponse;
+import com.shivang.crm.modules.demo.dto.DemoResetResponse;
 import com.shivang.crm.modules.demo.service.DemoDataService;
 import com.shivang.crm.shared.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,7 +35,7 @@ public class DemoDataController {
 
     @GetMapping("/status")
     @Operation(summary = "Get demo data status", description = "Returns the current installation status of the demo data for the tenant")
-    @PreAuthorize("hasPermission('tenant', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<DemoDataStatusResponse>> getDemoStatus() {
         log.info("GET /api/v1/demo-data/status - Checking demo data status");
         UUID tenantId = currentTenantId();
@@ -43,7 +45,7 @@ public class DemoDataController {
 
     @PostMapping("/install")
     @Operation(summary = "Install generic sales demo data", description = "Populates realistic demo data for the tenant")
-    @PreAuthorize("hasPermission('tenant', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<DemoInstallationResponse>> installGenericSalesDemo() {
         log.info("POST /api/v1/demo-data/install - Triggering demo data installation");
 
@@ -53,6 +55,18 @@ public class DemoDataController {
         DemoInstallationResponse response = demoDataService.installGenericSalesDemo(tenantId, userId);
         
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
+    }
+
+    @DeleteMapping
+    @Operation(summary = "Reset generic sales demo data", description = "Deletes only records created and registered by the demo installer")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
+    public ResponseEntity<ApiResponse<DemoResetResponse>> resetGenericSalesDemo() {
+        log.info("DELETE /api/v1/demo-data - Resetting demo data");
+
+        UUID tenantId = currentTenantId();
+        DemoResetResponse response = demoDataService.resetGenericSalesDemo(tenantId);
+
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     private UUID currentTenantId() {

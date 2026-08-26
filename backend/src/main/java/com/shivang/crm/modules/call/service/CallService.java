@@ -1,7 +1,9 @@
 package com.shivang.crm.modules.call.service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -27,6 +29,8 @@ import com.shivang.crm.modules.recurrence.service.RecurrenceScheduleService;
 import com.shivang.crm.modules.reminder.entity.ReminderSourceType;
 import com.shivang.crm.modules.reminder.service.ReminderPlanningService;
 import com.shivang.crm.shared.enums.OwnershipScope;
+import com.shivang.crm.shared.event.CanonicalCrmEvent;
+import com.shivang.crm.shared.event.CanonicalCrmEventPublisher;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.service.EntityResolverService;
@@ -42,11 +46,13 @@ public class CallService {
 
     private final CallRepository callRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
     private final EntityResolverService entityResolverService;
     private final ActivityService activityService;
     private final CallProviderLinkService callProviderLinkService;
     private final ReminderPlanningService reminderPlanningService;
     private final RecurrenceScheduleService recurrenceScheduleService;
+    private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
 
     private final TenantContext tenantContext;
 
@@ -109,6 +115,18 @@ public class CallService {
         reminderPlanningService.planForCall(savedCall);
         log.info("Created call {} for tenant {}", savedCall.getId(), tenantId);
 
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("source", "MANUAL");
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+            savedCall.getTenantId(),
+            CanonicalCrmEvent.CALL_ENTITY_TYPE,
+            CanonicalCrmEvent.CREATED_EVENT_TYPE,
+            savedCall.getId(),
+            eventMetadata
+        );
+
         return toResponse(savedCall);
     }
 
@@ -154,7 +172,32 @@ public class CallService {
         }
 
         Call call = findCallByIdAndTenant(id, tenantId);
+
+        // RBAC-7: single-record read must respect the call:read scope using
+        // the module's established effective-owner convention.
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "call", "read");
+        assertCallInScope(scope, call, currentUserId, tenantId);
+
         return toResponse(call);
+    }
+
+    /**
+     * RBAC-7 ownership convention for calls (mirrors hasWritePermission):
+     * OWN -> effective owner is the caller; TEAM -> owner is the caller or a
+     * team member.
+     */
+    private void assertCallInScope(String scope, Call call, UUID userId, UUID tenantId) {
+        UUID effectiveOwnerId = resolveEffectiveOwnerId(call);
+        boolean allowed = switch (scope) {
+            case "ALL" -> true;
+            case "OWN" -> userId.equals(effectiveOwnerId);
+            case "TEAM" -> userId.equals(effectiveOwnerId)
+                    || permissionEvaluatorService.isInSameTeam(tenantId, userId, effectiveOwnerId);
+            default -> false;
+        };
+        if (!allowed) {
+            throw new PermissionDeniedException("Record is outside your access scope");
+        }
     }
 
     public CallResponse updateCall(UUID id, UUID tenantId, UUID userId, CallUpdateRequest request) {
@@ -179,6 +222,7 @@ public class CallService {
         }
 
         // Update fields
+        Call.CallStatus previousStatus = call.getStatus();
         if (request.getSubject() != null) {
             call.setSubject(request.getSubject());
         }
@@ -227,6 +271,25 @@ public class CallService {
         reminderPlanningService.cancelPending(tenantId, ReminderSourceType.CALL, updatedCall.getId());
         reminderPlanningService.planForCall(updatedCall);
         log.info("Updated call {} for tenant {}", id, tenantId);
+
+        boolean previouslyCompleted =
+            previousStatus == Call.CallStatus.HELD || previousStatus == Call.CallStatus.NOT_HELD;
+        if (!previouslyCompleted && updatedCall.isCompleted()) {
+            Map<String, Object> eventMetadata = new HashMap<>();
+            if (previousStatus != null) {
+                eventMetadata.put("previousStatus", previousStatus.name());
+            }
+            eventMetadata.put("newStatus", updatedCall.getStatus().name());
+            eventMetadata.put("actorId", userId.toString());
+            eventMetadata.put("actorType", "USER");
+            canonicalCrmEventPublisher.publish(
+                updatedCall.getTenantId(),
+                CanonicalCrmEvent.CALL_ENTITY_TYPE,
+                CanonicalCrmEvent.COMPLETED_EVENT_TYPE,
+                updatedCall.getId(),
+                eventMetadata
+            );
+        }
 
         return toResponse(updatedCall);
     }

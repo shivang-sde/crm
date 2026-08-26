@@ -39,7 +39,7 @@ public class CallController {
     private final CallService callService;
 
     @PostMapping
-    @PreAuthorize("hasPermission('call', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'write')")
     public ResponseEntity<CallResponse> createCall(@RequestBody CallCreateRequest request) {
         UUID tenantId = tenantContext.getTenantId();
         UUID userId = tenantContext.getUserId();
@@ -48,7 +48,7 @@ public class CallController {
     }
 
     @GetMapping
-    @PreAuthorize("hasPermission('call', 'read')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'read')")
     public ResponseEntity<Page<CallResponse>> listCalls(
         @RequestParam(required = false) String entityType,
         @RequestParam(required = false) UUID entityId,
@@ -61,7 +61,7 @@ public class CallController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasPermission('call', 'read')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'read')")
     public ResponseEntity<CallResponse> getCall(@PathVariable UUID id) {
         UUID tenantId = tenantContext.getTenantId();
         CallResponse response = callService.getCall(id, tenantId);
@@ -69,7 +69,7 @@ public class CallController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasPermission('call', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'write')")
     public ResponseEntity<CallResponse> updateCall(
         @PathVariable UUID id,
         @RequestBody CallUpdateRequest request
@@ -81,7 +81,7 @@ public class CallController {
     }
 
     @PatchMapping("/{id}/link-entity")
-    @PreAuthorize("hasPermission('call', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'write')")
     public ResponseEntity<CallResponse> linkCallEntity(
         @PathVariable UUID id,
         @Valid @RequestBody CallLinkRequest request
@@ -93,7 +93,7 @@ public class CallController {
     }
 
     @PatchMapping("/{id}/disposition")
-    @PreAuthorize("hasPermission('call', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'write')")
     public ResponseEntity<CallResponse> saveDisposition(
         @PathVariable UUID id,
         @Valid @RequestBody CallDispositionRequest request
@@ -105,7 +105,7 @@ public class CallController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasPermission('call', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'delete')")
     public ResponseEntity<Void> deleteCall(@PathVariable UUID id) {
         UUID tenantId = tenantContext.getTenantId();
         UUID userId = tenantContext.getUserId();

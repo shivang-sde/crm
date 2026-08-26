@@ -25,4 +25,7 @@ public class LeadConvertResponse {
 
     @JsonProperty("contactId")
     private UUID contactId;
+
+    @JsonProperty("dealId")
+    private UUID dealId;
 }

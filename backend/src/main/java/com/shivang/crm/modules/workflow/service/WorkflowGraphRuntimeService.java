@@ -16,6 +16,7 @@ import com.shivang.crm.modules.workflow.entity.WorkflowNodeType;
 import com.shivang.crm.modules.workflow.repository.WorkflowEdgeRepository;
 import com.shivang.crm.modules.workflow.repository.WorkflowNodeExecutionRepository;
 import com.shivang.crm.modules.workflow.repository.WorkflowNodeRepository;
+import com.shivang.crm.shared.event.CausalEventContext;
 
 import lombok.RequiredArgsConstructor;
 
@@ -30,6 +31,8 @@ public class WorkflowGraphRuntimeService {
     private final WorkflowEntityContextProviderRegistry workflowEntityContextProviderRegistry;
     private final WorkflowNodeExecutionClaimService workflowNodeExecutionClaimService;
     private final WorkflowNodeRetryPolicyService workflowNodeRetryPolicyService;
+
+    private final WorkflowNodeExecutionPersistenceService workflowNodeExecutionPersistenceService;
 
     public void execute(WorkflowExecution execution) {
         UUID tenantId = execution.getTenantId();
@@ -101,30 +104,26 @@ public class WorkflowGraphRuntimeService {
     }
 
     private WorkflowNodeExecutionResult executeNode(WorkflowExecution execution, WorkflowNode node, List<WorkflowEdge> outgoingEdges, WorkflowExecutionContext context) {
-        com.shivang.crm.modules.workflow.entity.WorkflowNodeExecution nodeExecution = workflowNodeExecutionRepository
-            .findByWorkflowExecutionIdAndWorkflowNodeIdAndDeletedFalse(execution.getId(), node.getId())
-            .orElseGet(() -> com.shivang.crm.modules.workflow.entity.WorkflowNodeExecution.builder()
-                .tenantId(execution.getTenantId())
-                .workflowExecution(execution)
-                .workflowNode(node)
-                .nodeKey(node.getNodeKey())
-                .nodeType(node.getNodeType())
-                .inputContext(execution.getTriggerContext())
-                .build());
+        com.shivang.crm.modules.workflow.entity.WorkflowNodeExecution nodeExecution =
+            workflowNodeExecutionPersistenceService.ensureCommitted(execution, node);
 
         if (nodeExecution.getStatus() == com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.COMPLETED) {
             Map<String, Object> output = nodeExecution.getOutputContext() == null ? Map.of() : nodeExecution.getOutputContext();
             Object selectedEdgeId = output.get("selectedEdgeId");
-            List<UUID> selectedEdges = selectedEdgeId == null ? List.of() : List.of(UUID.fromString(String.valueOf(selectedEdgeId)));
+            java.util.List<java.util.UUID> selectedEdges = selectedEdgeId == null
+                ? java.util.List.<UUID>of()
+                : java.util.List.of(java.util.UUID.fromString(String.valueOf(selectedEdgeId)));
+            // Legacy rows completed before deterministic edge selection existed may
+            // lack a persisted selection. For a linear node (exactly one outgoing
+            // edge) selecting it is unambiguous and keeps retries resumable.
+            if (selectedEdges.isEmpty() && outgoingEdges.size() == 1) {
+                selectedEdges = java.util.List.of(outgoingEdges.get(0).getId());
+            }
             return new WorkflowNodeExecutionResult(nodeExecution.getStatus(), output, selectedEdges, null, null);
         }
 
         WorkflowNodeExecutionResult result;
         try {
-            if (nodeExecution.getId() == null) {
-                nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.PENDING);
-                workflowNodeExecutionRepository.saveAndFlush(nodeExecution);
-            }
             if (!workflowNodeExecutionClaimService.claim(nodeExecution.getId())) {
                 throw runtimeFailure("WORKFLOW_NODE_CLAIM_FAILED", "Workflow node execution could not be claimed");
             }
@@ -135,7 +134,22 @@ public class WorkflowGraphRuntimeService {
             int claimedAttempts = Integer.parseInt(java.util.Objects.toString(nodeExecution.getAttemptCount(), "0")) + 1;
             nodeExecution.setAttemptCount(claimedAttempts);
             WorkflowNodeExecutor executor = workflowNodeExecutorRegistry.get(node.getNodeType());
-            result = executor.execute(execution, node, outgoingEdges, context);
+            if (node.getNodeType() == com.shivang.crm.modules.workflow.entity.WorkflowNodeType.ACTION) {
+                // Canonical events published by this action carry causal lineage
+                // so the trigger matcher can bound cross-workflow recursion.
+                CausalEventContext.set(new CausalEventContext.Lineage(
+                    execution.getId(),
+                    execution.getWorkflow().getId(),
+                    execution.getChainDepth() == null ? 0 : execution.getChainDepth()
+                ));
+            }
+            try {
+                result = executor.execute(execution, node, outgoingEdges, context);
+            } finally {
+                if (node.getNodeType() == com.shivang.crm.modules.workflow.entity.WorkflowNodeType.ACTION) {
+                    CausalEventContext.clear();
+                }
+            }
             nodeExecution.setStatus(result.status());
             Map<String, Object> outputContext = new HashMap<>(result.outputContext() == null ? Map.of() : result.outputContext());
             if (result.selectedEdgeIds().size() == 1) {
@@ -146,6 +160,14 @@ public class WorkflowGraphRuntimeService {
             nodeExecution.setLastHeartbeatAt(java.time.Instant.now());
             nodeExecution.setErrorCode(result.errorCode());
             nodeExecution.setErrorMessage(result.errorMessage());
+        } catch (WorkflowWaitScheduledException waitEx) {
+            nodeExecution.setStatus(com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.PENDING);
+            nodeExecution.setNextAttemptAt(waitEx.getResumeAt());
+            nodeExecution.setCompletedAt(null);
+            nodeExecution.setLastHeartbeatAt(java.time.Instant.now());
+            nodeExecution.setOutputContext(Map.of("resumeAt", String.valueOf(waitEx.getResumeAt())));
+            workflowNodeExecutionRepository.save(nodeExecution);
+            throw waitEx;
         } catch (WorkflowRuntimeException ex) {
             WorkflowNodeRetryPolicy policy = workflowNodeRetryPolicyService.resolve(node);
             String attemptText = java.util.Objects.toString(nodeExecution.getAttemptCount(), "1");

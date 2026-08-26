@@ -1,10 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Trash2, Users } from "lucide-react";
@@ -13,11 +10,12 @@ import { ProtectedRoute } from "@/components/shared/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { roleApi } from "@/lib/api/roles";
-import { FieldGroup, Field, FieldLabel, FieldError } from "@/components/ui/field";
-import { PermissionMatrix } from "../components/PermissionMatrix";
-import { AssignPermissionModal } from "../components/AssignPermissionModal";
+import { apiErrorMessage } from "@/lib/api/api-utils";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Badge } from "@/components/ui/badge";
+import { Role, RolePermission } from "@/types/rbac";
+import { RolePermissionEditor } from "../components/RolePermissionEditor";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,86 +26,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-
-const updateRoleSchema = z.object({
-  name: z.string().min(1, 'Role name is required'),
-  description: z.string().optional(),
-  parentRoleId: z.string().optional(),
-});
-
-type UpdateRoleFormValues = z.infer<typeof updateRoleSchema>;
 
 function RoleDetailContent() {
   const router = useRouter();
   const params = useParams<{ roleId?: string | string[] }>();
   const rawRoleId = params?.roleId;
-  const roleId = typeof rawRoleId === 'string' ? rawRoleId : rawRoleId?.[0] ?? '';
-  const queryClient = useQueryClient();
-
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const roleId = typeof rawRoleId === "string" ? rawRoleId : rawRoleId?.[0] ?? "";
 
   const { data: role, isLoading: roleLoading } = useQuery({
     queryKey: ["role", roleId],
     queryFn: () => roleApi.getRole(roleId),
     enabled: !!roleId,
   });
-
-  const { data: roles } = useQuery({
-    queryKey: ["roles"],
-    queryFn: () => roleApi.getRoles(),
-  });
-
-  const form = useForm<UpdateRoleFormValues>({
-    resolver: zodResolver(updateRoleSchema) as any,
-    defaultValues: {
-      name: "",
-      description: "",
-      parentRoleId: "",
-    },
-  });
-
-  useEffect(() => {
-    if (role) {
-      form.reset({
-        name: role.name,
-        description: role.description || "",
-        parentRoleId: role.parentRoleId || "",
-      });
-    }
-  }, [role, form]);
-
-  const updateMutation = useMutation({
-    mutationFn: (data: UpdateRoleFormValues) => roleApi.updateRole(roleId, {
-      name: data.name,
-      description: data.description,
-      parentRoleId: data.parentRoleId || undefined,
-    }),
-    onSuccess: () => {
-      toast.success("Role updated successfully");
-      queryClient.invalidateQueries({ queryKey: ["roles"] });
-      queryClient.invalidateQueries({ queryKey: ["role", roleId] });
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || "Failed to update role");
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => roleApi.deleteRole(roleId),
-    onSuccess: () => {
-      toast.success("Role deleted successfully");
-      queryClient.invalidateQueries({ queryKey: ["roles"] });
-      router.push("/roles");
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || "Failed to delete role");
-    },
-  });
-
-  function onSubmit(data: UpdateRoleFormValues) {
-    updateMutation.mutate(data);
-  }
 
   if (roleLoading) {
     return (
@@ -126,7 +56,79 @@ function RoleDetailContent() {
     );
   }
 
-  const { errors } = form.formState;
+  // key={role.id}: the editor's local state re-seeds when navigating between
+  // roles without effects.
+  return <RoleDetailView key={role.id} role={role} />;
+}
+
+function RoleDetailView({ role }: { role: Role }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  // Local draft: edited freely, submitted as one complete set on save.
+  const [name, setName] = useState(role.name);
+  const [description, setDescription] = useState(role.description || "");
+  const [baseline, setBaseline] = useState<RolePermission[]>(() =>
+    (role.permissions ?? []).map((p) => ({ ...p }))
+  );
+  const [draft, setDraft] = useState<RolePermission[]>(() =>
+    (role.permissions ?? []).map((p) => ({ ...p }))
+  );
+
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      roleApi.updateRole(role.id, {
+        name,
+        description: description || undefined,
+        // Complete explicit set — the backend replaces all rows atomically
+        // (PUT /roles/{roleId}) and validates delegation on the result.
+        permissions: draft.map((p) => ({ permissionId: p.id, accessScope: p.accessScope })),
+      }),
+    onSuccess: () => {
+      toast.success("Role updated successfully");
+      setBaseline(draft.map((p) => ({ ...p })));
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
+      queryClient.invalidateQueries({ queryKey: ["role", role.id] });
+      queryClient.invalidateQueries({ queryKey: ["role-permissions", role.id] });
+    },
+    onError: (error: unknown) => {
+      // Backend stays authoritative (RBAC-6 delegation etc.); surface its message.
+      toast.error(apiErrorMessage(error, "Failed to update role"));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => roleApi.deleteRole(role.id),
+    onSuccess: () => {
+      toast.success("Role deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
+      router.push("/roles");
+    },
+    onError: (error: unknown) => {
+      toast.error(apiErrorMessage(error, "Failed to delete role"));
+    },
+  });
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      toast.error("Role name is required");
+      return;
+    }
+    if (draft.length === 0) {
+      // Backend UpdateRoleRequest requires @NotEmpty permissions; fail fast client-side.
+      toast.error("A role must keep at least one permission.");
+      return;
+    }
+    updateMutation.mutate();
+  };
+
+  const isDirty =
+    name !== role.name ||
+    (description || "") !== (role.description || "") ||
+    draft.length !== baseline.length ||
+    draft.some((p) => baseline.find((b) => b.id === p.id)?.accessScope !== p.accessScope);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
@@ -138,20 +140,14 @@ function RoleDetailContent() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">{role.name}</h1>
-              {role.isDefault && (
-                <Badge variant="secondary">Default</Badge>
-              )}
+              {role.isDefault && <Badge variant="secondary">Default</Badge>}
             </div>
             <p className="text-sm text-gray-500">Manage role details and its permissions matrix.</p>
           </div>
         </div>
-        
+
         {!role.isDefault && (
-          <Button 
-            variant="destructive" 
-            onClick={() => setShowDeleteDialog(true)}
-            className="flex items-center gap-2"
-          >
+          <Button variant="destructive" onClick={() => setShowDeleteDialog(true)} className="flex items-center gap-2">
             <Trash2 className="w-4 h-4" />
             Delete Role
           </Button>
@@ -167,88 +163,56 @@ function RoleDetailContent() {
               <span className="text-sm">assigned to this role</span>
             </div>
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FieldGroup>
-                <Field data-invalid={!!errors.name}>
-                  <FieldLabel htmlFor="name">Role Name</FieldLabel>
-                  <Input 
-                    id="name"
-                    disabled={role.isDefault} 
-                    placeholder="Role Name" 
-                    aria-invalid={!!errors.name}
-                    {...form.register("name")} 
-                  />
-                  {role.isDefault && (
-                    <p className="text-xs text-amber-600">Default roles cannot be renamed.</p>
-                  )}
-                  <FieldError>{errors.name?.message}</FieldError>
-                </Field>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="name">Role Name</FieldLabel>
+                <Input id="name" placeholder="Role Name" value={name} onChange={(e) => setName(e.target.value)} />
+                {role.isDefault && <p className="text-xs text-amber-600">Default roles cannot be renamed.</p>}
+              </Field>
 
-                <Field data-invalid={!!errors.description}>
-                  <FieldLabel htmlFor="description">Description</FieldLabel>
-                  <Textarea 
-                    id="description"
-                    placeholder="Brief description..." 
-                    className="resize-none" 
-                    aria-invalid={!!errors.description}
-                    {...form.register("description")} 
-                  />
-                  <FieldError>{errors.description?.message}</FieldError>
-                </Field>
-
-                <Controller
-                  control={form.control}
-                  name="parentRoleId"
-                  render={({ field }) => (
-                    <Field data-invalid={!!errors.parentRoleId}>
-                      <FieldLabel htmlFor="parentRoleId">Parent Role</FieldLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <SelectTrigger id="parentRoleId" aria-invalid={!!errors.parentRoleId}>
-                          <SelectValue placeholder="Select a parent role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">None (Top Level)</SelectItem>
-                          {roles?.filter(r => r.id !== roleId).map((r) => (
-                            <SelectItem key={r.id} value={r.id}>
-                              {r.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldError>{errors.parentRoleId?.message}</FieldError>
-                    </Field>
-                  )}
+              <Field>
+                <FieldLabel htmlFor="description">Description</FieldLabel>
+                <Textarea
+                  id="description"
+                  placeholder="Brief description..."
+                  className="resize-none"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
-              </FieldGroup>
+              </Field>
+            </FieldGroup>
 
-              <Button type="submit" disabled={updateMutation.isPending || (role.isDefault && !form.formState.isDirty)} className="w-full">
-                {updateMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </form>
+            <Button
+              onClick={handleSave}
+              disabled={!isDirty || updateMutation.isPending || !name.trim()}
+              className="w-full mt-6"
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-gray-400 mt-2">
+              Saves role info and the complete permission set together.
+            </p>
           </div>
         </div>
 
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white p-6 rounded-lg border shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-lg font-bold">Permissions Matrix</h3>
-                <p className="text-sm text-gray-500 mt-1">Configure data access scopes across different modules.</p>
-              </div>
-              <AssignPermissionModal roleId={roleId} />
+            <div className="mb-6">
+              <h3 className="text-lg font-bold">Permissions Matrix</h3>
+              <p className="text-sm text-gray-500 mt-1">Configure data access scopes across different modules.</p>
             </div>
 
-            <PermissionMatrix roleId={roleId} />
+            <RolePermissionEditor draft={draft} baseline={baseline} onChange={setDraft} />
           </div>
         </div>
       </div>
@@ -258,8 +222,9 @@ function RoleDetailContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Role</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the role "{role?.name}"? 
-              This action cannot be undone and will affect {role?.userCount || 0} user(s) currently assigned to this role.
+              Are you sure you want to delete the role &quot;{role.name}&quot;?
+              This action cannot be undone and will affect {role.userCount || 0} user(s) currently assigned to this
+              role.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -279,7 +244,7 @@ function RoleDetailContent() {
 
 export default function RoleDetailPage() {
   return (
-    <ProtectedRoute requiredPermission={{ module: 'admin', action: 'role_manage' }}>
+    <ProtectedRoute requiredPermission={{ module: "admin", action: "role_manage" }}>
       <RoleDetailContent />
     </ProtectedRoute>
   );

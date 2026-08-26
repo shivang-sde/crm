@@ -10,6 +10,11 @@ public class UserUtil {
         return authentication.getAuthorities().stream()
                 .findFirst()
                 .map(grantedAuthority -> grantedAuthority.getAuthority())
+                // Authorities carry the Spring "ROLE_" prefix; every caller
+                // compares against bare catalog role names (SUPERADMIN, ...).
+                .map(authority -> authority.startsWith("ROLE_")
+                        ? authority.substring("ROLE_".length())
+                        : authority)
                 .orElse("EMPLOYEE");
     }
 

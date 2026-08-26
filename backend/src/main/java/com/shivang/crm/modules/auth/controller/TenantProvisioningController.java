@@ -29,7 +29,7 @@ public class TenantProvisioningController {
     private final UserManagementMapper userManagementMapper;
 
     @PostMapping("/provision")
-    @PreAuthorize("hasPermission('tenant', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'tenant', 'write')")
     public ResponseEntity<ApiResponse<TenantProvisionResponse>> provisionTenant(
             @Valid @RequestBody TenantProvisionRequest request,
             Authentication authentication) {

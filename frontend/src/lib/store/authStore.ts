@@ -14,6 +14,7 @@ interface AuthState {
   hydrated: boolean;
   isLoading: boolean;
   permissions: Map<string, string>;
+  permissionsLoaded: boolean;
 
   setHydrated: (value: boolean) => void;
   setIsLoading: (value: boolean) => void;
@@ -32,6 +33,14 @@ interface AuthState {
   logout: () => void;
 }
 
+/**
+ * A permission entry grants a capability only when a recognized,
+ * non-NONE scope is present. Missing or NONE entries deny access
+ * (mirror of backend fail-closed semantics).
+ */
+const scopeGrantsCapability = (scope: string | undefined): boolean =>
+  scope !== undefined && scope !== "" && scope !== "NONE";
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -43,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
       hydrated: false,
       isLoading: false,
       permissions: new Map(),
+      permissionsLoaded: false,
 
       setHydrated: (value) =>
         set({
@@ -63,16 +73,17 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
         }),
 
-      setPermissions: (permissions) => set({ permissions }),
+      setPermissions: (permissions) =>
+        set({ permissions, permissionsLoaded: true }),
 
       hasPermission: (module: string, action: string) => {
         const key = `${module}:${action}`;
-        return get().permissions.has(key);
+        return scopeGrantsCapability(get().permissions.get(key));
       },
 
       getAccessScope: (module: string, action: string) => {
         const key = `${module}:${action}`;
-        return get().permissions.get(key) || 'NONE';
+        return get().permissions.get(key) || "NONE";
       },
 
       logout: () =>
@@ -83,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
           userRole: null,
           isAuthenticated: false,
           permissions: new Map(),
+          permissionsLoaded: false,
         }),
     }),
     {
@@ -97,12 +109,14 @@ export const useAuthStore = create<AuthState>()(
         userRole: state.userRole,
         isAuthenticated: state.isAuthenticated,
         permissions: Array.from(state.permissions.entries()),
+        permissionsLoaded: state.permissionsLoaded,
       }),
 
       merge: (persistedState: any, currentState) => ({
         ...currentState,
         ...persistedState,
         permissions: persistedState.permissions ? new Map(persistedState.permissions) : new Map(),
+        permissionsLoaded: Boolean(persistedState.permissionsLoaded),
       }),
 
       onRehydrateStorage: () => (state) => {

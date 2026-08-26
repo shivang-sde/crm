@@ -22,7 +22,6 @@ import { useAuthStore } from "@/lib/store/authStore";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getDashboardRoute } from "@/lib/constants/navigation";
 import { LoginRequest } from "@/types/auth";
 
 const formSchema = z.object({
@@ -59,7 +58,8 @@ export function LoginForm() {
       const userName = data.user.firstName || data.user.email;
       toast.success(`Welcome back, ${userName}!`);
       
-      router.replace(getDashboardRoute(role));
+      // Entry resolver performs the permission-driven default redirect.
+      router.replace("/home");
     },
     onError: (error: unknown) => {
       const responseError = error as {

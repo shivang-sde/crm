@@ -15,6 +15,9 @@ import { DealTimeline } from "./DealTimeline";
 import { DealNotes } from "./DealNotes";
 import { DealAssignment } from "./DealAssignment";
 import { DealLineItemsSection } from "./DealLineItemsSection";
+import { DealTasks } from "./DealTasks";
+import { DealCalls } from "./DealCalls";
+import { DealMeetings } from "./DealMeetings";
 
 interface DealDetailProps {
   deal: DealResponse;
@@ -56,6 +59,9 @@ export function DealDetail({ deal }: DealDetailProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <DealBasicInfo deal={deal} />
+          <DealTasks dealId={deal.id} />
+          <DealCalls dealId={deal.id} />
+          <DealMeetings dealId={deal.id} />
           <DealCustomFields deal={deal} />
           <DealLineItemsSection dealId={deal.id} />
           <DealTimeline dealId={deal.id} />

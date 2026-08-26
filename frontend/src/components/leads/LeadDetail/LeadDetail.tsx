@@ -37,7 +37,7 @@ interface LeadDetailProps {
 
 export function LeadDetail({ lead }: LeadDetailProps) {
   const router = useRouter();
-  const { canEditLeads } = usePermissions();
+  const { canEditLeads, canDeleteLeads } = usePermissions();
   const deleteMutation = useDeleteLead();
   const [showDelete, setShowDelete] = useState(false);
 
@@ -79,7 +79,7 @@ export function LeadDetail({ lead }: LeadDetailProps) {
             </Button>
           )}
 
-          {canEditLeads && (
+          {canDeleteLeads && (
             <Button
               variant="outline"
               size="sm"

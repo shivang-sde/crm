@@ -6,8 +6,8 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.shivang.crm.modules.workflow.config.WorkflowRabbitConfig;
 import com.shivang.crm.shared.event.CanonicalCrmEvent;
@@ -33,7 +33,7 @@ public class WorkflowEventConsumer {
         try {
             event = objectMapper.readValue(message.getBody(), CanonicalCrmEvent.class);
             validate(event);
-        } catch (JsonProcessingException | IllegalArgumentException ex) {
+        } catch (JacksonException | IllegalArgumentException ex) {
             log.error("Rejecting invalid canonical CRM event message", ex);
             channel.basicReject(deliveryTag, false);
             return;

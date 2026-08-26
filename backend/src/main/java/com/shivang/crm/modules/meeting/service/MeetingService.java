@@ -1,6 +1,8 @@
 package com.shivang.crm.modules.meeting.service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -21,6 +23,8 @@ import com.shivang.crm.modules.reminder.service.ReminderPlanningService;
 import com.shivang.crm.modules.recurrence.service.RecurrenceScheduleService;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.enums.OwnershipScope;
+import com.shivang.crm.shared.event.CanonicalCrmEvent;
+import com.shivang.crm.shared.event.CanonicalCrmEventPublisher;
 import com.shivang.crm.shared.exception.NotFoundException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.service.EntityResolverService;
@@ -36,9 +40,11 @@ public class MeetingService {
 
     private final MeetingRepository meetingRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
     private final EntityResolverService entityResolverService;
     private final ReminderPlanningService reminderPlanningService;
     private final RecurrenceScheduleService recurrenceScheduleService;
+    private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
 
     private final TenantContext tenantContext;
 
@@ -98,6 +104,18 @@ public class MeetingService {
         reminderPlanningService.planForMeeting(savedMeeting);
         log.info("Created meeting {} for tenant {}", savedMeeting.getId(), tenantId);
 
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("source", "MANUAL");
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+            savedMeeting.getTenantId(),
+            CanonicalCrmEvent.MEETING_ENTITY_TYPE,
+            CanonicalCrmEvent.CREATED_EVENT_TYPE,
+            savedMeeting.getId(),
+            eventMetadata
+        );
+
         return toResponse(savedMeeting);
     }
 
@@ -133,7 +151,31 @@ public class MeetingService {
     @Transactional(readOnly = true)
     public MeetingResponse getMeeting(UUID id, UUID tenantId) {
         Meeting meeting = findMeetingByIdAndTenant(id, tenantId);
+
+        // RBAC-7: single-record read must respect the meeting:read scope
+        // using the module's established creator-based convention.
+        UUID currentUserId = tenantContext.getUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "meeting", "read");
+        assertMeetingInScope(scope, meeting, currentUserId, tenantId);
+
         return toResponse(meeting);
+    }
+
+    /**
+     * RBAC-7 ownership convention for meetings (mirrors hasWritePermission):
+     * OWN -> creator is the caller; TEAM -> creator within the caller's team.
+     */
+    private void assertMeetingInScope(String scope, Meeting meeting, UUID userId, UUID tenantId) {
+        boolean allowed = switch (scope) {
+            case "ALL" -> true;
+            case "OWN" -> userId.equals(meeting.getCreatedBy());
+            case "TEAM" -> permissionEvaluatorService.isInSameTeam(tenantId, userId, meeting.getCreatedBy());
+            default -> false;
+        };
+        if (!allowed) {
+            throw new com.shivang.crm.shared.exception.PermissionDeniedException("SCOPE_DENIED",
+                    "Record is outside your access scope");
+        }
     }
 
     public MeetingResponse updateMeeting(UUID id, UUID tenantId, UUID userId, MeetingUpdateRequest request) {
@@ -157,6 +199,7 @@ public class MeetingService {
         }
 
         // Update fields
+        Meeting.MeetingStatus previousStatus = meeting.getStatus();
         if (request.getSubject() != null) {
             meeting.setSubject(request.getSubject());
         }
@@ -241,6 +284,23 @@ public class MeetingService {
         reminderPlanningService.planForMeeting(updatedMeeting);
         log.info("Updated meeting {} for tenant {}", id, tenantId);
 
+        if (updatedMeeting.getStatus() != previousStatus) {
+            Map<String, Object> eventMetadata = new HashMap<>();
+            if (previousStatus != null) {
+                eventMetadata.put("previousStatus", previousStatus.name());
+            }
+            eventMetadata.put("newStatus", updatedMeeting.getStatus().name());
+            eventMetadata.put("actorId", userId.toString());
+            eventMetadata.put("actorType", "USER");
+            canonicalCrmEventPublisher.publish(
+                updatedMeeting.getTenantId(),
+                CanonicalCrmEvent.MEETING_ENTITY_TYPE,
+                CanonicalCrmEvent.STATUS_CHANGED_EVENT_TYPE,
+                updatedMeeting.getId(),
+                eventMetadata
+            );
+        }
+
         return toResponse(updatedMeeting);
     }
 
@@ -251,6 +311,10 @@ public class MeetingService {
         if (!permissionEvaluatorService.hasPermission(tenantId, userId, "meeting:delete")) {
             throw new PermissionDeniedException("No permission to delete meetings");
         }
+
+        // RBAC-7: deletion must also fall within the caller's meeting:delete scope.
+        String deleteScope = recordScopeGuard.requireScope(tenantId, userId, "meeting", "delete");
+        assertMeetingInScope(deleteScope, meeting, userId, tenantId);
 
         meeting.setDeleted(true);
         meeting.setUpdatedBy(userId);

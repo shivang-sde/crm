@@ -1,18 +1,18 @@
 package com.shivang.crm.modules.acquisition.service;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.acquisition.dto.LeadIngestionSourceField;
 import com.shivang.crm.modules.acquisition.dto.LeadIngestionSourceFieldType;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -37,34 +37,32 @@ public class LeadIngestionFieldDiscoveryService {
     }
 
     private void discoverLeafFields(
-            JsonNode node,
-            String currentPath,
-            java.util.function.BiConsumer<String, JsonNode> onLeaf) {
-        if (node == null || node.isNull()) {
-            return;
-        }
+        JsonNode node,
+        String currentPath,
+        BiConsumer<String, JsonNode> onLeaf) {
+    if (node == null || node.isNull()) {
+        return;
+    }
 
-        if (node.isObject()) {
-            Iterator<String> fieldNames = node.fieldNames();
-            while (fieldNames.hasNext()) {
-                String fieldName = fieldNames.next();
-                String nextPath = currentPath.isBlank() ? fieldName : currentPath + "." + fieldName;
-                JsonNode child = node.get(fieldName);
+    if (node.isObject()) {
+        // Jackson 3 supports iterating directly over property names
+        for (String fieldName : node.propertyNames()) {
+            String nextPath = currentPath.isBlank() ? fieldName : currentPath + "." + fieldName;
+            JsonNode child = node.get(fieldName);
 
-                if (child != null && child.isObject()) {
-                    discoverLeafFields(child, nextPath, onLeaf);
-                    continue;
-                }
-
+            if (child != null && child.isObject()) {
+                discoverLeafFields(child, nextPath, onLeaf);
+            } else {
                 onLeaf.accept(nextPath, child);
             }
-            return;
         }
-
-        if (!currentPath.isBlank()) {
-            onLeaf.accept(currentPath, node);
-        }
+        return;
     }
+
+    if (!currentPath.isBlank()) {
+        onLeaf.accept(currentPath, node);
+    }
+}
 
     private LeadIngestionSourceFieldType resolveType(JsonNode node) {
         if (node == null || node.isNull()) {

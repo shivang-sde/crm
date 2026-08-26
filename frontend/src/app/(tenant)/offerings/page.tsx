@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useOfferings, useCreateOffering, useUpdateOffering, useDeleteOffering, useToggleOfferingStatus } from "@/lib/hooks/offerings";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import { OfferingForm } from "@/components/offerings/OfferingForm/OfferingForm";
 import { OfferingCreateRequest, OfferingResponse, OfferingUpdateRequest } from "@/types/offerings";
 
@@ -15,6 +16,8 @@ export default function OfferingsPage() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<OfferingResponse | null>(null);
+
+  const { canEditOfferings, canDeleteOfferings } = usePermissions();
 
   const { data, isLoading } = useOfferings({ search, size: 50 });
   const createOffering = useCreateOffering();
@@ -53,11 +56,13 @@ export default function OfferingsPage() {
           <p className="text-sm text-muted-foreground">Manage reusable catalog items for deals and quotes.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setEditing(null)}>
-              <Plus className="mr-2 h-4 w-4" /> New offering
-            </Button>
-          </DialogTrigger>
+          {canEditOfferings && (
+            <DialogTrigger asChild>
+              <Button onClick={() => setEditing(null)}>
+                <Plus className="mr-2 h-4 w-4" /> New offering
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="max-w-3xl">
             <DialogHeader>
               <DialogTitle>{editing ? "Edit offering" : "Create offering"}</DialogTitle>
@@ -100,15 +105,21 @@ export default function OfferingsPage() {
                     <p className="text-sm text-muted-foreground">{offering.code} • {offering.currencyCode ?? "USD"} {offering.defaultPrice ?? 0}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { setEditing(offering); setOpen(true); }}>
-                      <Pencil className="mr-2 h-4 w-4" /> Edit
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleToggle(offering)}>
-                      <Power className="mr-2 h-4 w-4" /> {offering.active ? "Deactivate" : "Activate"}
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(offering.id)}>
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete
-                    </Button>
+                    {canEditOfferings && (
+                      <Button variant="outline" size="sm" onClick={() => { setEditing(offering); setOpen(true); }}>
+                        <Pencil className="mr-2 h-4 w-4" /> Edit
+                      </Button>
+                    )}
+                    {canEditOfferings && (
+                      <Button variant="outline" size="sm" onClick={() => handleToggle(offering)}>
+                        <Power className="mr-2 h-4 w-4" /> {offering.active ? "Deactivate" : "Activate"}
+                      </Button>
+                    )}
+                    {canDeleteOfferings && (
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(offering.id)}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

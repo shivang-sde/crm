@@ -16,15 +16,17 @@ public class WorkflowExecutionContext {
     private final WorkflowExecutionIdentity identity;
     private final Map<String, Object> trigger;
     private final Map<String, Object> triggerContext;
-    private final Map<String, Object> entity;
+    private volatile Map<String, Object> entity;
     private final Map<String, Map<String, Object>> nodeOutputs = new HashMap<>();
     private UUID workflowNodeExecutionId;
+    private final WorkflowEntityContextProviderRegistry entityContextProviderRegistry;
 
     public WorkflowExecutionContext(
         WorkflowExecution execution,
         WorkflowEntityContextProviderRegistry entityContextProviderRegistry
     ) {
         this.execution = execution;
+        this.entityContextProviderRegistry = entityContextProviderRegistry;
         this.identity = new WorkflowExecutionIdentity(
             execution.getTenantId(), execution.getActorId(), execution.getActorType()
         );
@@ -41,7 +43,21 @@ public class WorkflowExecutionContext {
         triggerData.put("actorType", execution.getActorType());
         triggerData.put("metadata", this.triggerContext);
         this.trigger = Map.copyOf(triggerData);
-        this.entity = entityContextProviderRegistry
+        this.entity = loadEntity();
+    }
+
+    /**
+     * Reloads the triggering entity through its read-only context provider.
+     * Mutating actions (UPDATE_ENTITY_FIELD / ASSIGN_OWNER) call this so later
+     * CONDITION / BRANCH nodes in the same run observe the committed state
+     * instead of the execution-start snapshot.
+     */
+    public void refreshEntity() {
+        this.entity = loadEntity();
+    }
+
+    private Map<String, Object> loadEntity() {
+        return entityContextProviderRegistry
             .load(execution.getTenantId(), execution.getEntityType(), execution.getEntityId())
             .orElseGet(Map::of);
     }

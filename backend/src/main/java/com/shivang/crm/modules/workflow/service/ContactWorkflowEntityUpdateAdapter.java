@@ -20,6 +20,10 @@ public class ContactWorkflowEntityUpdateAdapter implements WorkflowEntityUpdateA
 
     @Override
     public WorkflowEntityUpdateResult update(UUID tenantId, UUID actorId, UUID entityId, String field, Object value, Map<String, Object> currentCustomFields) {
+        if ("owner".equals(field)) {
+            contactService.assignOwner(entityId, tenantId, WorkflowUpdateValueSupport.uuid(value, field), actorId);
+            return WorkflowUpdateValueSupport.result("CONTACT", entityId, field, value);
+        }
         ContactUpdateRequest.ContactUpdateRequestBuilder request = ContactUpdateRequest.builder();
         switch (field) {
             case "firstName" -> request.firstName(WorkflowUpdateValueSupport.text(value, field));

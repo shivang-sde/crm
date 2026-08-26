@@ -14,9 +14,11 @@ import com.shivang.crm.modules.deal.repository.DealRepository;
 public class DealWorkflowEntityContextProvider implements WorkflowEntityContextProvider {
 
     private final DealRepository dealRepository;
+    private final WorkflowRelatedRecordResolver relatedRecordResolver;
 
-    public DealWorkflowEntityContextProvider(DealRepository dealRepository) {
+    public DealWorkflowEntityContextProvider(DealRepository dealRepository, WorkflowRelatedRecordResolver relatedRecordResolver) {
         this.dealRepository = dealRepository;
+        this.relatedRecordResolver = relatedRecordResolver;
     }
 
     @Override
@@ -63,6 +65,16 @@ public class DealWorkflowEntityContextProvider implements WorkflowEntityContextP
         context.put("createdAt", deal.getCreatedAt());
         context.put("updatedAt", deal.getUpdatedAt());
         context.put("customFields", deal.getCustomData() == null ? Map.of() : deal.getCustomData());
+        // Controlled one-hop relationships: Deal → Account / Contact / Lead.
+        context.put("account", relatedRecordResolver
+            .account(deal.getTenantId(), deal.getAccountId())
+            .orElse(null));
+        context.put("contact", relatedRecordResolver
+            .contact(deal.getTenantId(), deal.getContactId())
+            .orElse(null));
+        context.put("lead", relatedRecordResolver
+            .lead(deal.getTenantId(), deal.getLeadId())
+            .orElse(null));
         return context;
     }
 }

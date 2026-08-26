@@ -53,6 +53,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/spinner";
+import { useUserLookup } from "@/lib/hooks/useUserLookup";
 
 export interface AccountFilters {
   page: number;
@@ -171,6 +172,8 @@ export function AccountDataTable({
   onEdit,
   onDelete,
 }: AccountDataTableProps) {
+  const { resolveUserName } = useUserLookup();
+
   const columns = useMemo<ColumnDef<AccountResponse>[]>(
     () => [
       {
@@ -298,13 +301,9 @@ export function AccountDataTable({
            * Prefer an ownerName/assigneeName property if your backend
            * response exposes it. For now, this falls back to ownerUserId.
            */
-          const ownerName =
-            "ownerName" in account &&
-            typeof account.ownerName === "string"
-              ? account.ownerName
-              : account.ownerUserId;
+          const ownerName = resolveUserName(account.ownerUserId);
 
-          if (!ownerName) {
+          if (!account.ownerUserId) {
             return (
               <span className="text-sm text-muted-foreground">
                 Not assigned
@@ -590,7 +589,7 @@ export function AccountDataTable({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          Showing {startItem}–{endItem} of {totalElements} accounts
+          Showing {startItem}â€“{endItem} of {totalElements} accounts
         </p>
 
         <div className="flex items-center gap-2">

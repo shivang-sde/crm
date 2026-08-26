@@ -1,6 +1,8 @@
 package com.shivang.crm.modules.rbac.service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -23,6 +25,7 @@ import com.shivang.crm.modules.rbac.repository.UserRoleRepository;
 import com.shivang.crm.modules.user.dto.response.PermissionResponse;
 import com.shivang.crm.modules.user.dto.response.RoleResponse;
 import com.shivang.crm.shared.exception.BusinessException;
+import com.shivang.crm.shared.exception.PermissionDeniedException;
 import com.shivang.crm.shared.exception.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
@@ -34,12 +37,27 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RoleManagementService {
 
+    /*
+     * Scope delegation ranks (RBAC-6). An actor may only delegate a scope
+     * whose rank does not exceed the rank of the scope they themselves hold
+     * for the same catalog permission. NONE/missing/unrecognized scopes rank
+     * zero and can never be delegated.
+     */
+    private static final int SCOPE_RANK_NONE = 0;
+    private static final int SCOPE_RANK_OWN = 1;
+    private static final int SCOPE_RANK_TEAM = 2;
+    private static final int SCOPE_RANK_ALL = 3;
+
+    private static final String DELEGATION_DENIED = "DELEGATION_DENIED";
+
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleMapper roleMapper;
     private final TenantContext tenantContext;
+    private final PermissionEvaluatorService permissionEvaluatorService;
+    private final PermissionCacheEvictor permissionCacheEvictor;
 
 
     public RoleResponse getRole(UUID roleId) {
@@ -99,6 +117,9 @@ public class RoleManagementService {
             throw new BusinessException("ROLE_EXISTS", "A role with this name already exists");
         }
 
+        // RBAC-6: delegation boundary on the complete requested set.
+        validateDelegationForCreate(request.getPermissions());
+
         Role role = new Role();
         role.setName(request.getName().toUpperCase());
         role.setDescription(request.getDescription());
@@ -130,6 +151,10 @@ public class RoleManagementService {
             throw new BusinessException("FORBIDDEN", "Cannot modify default system roles");
         }
 
+        // RBAC-6: delegation boundary on the resulting permission set
+        // (additions and scope escalations only). Validated before mutation.
+        validateDelegationForUpdate(roleId, request.getPermissions());
+
         role.setName(request.getName().toUpperCase());
         role.setDescription(request.getDescription());
         role = roleRepository.save(role);
@@ -137,6 +162,9 @@ public class RoleManagementService {
         // Clear existing permissions and save new ones
         rolePermissionRepository.deleteAll(rolePermissionRepository.findByRoleId(roleId));
         saveRolePermissions(roleId, request.getPermissions());
+
+        // RBAC-8: role permissions changed -> evict every assignee's cache.
+        permissionCacheEvictor.evictRoleUsersAfterCommit(roleId);
 
         List<RolePermission> permissions = rolePermissionRepository.findByRoleId(roleId);
         return roleMapper.toRoleResponse(role, permissions);
@@ -179,11 +207,20 @@ public class RoleManagementService {
             throw new BusinessException("ALREADY_ASSIGNED", "Permission is already assigned to this role");
         }
 
+        // RBAC-6: adding a permission to a target role is always a grant.
+        UUID actorId = requireActorId();
+        if (!permissionEvaluatorService.isSuperadmin(actorId)) {
+            assertCanDelegate(actorId, tenantId, permission.getModule(), permission.getAction(), request.getAccessScope());
+        }
+
         RolePermission rolePerm = new RolePermission();
         rolePerm.setRoleId(roleId);
         rolePerm.setPermissionId(permission.getId());
         rolePerm.setAccessScope(request.getAccessScope());
         rolePermissionRepository.save(rolePerm);
+
+        // RBAC-8
+        permissionCacheEvictor.evictRoleUsersAfterCommit(roleId);
     }
 
     public void removePermission(UUID roleId, UUID permissionId) {
@@ -199,6 +236,9 @@ public class RoleManagementService {
             .orElseThrow(() -> new ResourceNotFoundException("RolePermission", permissionId.toString()));
 
         rolePermissionRepository.delete(rolePerm);
+
+        // RBAC-8
+        permissionCacheEvictor.evictRoleUsersAfterCommit(roleId);
     }
 
     public void updatePermissionScope(UUID roleId, UUID permissionId, String scope) {
@@ -218,8 +258,22 @@ public class RoleManagementService {
         RolePermission rolePerm = rolePermissionRepository.findByRoleIdAndPermissionId(roleId, permissionId)
             .orElseThrow(() -> new ResourceNotFoundException("RolePermission", permissionId.toString()));
 
+        // RBAC-6: scope escalation on an existing assignment is a grant.
+        // Downgrades and unchanged scopes are not privilege escalations.
+        if (scopeRank(scope) > scopeRank(rolePerm.getAccessScope())) {
+            UUID actorId = requireActorId();
+            if (!permissionEvaluatorService.isSuperadmin(actorId)) {
+                Permission permission = permissionRepository.findById(permissionId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Permission", permissionId.toString()));
+                assertCanDelegate(actorId, tenantId, permission.getModule(), permission.getAction(), scope.toUpperCase());
+            }
+        }
+
         rolePerm.setAccessScope(scope.toUpperCase());
         rolePermissionRepository.save(rolePerm);
+
+        // RBAC-8
+        permissionCacheEvictor.evictRoleUsersAfterCommit(roleId);
     }
 
     public void deleteRole(UUID roleId) {
@@ -269,5 +323,125 @@ public class RoleManagementService {
 
     private UUID parseTenantId() {
         return tenantContext.getTenantId();
+    }
+
+    // =====================================================================
+    // RBAC-6: Role-management delegation boundary
+    // =====================================================================
+    // A non-SUPERADMIN actor holding admin:role_manage may only GRANT what
+    // they themselves possess, at a scope they are allowed to delegate.
+    // One authoritative check (assertCanDelegationAllowed) is applied to
+    // every path capable of adding permissions or increasing scopes:
+    // createRole, updateRole, assignPermission, updatePermissionScope.
+    // Permission REMOVAL and scope DOWNGRADES are not privilege escalations
+    // and remain unrestricted. SUPERADMIN keeps its centralized bypass via
+    // PermissionEvaluatorService.isSuperadmin; no role-name checks exist here.
+    // =====================================================================
+
+    private int scopeRank(String scope) {
+        if (scope == null) {
+            return SCOPE_RANK_NONE;
+        }
+        return switch (scope.trim().toUpperCase()) {
+            case "OWN" -> SCOPE_RANK_OWN;
+            case "TEAM" -> SCOPE_RANK_TEAM;
+            case "ALL" -> SCOPE_RANK_ALL;
+            default -> SCOPE_RANK_NONE;
+        };
+    }
+
+    private UUID requireActorId() {
+        UUID actorId = tenantContext.getUserId();
+        if (actorId == null) {
+            throw new PermissionDeniedException(DELEGATION_DENIED,
+                    "Actor identity is required to modify role permissions");
+        }
+        return actorId;
+    }
+
+    private void assertCanDelegate(
+            UUID actorId,
+            UUID tenantId,
+            String module,
+            String action,
+            String requestedScope) {
+
+        int requestedRank = scopeRank(requestedScope);
+        if (requestedRank == SCOPE_RANK_NONE) {
+            throw new PermissionDeniedException(DELEGATION_DENIED,
+                    "A valid access scope (OWN, TEAM or ALL) is required");
+        }
+
+        // Centralized evaluator: undefined permission -> NONE, missing/NONE
+        // actor scope -> NONE, SUPERADMIN -> ALL. Fail-closed by design.
+        String actorScope = permissionEvaluatorService.getAccessScope(actorId, tenantId, module, action);
+
+        if (scopeRank(actorScope) < requestedRank) {
+            log.warn("Delegation denied: actor {} attempted to delegate {}:{} scope '{}' while holding '{}'",
+                    actorId, module, action, requestedScope, actorScope);
+            throw new PermissionDeniedException(DELEGATION_DENIED,
+                    "You cannot grant permissions you do not hold at the requested scope");
+        }
+    }
+
+    /**
+     * Create path: every requested permission is new, so the complete
+     * resulting set must be delegable by the actor.
+     */
+    private void validateDelegationForCreate(List<PermissionScopeRequest> requestedPermissions) {
+        if (requestedPermissions == null || requestedPermissions.isEmpty()) {
+            return;
+        }
+
+        UUID actorId = requireActorId();
+        if (permissionEvaluatorService.isSuperadmin(actorId)) {
+            return;
+        }
+
+        UUID tenantId = parseTenantId();
+        for (PermissionScopeRequest pr : requestedPermissions) {
+            Permission permission = permissionRepository.findById(pr.getPermissionId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Permission", pr.getPermissionId().toString()));
+            assertCanDelegate(actorId, tenantId, permission.getModule(), permission.getAction(), pr.getAccessScope());
+        }
+    }
+
+    /**
+     * Update path: the resulting role state is exactly the requested list
+     * (existing rows are replaced). Only authority-INCREASING changes are
+     * delegation events:
+     *   - a permission newly added to the target role, or
+     *   - an existing permission whose scope is being raised.
+     * Retentions and scope downgrades are allowed without delegation rights,
+     * so legitimate no-op edits never lock out non-SUPERADMIN actors.
+     */
+    private void validateDelegationForUpdate(UUID roleId, List<PermissionScopeRequest> requestedPermissions) {
+        if (requestedPermissions == null || requestedPermissions.isEmpty()) {
+            return;
+        }
+
+        UUID actorId = requireActorId();
+        if (permissionEvaluatorService.isSuperadmin(actorId)) {
+            return;
+        }
+
+        Map<UUID, String> existingScopes = new HashMap<>();
+        for (RolePermission rp : rolePermissionRepository.findByRoleId(roleId)) {
+            existingScopes.put(rp.getPermissionId(), rp.getAccessScope());
+        }
+
+        UUID tenantId = parseTenantId();
+        for (PermissionScopeRequest pr : requestedPermissions) {
+            Permission permission = permissionRepository.findById(pr.getPermissionId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Permission", pr.getPermissionId().toString()));
+
+            String currentScope = existingScopes.get(permission.getId());
+            boolean escalation = currentScope == null
+                    || scopeRank(pr.getAccessScope()) > scopeRank(currentScope);
+
+            if (escalation) {
+                assertCanDelegate(actorId, tenantId, permission.getModule(), permission.getAction(), pr.getAccessScope());
+            }
+        }
     }
 }

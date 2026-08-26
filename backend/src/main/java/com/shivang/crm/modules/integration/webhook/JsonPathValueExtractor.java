@@ -1,8 +1,8 @@
 package com.shivang.crm.modules.integration.webhook;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 import org.springframework.stereotype.Component;
+
+import tools.jackson.databind.JsonNode;
 
 @Component
 public class JsonPathValueExtractor {

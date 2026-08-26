@@ -14,6 +14,8 @@ import com.shivang.crm.modules.lead.entity.LeadCustomField;
 @Repository
 public interface LeadCustomFieldRepository extends JpaRepository<LeadCustomField, UUID> {
 
+    java.util.Optional<LeadCustomField> findByIdAndTenantId(java.util.UUID id, java.util.UUID tenantId);
+
     @Query("SELECT lcf FROM LeadCustomField lcf WHERE lcf.tenantId = :tenantId AND lcf.isActive = true ORDER BY lcf.displayOrder ASC")
     List<LeadCustomField> findActiveFieldsByTenant(@Param("tenantId") UUID tenantId);
 

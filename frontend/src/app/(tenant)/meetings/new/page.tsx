@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -16,7 +17,12 @@ import {
 } from '@/components/ui/select';
 import { useCreateMeeting } from '@/lib/hooks/meetings';
 import { usePermissions } from '@/lib/hooks/usePermissions';
+import { RecordCombobox } from '@/components/common/RecordCombobox';
+import { RecurrencePicker } from '@/components/tasks/RecurrencePicker';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MeetingCreateRequest,meetingSchema } from '@/types/meetings';
 import {emptyToUndefined } from '@/lib/utils';
@@ -52,6 +58,29 @@ export default function NewMeetingPage() {
   },
 });
 
+  const [attendeeInput, setAttendeeInput] = useState('');
+  const [attendees, setAttendees] = useState<string[]>([]);
+  const recurrenceValue = watch('recurrence');
+
+  const addAttendee = () => {
+    const email = attendeeInput.trim().toLowerCase();
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('Invalid attendee email');
+      return;
+    }
+    if (attendees.includes(email)) {
+      toast.error('Attendee already added');
+      return;
+    }
+    setAttendees((current) => [...current, email]);
+    setAttendeeInput('');
+  };
+
+  const removeAttendee = (email: string) => {
+    setAttendees((current) => current.filter((attendee) => attendee !== email));
+  };
+
  const onSubmit = async (data: MeetingFormData) => {
   try {
     const payload: MeetingCreateRequest = {
@@ -72,6 +101,10 @@ export default function NewMeetingPage() {
       entity_type: data.entityType,
       entity_id: emptyToUndefined(data.entityId),
 
+      attendees: attendees.length > 0 ? attendees : undefined,
+
+      recurrence: recurrenceValue,
+
       remind_at: data.remindAt
         ? new Date(data.remindAt).toISOString()
         : undefined,
@@ -82,6 +115,8 @@ export default function NewMeetingPage() {
     await createMeeting.mutateAsync(payload);
 
     toast.success('Meeting scheduled successfully');
+    setAttendees([]);
+    setAttendeeInput('');
     router.push('/meetings');
   } catch (error) {
     console.error('Failed to schedule meeting:', error);
@@ -203,11 +238,107 @@ export default function NewMeetingPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-          
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Link to Entity</label>
+                <Select
+                  value={watch('entityType')}
+                  onValueChange={(value) => {
+                    setValue('entityId', '', { shouldDirty: true });
+                    setValue(
+                      'entityType',
+                      value as MeetingFormData['entityType'],
+                      { shouldDirty: true, shouldValidate: true },
+                    );
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select entity type (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LEAD">Lead</SelectItem>
+                    <SelectItem value="CONTACT">Contact</SelectItem>
+                    <SelectItem value="ACCOUNT">Account</SelectItem>
+                    <SelectItem value="DEAL">Deal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Linked Record</label>
+                {watch('entityType') ? (
+                  <RecordCombobox
+                    entityType={watch('entityType') as 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'DEAL'}
+                    value={watch('entityId') || undefined}
+                    onChange={(id) =>
+                      setValue('entityId', id ?? '', {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    placeholder={`Search and link a ${watch('entityType')?.toLowerCase()}...`}
+                  />
+                ) : (
+                  <Input placeholder="Select an entity type first" disabled />
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Attendees</Label>
+              {attendees.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {attendees.map((attendee) => (
+                    <Badge key={attendee} variant="outline" className="gap-1 pr-1">
+                      {attendee}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${attendee}`}
+                        className="rounded-full p-0.5 hover:bg-muted"
+                        onClick={() => removeAttendee(attendee)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="Enter attendee email..."
+                  value={attendeeInput}
+                  onChange={(event) => setAttendeeInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ',') {
+                      event.preventDefault();
+                      addAttendee();
+                    }
+                  }}
+                />
+                <Button type="button" variant="outline" onClick={addAttendee}>
+                  Add
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Press Enter to add each attendee. CRM users and external email addresses are both allowed.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Remind At</label>
                 <Input type="datetime-local" {...register('remindAt')} />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Recurrence</Label>
+              <RecurrencePicker
+                value={recurrenceValue}
+                onChange={(value) =>
+                  setValue('recurrence', value, { shouldDirty: true })
+                }
+              />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">

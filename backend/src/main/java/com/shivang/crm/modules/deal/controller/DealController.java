@@ -21,11 +21,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.deal.dto.DealCreateRequest;
 import com.shivang.crm.modules.deal.dto.DealResponse;
 import com.shivang.crm.modules.deal.dto.DealUpdateRequest;
+import com.shivang.crm.modules.deal.dto.SalesDashboardResponse;
 import com.shivang.crm.modules.deal.service.DealService;
+import com.shivang.crm.modules.deal.service.SalesDashboardService;
+import com.shivang.crm.modules.lead.dto.EntityNoteResponse;
+import com.shivang.crm.modules.lead.service.EntityNoteService;
+import com.shivang.crm.modules.activity.dto.ActivityResponse;
 import com.shivang.crm.shared.dto.ApiResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,7 +49,10 @@ import lombok.extern.slf4j.Slf4j;
 public class DealController {
 
     private final DealService dealService;
+    private final SalesDashboardService salesDashboardService;
     private final TenantContext tenantContext;
+    private final ActivityService activityService;
+    private final EntityNoteService entityNoteService;
 
     /**
      * Create a new deal
@@ -106,6 +115,21 @@ public class DealController {
                 "totalPages", deals.getTotalPages());
 
         return ResponseEntity.ok(ApiResponse.success(deals.getContent(), meta));
+    }
+
+    /**
+     * Get sales dashboard summary for the current user's visibility scope
+     */
+    @GetMapping("/dashboard")
+    @Operation(summary = "Sales dashboard", description = "Pipeline, forecast, funnel and closing metrics scoped to the caller's deal/lead visibility")
+    public ResponseEntity<ApiResponse<SalesDashboardResponse>> getSalesDashboard() {
+
+        log.info("GET /api/v1/deals/dashboard - Building sales dashboard");
+
+        UUID tenantId = currentTenantId();
+        UUID userId = currentUserId();
+
+        return ResponseEntity.ok(ApiResponse.success(salesDashboardService.getSalesDashboard(tenantId, userId)));
     }
 
     /**
@@ -242,6 +266,94 @@ public class DealController {
         DealResponse dealResponse = dealService.assignDeal(id, tenantId, ownerUserId, userId);
 
         return ResponseEntity.ok(ApiResponse.success(dealResponse));
+    }
+
+    /**
+     * Get activity timeline for a deal
+     */
+    @GetMapping("/{id}/activities")
+    @Operation(summary = "Get deal activities", description = "Get the activity timeline for a specific deal")
+    public ResponseEntity<ApiResponse<java.util.List<ActivityResponse>>> getDealActivities(
+            @Parameter(description = "Deal UUID") @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        log.info("GET /api/v1/deals/{}/activities - Getting deal activities", id);
+
+        UUID tenantId = currentTenantId();
+        // RBAC-7: parent deal must be within the caller's read scope.
+        dealService.assertDealAccessible(tenantId, id, "read");
+        Page<ActivityResponse> activities = activityService.getEntityActivities(id, "DEAL", tenantId, page, size);
+
+        Map<String, Object> meta = Map.of(
+                "page", activities.getNumber(),
+                "size", activities.getSize(),
+                "total", activities.getTotalElements(),
+                "totalPages", activities.getTotalPages());
+
+        return ResponseEntity.ok(ApiResponse.success(activities.getContent(), meta));
+    }
+
+    /**
+     * Get notes for a deal
+     */
+    @GetMapping("/{id}/notes")
+    @Operation(summary = "Get deal notes", description = "Get notes for a specific deal")
+    public ResponseEntity<ApiResponse<java.util.List<EntityNoteResponse>>> getNotes(
+            @Parameter(description = "Deal UUID") @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        log.info("GET /api/v1/deals/{}/notes - Getting notes", id);
+        UUID tenantId = currentTenantId();
+        // RBAC-7: parent deal must be within the caller's read scope.
+        dealService.assertDealAccessible(tenantId, id, "read");
+        Page<EntityNoteResponse> notes = entityNoteService.getEntityNotes(id, "DEAL", tenantId, page, size);
+
+        Map<String, Object> meta = Map.of(
+                "page", notes.getNumber(),
+                "size", notes.getSize(),
+                "total", notes.getTotalElements(),
+                "totalPages", notes.getTotalPages());
+
+        return ResponseEntity.ok(ApiResponse.success(notes.getContent(), meta));
+    }
+
+    /**
+     * Add a note to a deal
+     */
+    @PostMapping("/{id}/notes")
+    @Operation(summary = "Add deal note", description = "Add a note to a specific deal")
+    public ResponseEntity<ApiResponse<EntityNoteResponse>> addNote(
+            @Parameter(description = "Deal UUID") @PathVariable UUID id,
+            @RequestBody Map<String, String> request) {
+
+        log.info("POST /api/v1/deals/{}/notes - Adding note", id);
+        UUID tenantId = currentTenantId();
+        UUID userId = currentUserId();
+        String noteText = request.get("note");
+        // RBAC-7: parent deal must be within the caller's write scope.
+        dealService.assertDealAccessible(tenantId, id, "write");
+        EntityNoteResponse noteResponse = entityNoteService.addEntityNote(id, "DEAL", tenantId, noteText, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(noteResponse));
+    }
+
+    /**
+     * Delete a note from a deal
+     */
+    @DeleteMapping("/{id}/notes/{noteId}")
+    @Operation(summary = "Delete deal note", description = "Delete a note from a specific deal")
+    public ResponseEntity<ApiResponse<String>> deleteNote(
+            @Parameter(description = "Deal UUID") @PathVariable UUID id,
+            @Parameter(description = "Note UUID") @PathVariable UUID noteId) {
+
+        log.info("DELETE /api/v1/deals/{}/notes/{} - Deleting note", id, noteId);
+        UUID tenantId = currentTenantId();
+        UUID userId = currentUserId();
+        // RBAC-7: parent deal must be within the caller's write scope.
+        dealService.assertDealAccessible(tenantId, id, "write");
+        entityNoteService.deleteEntityNote(noteId, id, "DEAL", tenantId, userId);
+        return ResponseEntity.ok(ApiResponse.success("Note deleted successfully"));
     }
 
       private UUID currentTenantId() {

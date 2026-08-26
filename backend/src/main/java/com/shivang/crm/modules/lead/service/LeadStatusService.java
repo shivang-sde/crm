@@ -65,12 +65,8 @@ public class LeadStatusService {
     public LeadStatusResponse updateStatus(UUID id, UUID tenantId, LeadStatusCreateRequest request) {
         log.info("Updating lead status: {} for tenant: {}", id, tenantId);
 
-        LeadStatus status = leadStatusRepository.findById(id)
+        LeadStatus status = leadStatusRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Status not found"));
-
-        if (!status.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to status");
-        }
 
         status.setName(request.getName());
         status.setColor(request.getColor());
@@ -88,12 +84,8 @@ public class LeadStatusService {
     public void deleteStatus(UUID id, UUID tenantId) {
         log.info("Deleting lead status: {} for tenant: {}", id, tenantId);
 
-        LeadStatus status = leadStatusRepository.findById(id)
+        LeadStatus status = leadStatusRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Status not found"));
-
-        if (!status.getTenantId().equals(tenantId)) {
-            throw new RuntimeException("Unauthorized access to status");
-        }
 
         leadStatusRepository.delete(status);
     }

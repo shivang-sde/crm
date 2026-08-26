@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 public class LeadActivityController {
 
     private final ActivityService activityService;
+    private final com.shivang.crm.modules.lead.service.LeadService leadService;
     private final TenantContext tenantContext;
 
     @GetMapping("/activities")
@@ -47,6 +48,8 @@ public class LeadActivityController {
         log.info("GET /api/v1/leads/{}/activities - Getting activities", leadId);
 
         UUID tenantId = currentTenantId();
+        // RBAC-7: parent lead must be within the caller's read scope.
+        leadService.assertLeadAccessible(tenantId, leadId, "read");
         Page<ActivityResponse> activities = activityService.getEntityActivities(leadId, "LEAD", tenantId, page, size);
 
         Map<String, Object> meta = Map.of(

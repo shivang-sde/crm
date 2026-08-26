@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -108,6 +110,79 @@ public class WorkflowGraphValidationService {
             }
             if (conditionEdges.size() != 2 || !outcomes.containsAll(Set.of("TRUE", "FALSE"))) {
                 errors.add(error("WORKFLOW_EDGE_INVALID", "CONDITION requires exactly one TRUE and one FALSE edge"));
+            }
+        }
+
+        for (WorkflowNode wait : nodes.stream().filter(node -> node.getNodeType() == WorkflowNodeType.WAIT).toList()) {
+            List<WorkflowEdge> waitEdges = edges.stream()
+                .filter(edge -> edge.getSourceNode() != null && wait.getId().equals(edge.getSourceNode().getId()))
+                .toList();
+            if (waitEdges.size() != 1) {
+                errors.add(error("WORKFLOW_EDGE_INVALID", "WAIT requires exactly one outgoing edge"));
+            }
+
+            Map<String, Object> configuration = wait.getConfiguration();
+            Object rawResumeAt = configuration == null ? null : configuration.get("resumeAt");
+            if (rawResumeAt == null || String.valueOf(rawResumeAt).isBlank()) {
+                errors.add(error("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT nodes require a resumeAt timestamp"));
+            } else {
+                try {
+                    Instant resumeAt = Instant.parse(String.valueOf(rawResumeAt).trim());
+                    if (!resumeAt.isAfter(Instant.now())) {
+                        errors.add(error("WORKFLOW_WAIT_RESUME_AT_PAST",
+                            "WAIT resumeAt must be in the future"));
+                    }
+                } catch (DateTimeParseException parseEx) {
+                    errors.add(error("WORKFLOW_WAIT_RESUME_AT_INVALID",
+                        "WAIT resumeAt must be an ISO-8601 UTC timestamp, e.g. 2026-08-30T10:30:00Z"));
+                }
+            }
+        }
+
+        for (WorkflowNode branch : nodes.stream().filter(node -> node.getNodeType() == WorkflowNodeType.BRANCH).toList()) {
+            List<WorkflowEdge> branchEdges = edges.stream()
+                .filter(edge -> edge.getSourceNode() != null && branch.getId().equals(edge.getSourceNode().getId()))
+                .toList();
+
+            Set<String> keys = new HashSet<>();
+            for (WorkflowEdge edge : branchEdges) {
+                String edgeKey = edge.getEdgeKey() == null ? "" : edge.getEdgeKey().trim().toUpperCase();
+                if (!Set.of("TRUE", "FALSE").contains(edgeKey)) {
+                    errors.add(error("WORKFLOW_BRANCH_INVALID", "BRANCH edges must use TRUE or FALSE edge keys"));
+                } else if (!keys.add(edgeKey)) {
+                    errors.add(error("WORKFLOW_BRANCH_INVALID", "BRANCH cannot have duplicate " + edgeKey + " edges"));
+                }
+            }
+            if (branchEdges.size() != 2 || !keys.containsAll(Set.of("TRUE", "FALSE"))) {
+                errors.add(error("WORKFLOW_BRANCH_INVALID", "BRANCH requires exactly one TRUE and one FALSE edge"));
+            }
+
+            Map<String, Object> configuration = branch.getConfiguration();
+            Object rawLogic = configuration == null ? null : configuration.get("logic");
+            if (rawLogic == null
+                || !Set.of("AND", "OR").contains(String.valueOf(rawLogic).trim().toUpperCase())) {
+                errors.add(error("WORKFLOW_BRANCH_INVALID", "Branch logic must be AND or OR"));
+            }
+            Object rawConditions = configuration == null ? null : configuration.get("conditions");
+            if (!(rawConditions instanceof List<?> conditions) || conditions.isEmpty()) {
+                errors.add(error("WORKFLOW_BRANCH_INVALID", "At least one branch condition is required"));
+            } else {
+                for (Object rawCondition : conditions) {
+                    if (!(rawCondition instanceof Map<?, ?> condition)) {
+                        errors.add(error("WORKFLOW_BRANCH_INVALID", "Each branch condition must be an object"));
+                        continue;
+                    }
+                    Object field = condition.get("field");
+                    if (field == null || String.valueOf(field).isBlank()) {
+                        errors.add(error("WORKFLOW_BRANCH_INVALID", "Branch condition field is required"));
+                    }
+                    Object operator = condition.get("operator");
+                    if (operator == null || !WorkflowConditionEvaluator.SUPPORTED_OPERATORS.contains(
+                        String.valueOf(operator).trim().toUpperCase())) {
+                        errors.add(error("WORKFLOW_BRANCH_INVALID",
+                            "Unsupported branch condition operator: " + operator));
+                    }
+                }
             }
         }
 

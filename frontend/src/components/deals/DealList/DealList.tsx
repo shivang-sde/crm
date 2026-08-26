@@ -7,8 +7,18 @@ import { userApi } from "@/lib/api/users";
 import { useQuery } from "@tanstack/react-query";
 import { DealFilters, DealFilterState } from "./DealFilters";
 import { DealTable } from "./DealTable";
+import { useAccounts } from "@/lib/hooks/accounts";
+import { useContacts } from "@/lib/hooks/contacts";
 
-const defaultFilters: DealFilterState = { stageId: "all", ownerId: "all", search: "" };
+const defaultFilters: DealFilterState = {
+  stageId: "all",
+  ownerId: "all",
+  accountId: "all",
+  contactId: "all",
+  closeDateFrom: "",
+  closeDateTo: "",
+  search: "",
+};
 
 export function DealList() {
   const [page, setPage] = useState(0);
@@ -20,19 +30,50 @@ export function DealList() {
     return () => clearTimeout(timer);
   }, [filters.search]);
 
-  useEffect(() => setPage(0), [debouncedSearch, filters.stageId, filters.ownerId]);
+  useEffect(
+    () =>
+      setPage(0),
+    [
+      debouncedSearch,
+      filters.stageId,
+      filters.ownerId,
+      filters.accountId,
+      filters.contactId,
+      filters.closeDateFrom,
+      filters.closeDateTo,
+    ]
+  );
 
   const { data: stages } = useDealStages();
   const { data: usersData } = useQuery({ queryKey: ["users", "deal-filters"], queryFn: () => userApi.getUsers({ page: 0, isActive: true }) });
+  const { data: accountsData } = useAccounts({ page: 0, size: 100 });
+  const { data: contactsData } = useContacts({ page: 0, size: 100 });
 
-  const { data: dealsResult, isLoading } = useDeals({ page, size: 20, search: debouncedSearch || undefined, stage: filters.stageId !== "all" ? filters.stageId : undefined, owner: filters.ownerId !== "all" ? filters.ownerId : undefined });
+  const { data: dealsResult, isLoading } = useDeals({
+    page,
+    size: 20,
+    search: debouncedSearch || undefined,
+    stage: filters.stageId !== "all" ? filters.stageId : undefined,
+    owner: filters.ownerId !== "all" ? filters.ownerId : undefined,
+    accountId: filters.accountId !== "all" ? filters.accountId : undefined,
+    contactId: filters.contactId !== "all" ? filters.contactId : undefined,
+    closeDateFrom: filters.closeDateFrom || undefined,
+    closeDateTo: filters.closeDateTo || undefined,
+  });
 
   const deals = dealsResult?.data ?? [];
   const meta = dealsResult?.meta;
 
   return (
     <div className="space-y-4">
-      <DealFilters filters={filters} stages={stages} users={usersData?.content} onFiltersChange={setFilters} />
+      <DealFilters
+        filters={filters}
+        stages={stages}
+        users={usersData?.content}
+        accounts={accountsData?.data}
+        contacts={contactsData?.data}
+        onFiltersChange={setFilters}
+      />
 
       <div className="bg-white rounded-lg border overflow-hidden">
         {isLoading ? (

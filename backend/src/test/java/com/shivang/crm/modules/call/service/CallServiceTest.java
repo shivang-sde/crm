@@ -68,8 +68,10 @@ class CallServiceTest {
 
         reminderPlanningService = mock(ReminderPlanningService.class);
         recurrenceScheduleService = mock(RecurrenceScheduleService.class);
-        callService = new CallService(callRepository, permissionEvaluatorService, entityResolverService,
-                activityService, callProviderLinkService, reminderPlanningService, recurrenceScheduleService, tenantContext);
+        callService = new CallService(callRepository, permissionEvaluatorService,
+                mock(com.shivang.crm.modules.rbac.service.RecordScopeGuard.class), entityResolverService,
+                activityService, callProviderLinkService, reminderPlanningService, recurrenceScheduleService,
+                mock(com.shivang.crm.shared.event.CanonicalCrmEventPublisher.class), tenantContext);
     }
 
     @Test

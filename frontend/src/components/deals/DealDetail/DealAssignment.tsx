@@ -48,6 +48,14 @@ export function DealAssignment({ deal }: DealAssignmentProps) {
   const isWon = deal.recordCategory === "CLOSED_WON";
   const isLost = deal.recordCategory === "CLOSED_LOST";
 
+  const users = usersData?.content ?? [];
+  const ownerName = (() => {
+    if (!deal.ownerUserId) return "Unassigned";
+    const user = users.find((u) => u.id === deal.ownerUserId);
+    const name = user ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim() : "";
+    return name || user?.email || "Unknown User";
+  })();
+
   const handleConfirmWon = () => {
     if (pendingStageId) {
       stageMutation.mutate({ id: deal.id, stageId: pendingStageId, wonReason: reason || undefined });
@@ -83,8 +91,8 @@ export function DealAssignment({ deal }: DealAssignmentProps) {
             <span className="font-medium text-foreground">{deal.stage?.name}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">Owner ID: </span>
-            <span className="font-medium text-foreground">{deal.ownerUserId || "Unassigned"}</span>
+            <span className="text-muted-foreground">Owner: </span>
+            <span className="font-medium text-foreground">{ownerName}</span>
           </div>
         </CardContent>
       </Card>

@@ -19,8 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.dialer.entity.CallConnectTrigger;
 import com.shivang.crm.modules.dialer.entity.CallLayoutConfig;
@@ -367,7 +367,7 @@ public class CallingAdminController {
     private String serializeCredentialValues(Map<String, Object> values) {
         try {
             return objectMapper.writeValueAsString(values != null ? values : Map.of());
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new BusinessException("INVALID_REQUEST", "Unable to serialize credential payload");
         }
     }

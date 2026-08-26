@@ -2,7 +2,7 @@ package com.shivang.crm.modules.integration.outbound;
 
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 
 public record OutboundHttpResult(
     boolean success,

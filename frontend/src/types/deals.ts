@@ -126,6 +126,8 @@ export interface DealListParams {
   owner?: string;
   isWon?: boolean;
   isLost?: boolean;
+  closeDateFrom?: string;
+  closeDateTo?: string;
 }
 
 export interface DealCustomFieldResponseExt extends DealCustomFieldResponse {}

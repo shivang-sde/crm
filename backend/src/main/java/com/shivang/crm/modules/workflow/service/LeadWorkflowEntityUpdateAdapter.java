@@ -29,6 +29,18 @@ public class LeadWorkflowEntityUpdateAdapter implements WorkflowEntityUpdateAdap
 
     @Override
     public WorkflowEntityUpdateResult update(UUID tenantId, UUID actorId, UUID entityId, String field, Object value, Map<String, Object> currentCustomFields) {
+        // Meaningful state transitions go through dedicated domain operations so
+        // canonical events (STATUS_CHANGED / OWNER_CHANGED) are emitted exactly
+        // as they would be from the UI.
+        if ("status".equals(field)) {
+            UUID statusId = resolveStatus(tenantId, value);
+            leadService.changeStatus(entityId, tenantId, statusId, actorId);
+            return WorkflowUpdateValueSupport.result("LEAD", entityId, field, value);
+        }
+        if ("owner".equals(field)) {
+            leadService.assignLead(entityId, tenantId, WorkflowUpdateValueSupport.uuid(value, field), actorId);
+            return WorkflowUpdateValueSupport.result("LEAD", entityId, field, value);
+        }
         LeadUpdateRequest.LeadUpdateRequestBuilder request = LeadUpdateRequest.builder();
         if (field.startsWith("customFields.")) {
             String key = WorkflowUpdateValueSupport.customKey(field);
@@ -42,7 +54,6 @@ public class LeadWorkflowEntityUpdateAdapter implements WorkflowEntityUpdateAdap
                 case "phone" -> request.phone(WorkflowUpdateValueSupport.text(value, field));
                 case "company" -> request.company(WorkflowUpdateValueSupport.text(value, field));
                 case "score" -> request.score(WorkflowUpdateValueSupport.integer(value, field));
-                case "status" -> request.statusId(resolveStatus(tenantId, value));
                 case "source" -> request.sourceId(resolveSource(tenantId, value));
                 default -> throw new WorkflowEntityUpdateException("WORKFLOW_UPDATE_FIELD_NOT_SUPPORTED", "Lead field is not supported: " + field);
             }

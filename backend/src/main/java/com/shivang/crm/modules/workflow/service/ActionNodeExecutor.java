@@ -126,6 +126,11 @@ public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
             }
             return resolved.value();
         }
+        // Strings that EMBED templates (e.g. "Follow up {{entity.fullName}}") get
+        // each occurrence resolved inline instead of remaining literal.
+        if (value instanceof String text && text.contains("{{")) {
+            return resolveEmbedded(text, context);
+        }
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> nested = new java.util.LinkedHashMap<>();
             map.forEach((key, nestedValue) -> nested.put(String.valueOf(key), resolveValue(nestedValue, context)));
@@ -137,6 +142,28 @@ public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
             return resolved;
         }
         return value;
+    }
+
+    private static final java.util.regex.Pattern TEMPLATE_PATTERN =
+        java.util.regex.Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*}}");
+
+    private String resolveEmbedded(String text, WorkflowExecutionContext context) {
+        java.util.regex.Matcher matcher = TEMPLATE_PATTERN.matcher(text);
+        StringBuilder result = new StringBuilder();
+        while (matcher.find()) {
+            String fieldPath = matcher.group(1).trim();
+            WorkflowResolvedValue resolved = valueResolver.resolve(context, fieldPath);
+            if (!resolved.found()) {
+                throw new WorkflowRuntimeException(
+                    "WORKFLOW_ACTION_VALUE_RESOLUTION_FAILED",
+                    "Action value was not found: " + fieldPath);
+            }
+            matcher.appendReplacement(
+                result,
+                java.util.regex.Matcher.quoteReplacement(resolved.value() == null ? "" : String.valueOf(resolved.value())));
+        }
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     @Override

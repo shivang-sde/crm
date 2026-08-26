@@ -9,6 +9,7 @@ import { authApi } from "@/lib/api/auth";
 import { roleApi } from "@/lib/api/roles";
 import { useAuthStore } from "@/lib/store/authStore";
 import { getNavigationItems } from "@/lib/constants/navigation";
+import { RouteGuard } from "@/components/shared/RouteGuard";
 import { Footer } from "./Footer";
 import { Header, type BreadcrumbItem } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -92,7 +93,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
     const initializeAuth = async () => {
       if (user && accessToken) {
-        if (user.roleId && useAuthStore.getState().permissions.size === 0) {
+        if (user.roleId && !useAuthStore.getState().permissionsLoaded) {
           await loadPermissions(user.roleId);
         }
         setBootstrapComplete(true);
@@ -193,7 +194,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         {/* Only main content scrolls */}
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
           <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6">
-            {children}
+            <RouteGuard>{children}</RouteGuard>
           </div>
         </main>
 

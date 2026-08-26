@@ -25,4 +25,5 @@ public interface DealLineItemRepository extends JpaRepository<DealLineItem, UUID
 
     @Query("SELECT COALESCE(SUM(dli.lineTotal), 0) FROM DealLineItem dli WHERE dli.tenantId = :tenantId AND dli.dealId = :dealId AND dli.deleted = false")
     BigDecimal sumLineTotalsByTenantIdAndDealIdAndDeletedFalse(@Param("tenantId") UUID tenantId, @Param("dealId") UUID dealId);
+    boolean existsByTenantIdAndOfferingIdAndDeletedFalse(UUID tenantId, UUID offeringId);
 }

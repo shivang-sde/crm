@@ -14,9 +14,11 @@ import com.shivang.crm.modules.lead.repository.LeadRepository;
 public class LeadWorkflowEntityContextProvider implements WorkflowEntityContextProvider {
 
     private final LeadRepository leadRepository;
+    private final WorkflowRelatedRecordResolver relatedRecordResolver;
 
-    public LeadWorkflowEntityContextProvider(LeadRepository leadRepository) {
+    public LeadWorkflowEntityContextProvider(LeadRepository leadRepository, WorkflowRelatedRecordResolver relatedRecordResolver) {
         this.leadRepository = leadRepository;
+        this.relatedRecordResolver = relatedRecordResolver;
     }
 
     @Override
@@ -55,6 +57,13 @@ public class LeadWorkflowEntityContextProvider implements WorkflowEntityContextP
         context.put("createdAt", lead.getCreatedAt());
         context.put("updatedAt", lead.getUpdatedAt());
         context.put("customFields", lead.getCustomData() == null ? Map.of() : lead.getCustomData());
+        // Controlled one-hop relationships: Lead → converted Account / Contact.
+        context.put("convertedAccount", relatedRecordResolver
+            .account(lead.getTenantId(), lead.getConvertedAccountId())
+            .orElse(null));
+        context.put("convertedContact", relatedRecordResolver
+            .contact(lead.getTenantId(), lead.getConvertedContactId())
+            .orElse(null));
         return context;
     }
 }

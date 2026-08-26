@@ -45,6 +45,11 @@ public class AssignOwnerActionExecutor implements WorkflowActionExecutor {
             output.put("entityId", result.entityId().toString());
             output.put("ownerId", result.ownerId().toString());
             output.put("actorId", context.getIdentity().actorId().toString());
+            if (entityType.equalsIgnoreCase(context.getExecution().getEntityType())
+                && entityId.equals(context.getExecution().getEntityId())) {
+                // Keep later CONDITION/BRANCH nodes consistent with this mutation.
+                context.refreshEntity();
+            }
             return WorkflowActionExecutionResult.completed(output);
         } catch (WorkflowOwnerAssignmentException ex) {
             throw failure(ex.getErrorCode(), ex.getMessage());

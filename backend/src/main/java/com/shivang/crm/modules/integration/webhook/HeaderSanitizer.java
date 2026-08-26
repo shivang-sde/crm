@@ -30,4 +30,20 @@ public class HeaderSanitizer {
         }
         return out;
     }
+
+    public Map<String, Object> sanitizeStored(Map<String, Object> storedHeaders) {
+        Map<String, Object> out = new HashMap<>();
+        if (storedHeaders == null) return out;
+        for (Map.Entry<String, Object> e : storedHeaders.entrySet()) {
+            String key = e.getKey();
+            if (key == null) continue;
+            String lower = key.toLowerCase();
+            if (SENSITIVE.contains(lower)) {
+                out.put(lower, "***");
+            } else {
+                out.put(lower, e.getValue());
+            }
+        }
+        return out;
+    }
 }

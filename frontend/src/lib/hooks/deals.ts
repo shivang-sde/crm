@@ -13,6 +13,10 @@ export function useDeals(params: DealListParams = {}) {
   return useQuery({ queryKey: ["deals", params], queryFn: () => dealApi.listDeals(params) });
 }
 
+export function useSalesDashboard() {
+  return useQuery({ queryKey: ["sales-dashboard"], queryFn: () => dealApi.getDashboard() });
+}
+
 export function useDeal(id: string | undefined) {
   return useQuery({ queryKey: ["deals", id], queryFn: () => dealApi.getDeal(id!), enabled: !!id });
 }

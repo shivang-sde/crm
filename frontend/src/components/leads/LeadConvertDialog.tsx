@@ -39,6 +39,9 @@ export function LeadConvertDialog({
   const [contactQuery, setContactQuery] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [createDeal, setCreateDeal] = useState(false);
+  const [dealName, setDealName] = useState("");
+  const [dealAmount, setDealAmount] = useState("");
 
   const convertMutation = useConvertLead();
   const accountsResult = useAccounts({ page: 0, size: 100 });
@@ -92,10 +95,21 @@ export function LeadConvertDialog({
   const isAccountSearchEmpty = accountQuery.trim().length === 0;
   const isContactSearchEmpty = contactQuery.trim().length === 0;
 
+  const defaultDealName = useMemo(() => {
+    const base = lead.company?.trim() || [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
+    return base ? `${base} Opportunity` : "";
+  }, [lead.company, lead.firstName, lead.lastName]);
+
   const handleConvert = async () => {
     const payload: LeadConvertRequest = {
       accountId: selectedAccountId ?? undefined,
       contactId: selectedContactId ?? undefined,
+      createDeal: createDeal || undefined,
+      dealName: createDeal && dealName.trim() ? dealName.trim() : undefined,
+      dealAmount:
+        createDeal && dealAmount.trim() && !Number.isNaN(Number(dealAmount))
+          ? Number(dealAmount)
+          : undefined,
     };
 
     await convertMutation.mutateAsync({ id: lead.id, payload });
@@ -104,6 +118,9 @@ export function LeadConvertDialog({
     setContactQuery("");
     setSelectedAccountId(null);
     setSelectedContactId(null);
+    setCreateDeal(false);
+    setDealName("");
+    setDealAmount("");
     onSuccess?.();
   };
 
@@ -243,6 +260,49 @@ export function LeadConvertDialog({
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border"
+                checked={createDeal}
+                onChange={(event) => setCreateDeal(event.target.checked)}
+                disabled={isSubmitting}
+              />
+              Also create a deal for this lead
+            </label>
+            {createDeal && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-convert-deal-name">Deal name</Label>
+                  <Input
+                    id="lead-convert-deal-name"
+                    placeholder={defaultDealName || "Deal name"}
+                    value={dealName}
+                    onChange={(event) => setDealName(event.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-convert-deal-amount">Amount (optional)</Label>
+                  <Input
+                    id="lead-convert-deal-amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={dealAmount}
+                    onChange={(event) => setDealAmount(event.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  The deal will be linked to the converted account and contact and placed in the default pipeline stage.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="rounded-lg border border-muted bg-muted/5 p-3 text-sm text-muted-foreground">

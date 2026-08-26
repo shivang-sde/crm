@@ -7,6 +7,7 @@ import { Plus, Search, MoreHorizontal, Check, X, Shield, ShieldAlert, Edit, Tras
 
 import { userApi } from "@/lib/api/users";
 import { roleApi } from "@/lib/api/roles";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import { ProtectedRoute } from "@/components/shared/ProtectedRoute";
 import { UserFormModal } from "@/components/users/UserFormModal";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,13 @@ import { User } from "@/types/rbac";
 
 function UserList() {
   const queryClient = useQueryClient();
+  const { hasPermission } = usePermissions();
+  // Mirrors the backend's dual user-management paths: tenant context requires
+  // admin:user_manage; platform context uses user:write / user:delete.
+  const canUpdateUsers =
+    hasPermission("admin", "user_manage") || hasPermission("user", "write");
+  const canDeleteUsers =
+    hasPermission("admin", "user_manage") || hasPermission("user", "delete");
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -106,10 +114,12 @@ function UserList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-        <Button onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create User
-        </Button>
+        {canUpdateUsers && (
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create User
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-lg border">
@@ -211,23 +221,26 @@ function UserList() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          className="cursor-pointer"
-                          onClick={() => setEditingUserId(u.id)}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit User
-                        </DropdownMenuItem>
-                        {u.isActive ? (
-                          <DropdownMenuItem 
+                        {canUpdateUsers && (
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => setEditingUserId(u.id)}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit User
+                          </DropdownMenuItem>
+                        )}
+                        {canUpdateUsers && u.isActive && (
+                          <DropdownMenuItem
                             className="cursor-pointer"
                             onClick={() => deactivateMutation.mutate(u.id)}
                           >
                             <X className="mr-2 h-4 w-4" />
                             Deactivate
                           </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem 
+                        )}
+                        {canUpdateUsers && !u.isActive && (
+                          <DropdownMenuItem
                             className="cursor-pointer"
                             onClick={() => activateMutation.mutate(u.id)}
                           >
@@ -235,13 +248,15 @@ function UserList() {
                             Activate
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem 
-                          className="cursor-pointer text-red-600 focus:text-red-600"
-                          onClick={() => setUserToDelete(u)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
+                        {canDeleteUsers && (
+                          <DropdownMenuItem
+                            className="cursor-pointer text-red-600 focus:text-red-600"
+                            onClick={() => setUserToDelete(u)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

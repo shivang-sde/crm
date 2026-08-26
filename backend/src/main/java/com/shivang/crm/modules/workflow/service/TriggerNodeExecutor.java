@@ -26,7 +26,13 @@ public class TriggerNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeEx
                 "TRIGGER node must have exactly one outgoing edge"
             );
         }
-        return WorkflowNodeExecutionResult.completed(Map.of("status", "completed"));
+        return new WorkflowNodeExecutionResult(
+            com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.COMPLETED,
+            Map.of("status", "completed"),
+            List.of(outgoingEdges.get(0).getId()),
+            null,
+            null
+        );
     }
 
     @Override

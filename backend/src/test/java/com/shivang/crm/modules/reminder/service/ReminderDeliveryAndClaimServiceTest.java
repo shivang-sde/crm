@@ -53,7 +53,7 @@ class ReminderDeliveryAndClaimServiceTest {
         ownerResolverRegistry = new ReminderOwnerResolverRegistry(List.of(ownerResolver));
 
         claimService = new ReminderClaimService(reminderRepository, ownerResolverRegistry, properties);
-        deliveryService = new ReminderDeliveryService(reminderRepository, notificationRepository, properties);
+        deliveryService = new ReminderDeliveryService(reminderRepository, notificationRepository, properties, mock(MeetingAttendeeRecipientResolver.class));
     }
 
     @Test

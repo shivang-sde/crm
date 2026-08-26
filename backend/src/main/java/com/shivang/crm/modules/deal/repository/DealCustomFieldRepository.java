@@ -14,6 +14,8 @@ import com.shivang.crm.modules.deal.entity.DealCustomField;
 @Repository
 public interface DealCustomFieldRepository extends JpaRepository<DealCustomField, UUID> {
 
+    java.util.Optional<DealCustomField> findByIdAndTenantId(java.util.UUID id, java.util.UUID tenantId);
+
     @Query("SELECT dcf FROM DealCustomField dcf WHERE dcf.tenantId = :tenantId AND dcf.isActive = true ORDER BY dcf.displayOrder ASC")
     List<DealCustomField> findActiveFieldsByTenant(@Param("tenantId") UUID tenantId);
 

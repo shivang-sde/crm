@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.Collection;
@@ -42,6 +43,8 @@ import com.shivang.crm.modules.deal.repository.DealStageRepository;
 import com.shivang.crm.modules.entitlement.service.EntitlementProvisioningService;
 import com.shivang.crm.modules.lead.service.EntityHistoryService;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.shared.event.CanonicalCrmEvent;
+import com.shivang.crm.shared.event.CanonicalCrmEventPublisher;
 import com.shivang.crm.shared.exception.BusinessException;
 import com.shivang.crm.util.UserUtil;
 
@@ -58,6 +61,7 @@ public class DealService {
     private final DealCustomFieldRepository dealCustomFieldRepository;
     private final DealLineItemRepository dealLineItemRepository;
     private final DealStageRepository dealStageRepository;
+    private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
     private final DealMapper dealMapper;
 
     private final ActivityService activityService;
@@ -66,6 +70,7 @@ public class DealService {
 
     private final UserRepository userRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
 
     /**
      * Create a new deal
@@ -95,8 +100,23 @@ public class DealService {
 
         applyStageLifecycle(deal, deal.getStage(), false, request.getClosedDate(), request.getWonReason(), request.getLostReason());
 
+        // Authoritative initial stage entry (creation enters the initial stage)
+        deal.setStageEnteredAt(Instant.now());
+
         // Save deal
         Deal savedDeal = dealRepository.save(deal);
+
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("source", "MANUAL");
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+            savedDeal.getTenantId(),
+            CanonicalCrmEvent.DEAL_ENTITY_TYPE,
+            CanonicalCrmEvent.CREATED_EVENT_TYPE,
+            savedDeal.getId(),
+            eventMetadata
+        );
 
         // Log activity
         Map<String, Object> metadata = new HashMap<>();
@@ -116,8 +136,14 @@ public class DealService {
     public DealResponse getDealById(UUID id, UUID tenantId) {
         log.info("Fetching deal: {} for tenant: {}", id, tenantId);
 
+        UUID currentUserId = com.shivang.crm.util.UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "deal", "read");
+
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, deal.getOwnerId(), deal.getCreatedBy());
 
         return dealMapper.toResponse(deal);
     }
@@ -179,8 +205,11 @@ public class DealService {
     public DealResponse updateDeal(UUID id, UUID tenantId, UUID userId, DealUpdateRequest request) {
         log.info("Updating deal: {} for tenant: {}", id, tenantId);
 
+        String updateScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                updateScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         // Store old values for activity logging
         Map<String, Object> oldValues = new HashMap<>();
@@ -218,6 +247,10 @@ public class DealService {
         // Update stage if needed
         if (requestedStage != null) {
             deal.setStage(requestedStage);
+            if (stageChanged) {
+                // Actual stage transition -> authoritative current-stage entry
+                deal.setStageEnteredAt(Instant.now());
+            }
         }
 
         applyStageLifecycle(deal, deal.getStage(), stageChanged, request.getClosedDate(), request.getWonReason(), request.getLostReason());
@@ -416,8 +449,11 @@ public class DealService {
         UUID stageId = request.getStageId();
         log.info("Changing stage of deal: {} to: {} for tenant: {}", id, stageId, tenantId);
 
+        String stageScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                stageScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         DealStage newStage = dealStageRepository.findByIdAndTenantId(stageId, tenantId)
             .orElseThrow(() -> new RuntimeException("Stage not found"));
@@ -426,10 +462,32 @@ public class DealService {
         String oldStageName = deal.getStage().getName();
         RecordCategory oldCategory = deal.getRecordCategory();
         deal.setStage(newStage);
+        if (!oldStageId.equals(newStage.getId())) {
+            // Actual stage transition -> authoritative current-stage entry
+            deal.setStageEnteredAt(Instant.now());
+        }
         deal.setUpdatedBy(userId);
         applyStageLifecycle(deal, newStage, true, request.getClosedDate(), request.getWonReason(), request.getLostReason());
 
         Deal updatedDeal = dealRepository.save(deal);
+
+        boolean stageChanged = !oldStageId.equals(newStage.getId());
+        if (stageChanged) {
+            Map<String, Object> eventMetadata = new HashMap<>();
+            eventMetadata.put("previousStageId", oldStageId.toString());
+            eventMetadata.put("newStageId", newStage.getId().toString());
+            eventMetadata.put("previousStage", oldStageName);
+            eventMetadata.put("newStage", newStage.getName());
+            eventMetadata.put("actorId", userId.toString());
+            eventMetadata.put("actorType", "USER");
+            canonicalCrmEventPublisher.publish(
+                tenantId,
+                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
+                CanonicalCrmEvent.STAGE_TRANSITIONED_EVENT_TYPE,
+                updatedDeal.getId(),
+                eventMetadata
+            );
+        }
 
         RecordCategory previousCategory = oldCategory;
         RecordCategory newCategory = updatedDeal.getRecordCategory();
@@ -477,8 +535,11 @@ public class DealService {
     public DealResponse markDealWon(UUID id, UUID tenantId, UUID userId, String wonReason) {
         log.info("Marking deal as won: {} for tenant: {}", id, tenantId);
 
+        String wonScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                wonScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         if (deal.isWon()) {
             throw new BusinessException("ALREADY_WON", "Deal is already marked as won");
@@ -506,8 +567,11 @@ public class DealService {
     public DealResponse markDealLost(UUID id, UUID tenantId, UUID userId, String lostReason) {
         log.info("Marking deal as lost: {} for tenant: {}", id, tenantId);
 
+        String lostScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                lostScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         if (deal.isLost()) {
             throw new BusinessException("ALREADY_LOST", "Deal is already marked as lost");
@@ -528,14 +592,37 @@ public class DealService {
     public DealResponse assignDeal(UUID id, UUID tenantId, UUID ownerUserId, UUID userId) {
         log.info("Assigning deal: {} to user: {} for tenant: {}", id, ownerUserId, tenantId);
 
+        String assignScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "assign");
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                assignScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         UUID oldOwner = deal.getOwnerId();
         deal.setOwnerId(ownerUserId);
         deal.setUpdatedBy(userId);
 
         Deal updatedDeal = dealRepository.save(deal);
+
+        boolean ownerChanged = !java.util.Objects.equals(oldOwner, ownerUserId);
+        if (ownerChanged) {
+            Map<String, Object> eventMetadata = new HashMap<>();
+            if (oldOwner != null) {
+                eventMetadata.put("previousOwnerId", oldOwner.toString());
+            }
+            if (ownerUserId != null) {
+                eventMetadata.put("newOwnerId", ownerUserId.toString());
+            }
+            eventMetadata.put("actorId", userId.toString());
+            eventMetadata.put("actorType", "USER");
+            canonicalCrmEventPublisher.publish(
+                updatedDeal.getTenantId(),
+                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
+                CanonicalCrmEvent.OWNER_CHANGED_EVENT_TYPE,
+                updatedDeal.getId(),
+                eventMetadata
+            );
+        }
 
         // Log activity
         Map<String, Object> metadata = new HashMap<>();
@@ -553,11 +640,30 @@ public class DealService {
     public void deleteDeal(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting deal: {} for tenant: {}", id, tenantId);
 
+        String deleteScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "delete");
         Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                deleteScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         dealRepository.delete(deal);
         log.info("Deal deleted: {}", id);
+    }
+
+    /**
+     * RBAC-7: ensures the parent deal is within the caller's scope for the
+     * given action before nested resources (notes, activities, line items)
+     * are served or mutated. Used by controllers for nested endpoints.
+     */
+    public void assertDealAccessible(UUID tenantId, UUID dealId, String action) {
+        UUID currentUserId = com.shivang.crm.util.UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "deal", action);
+
+        Deal deal = dealRepository.findByIdAndTenantId(dealId, tenantId)
+            .orElseThrow(() -> new RuntimeException("Deal not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, deal.getOwnerId(), deal.getCreatedBy());
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.shivang.crm.modules.auth.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +19,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
         @Query("SELECT u FROM User u WHERE u.tenantId = :tenantId AND u.email = :email")
         Optional<User> findByTenantIdAndEmail(@Param("tenantId") UUID tenantId, @Param("email") String email);
+
+        @Query("SELECT u FROM User u WHERE u.tenantId = :tenantId AND u.deleted = false AND LOWER(u.email) IN :lowerEmails")
+        List<User> findMatchingUsersByTenantIdAndLowerEmailIn(
+                @Param("tenantId") UUID tenantId,
+                @Param("lowerEmails") Collection<String> lowerEmails);
 
         @Query("SELECT u FROM User u WHERE u.email = :email")
         Optional<User> findByEmail(@Param("email") String email);

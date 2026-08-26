@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ArrowLeft, Pencil, Trash2, MapPin, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useDeleteMeeting } from '@/lib/hooks/meetings';
+import { useUserLookup } from '@/lib/hooks/useUserLookup';
 import {formatDateTime} from '@/lib/utils';
 
 export default function MeetingDetailPage() {
@@ -20,6 +21,7 @@ export default function MeetingDetailPage() {
   const { canEditMeetings, canDeleteMeetings } = usePermissions();
   const { data: meeting, isLoading } = useMeeting(id);
   const deleteMeeting = useDeleteMeeting();
+  const { resolveUserName } = useUserLookup();
 
   if (isLoading) {
     return (
@@ -54,6 +56,11 @@ export default function MeetingDetailPage() {
     NOT_HELD: 'bg-yellow-100 text-yellow-800',
     CANCELLED: 'bg-red-100 text-red-800',
   };
+
+  // Attendees are stored as plain strings (emails/identifiers), not objects.
+  const attendees = (meeting.attendees ?? [])
+    .map((attendee) => (attendee ?? '').trim())
+    .filter((attendee) => attendee.length > 0);
 
   return (
     <div className="space-y-6">
@@ -102,19 +109,19 @@ export default function MeetingDetailPage() {
                 <p className="text-sm">{meeting.location}</p>
               </div>
             )}
-            {meeting.attendees && meeting.attendees.length > 0 && (
+            {attendees.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  Attendees ({meeting.attendees.length})
+                  Attendees ({attendees.length})
                 </p>
-                {/* <div className="flex flex-wrap gap-2 mt-2">
-                  {meeting.attendees.map((attendee: { name?: string; email?: string }, idx: number) => (
-                    <Badge key={idx} variant="outline">
-                      {attendee.name || attendee.email || 'Unnamed'}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {attendees.map((attendee, idx) => (
+                    <Badge key={`${attendee}-${idx}`} variant="outline">
+                      {attendee}
                     </Badge>
                   ))}
-                </div> */}
+                </div>
               </div>
             )}
           </CardContent>
@@ -175,12 +182,12 @@ export default function MeetingDetailPage() {
           <CardTitle>Assignment & Linking</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
-          {/* <div>
+          <div>
             <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
             <p className="text-sm">
-              {meeting.assignedTo?.name || meeting.createdBy?.name || 'Unassigned'}
+              {meeting.assignedTo ? resolveUserName(meeting.assignedTo) : 'Unassigned'}
             </p>
-          </div> */}
+          </div>
           <div>
             <p className="text-sm font-medium text-muted-foreground">Linked Entity</p>
             <p className="text-sm">

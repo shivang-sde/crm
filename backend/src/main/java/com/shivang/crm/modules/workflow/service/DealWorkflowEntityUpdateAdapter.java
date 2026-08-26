@@ -33,6 +33,10 @@ public class DealWorkflowEntityUpdateAdapter implements WorkflowEntityUpdateAdap
             dealService.changeStage(entityId, tenantId, stageId, actorId);
             return WorkflowUpdateValueSupport.result("DEAL", entityId, field, value);
         }
+        if ("owner".equals(field)) {
+            dealService.assignDeal(entityId, tenantId, WorkflowUpdateValueSupport.uuid(value, field), actorId);
+            return WorkflowUpdateValueSupport.result("DEAL", entityId, field, value);
+        }
         DealUpdateRequest.DealUpdateRequestBuilder request = DealUpdateRequest.builder();
         switch (field) {
             case "name" -> request.name(WorkflowUpdateValueSupport.text(value, field));

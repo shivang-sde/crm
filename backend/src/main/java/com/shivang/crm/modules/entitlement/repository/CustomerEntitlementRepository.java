@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.entitlement.repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +25,13 @@ public interface CustomerEntitlementRepository extends JpaRepository<CustomerEnt
 
     List<CustomerEntitlement> findByTenantIdAndDealIdAndDeletedFalse(UUID tenantId, UUID dealId);
 
+    List<CustomerEntitlement> findByStatusAndEndDateBeforeAndDeletedFalse(EntitlementStatus status, LocalDate date);
+
+    List<CustomerEntitlement> findByRenewableTrueAndStatusInAndRenewalDueDateLessThanEqualAndEndDateGreaterThanEqualAndDeletedFalse(
+            Collection<EntitlementStatus> statuses, LocalDate renewalDueDateCutoff, LocalDate endDateCutoff);
+
+    boolean existsByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
     Page<CustomerEntitlement> findAll(Specification<CustomerEntitlement> spec, Pageable pageable);
 
     default Page<CustomerEntitlement> findFiltered(
@@ -41,4 +49,7 @@ public interface CustomerEntitlementRepository extends JpaRepository<CustomerEnt
         return findAll(CustomerEntitlementSpecifications.buildSpecification(
                 tenantId, accountId, contactId, offeringId, status, ownerUserId, renewable, endDateFrom, endDateTo, search), pageable);
     }
+    boolean existsByTenantIdAndAccountIdAndDeletedFalse(UUID tenantId, UUID accountId);
+    boolean existsByTenantIdAndOfferingIdAndDeletedFalse(UUID tenantId, UUID offeringId);
+    boolean existsByTenantIdAndDealIdAndDeletedFalse(UUID tenantId, UUID dealId);
 }

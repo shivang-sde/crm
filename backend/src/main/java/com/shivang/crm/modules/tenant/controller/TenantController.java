@@ -33,7 +33,7 @@ public class TenantController {
     private final TenantService tenantService;
 
     @GetMapping
-    @PreAuthorize("hasPermission('tenant', 'read')")
+    @PreAuthorize("@rbac.has(authentication, 'tenant', 'read')")
     public ResponseEntity<ApiResponse<List<TenantResponseDTO>>> getAllTenants(
             Authentication authentication) {
         String userId = (String) authentication.getPrincipal();
@@ -46,7 +46,7 @@ public class TenantController {
     }
 
     @GetMapping("/{tenantId}")
-    @PreAuthorize("hasPermission('tenant', 'read')")
+    @PreAuthorize("@rbac.has(authentication, 'tenant', 'read')")
     public ResponseEntity<ApiResponse<TenantResponseDTO>> getTenant(
             @PathVariable UUID tenantId,
             Authentication authentication) {
@@ -58,7 +58,7 @@ public class TenantController {
     }
 
     @PutMapping("/{tenantId}")
-    @PreAuthorize("hasPermission('tenant', 'write')")
+    @PreAuthorize("@rbac.has(authentication, 'tenant', 'write')")
     public ResponseEntity<ApiResponse<TenantResponseDTO>> updateTenant(
             @PathVariable UUID tenantId,
             @Valid @RequestBody TenantUpdateRequest request,

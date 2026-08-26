@@ -13,6 +13,8 @@ import com.shivang.crm.modules.contact.entity.Contact;
 import com.shivang.crm.modules.contact.repository.ContactRepository;
 import com.shivang.crm.modules.deal.entity.Deal;
 import com.shivang.crm.modules.deal.repository.DealRepository;
+import com.shivang.crm.modules.entitlement.entity.CustomerEntitlement;
+import com.shivang.crm.modules.entitlement.repository.CustomerEntitlementRepository;
 import com.shivang.crm.modules.lead.entity.Lead;
 import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.shared.exception.BusinessException;
@@ -33,6 +35,7 @@ public class EntityResolverService {
     private final ContactRepository contactRepository;
     private final AccountRepository accountRepository;
     private final DealRepository dealRepository;
+    private final CustomerEntitlementRepository entitlementRepository;
 
     /**
      * Validates that an entity exists for the given type and ID within the tenant.
@@ -52,8 +55,9 @@ public class EntityResolverService {
             case "CONTACT" -> contactRepository.existsByIdAndTenantId(entityId, tenantId);
             case "ACCOUNT" -> accountRepository.existsByIdAndTenantId(entityId, tenantId);
             case "DEAL" -> dealRepository.existsByIdAndTenantId(entityId, tenantId);
-            default -> throw new BusinessException("INVALID_ENTITY_TYPE", 
-                "Invalid entity type: " + entityType + ". Supported types: LEAD, CONTACT, ACCOUNT, DEAL");
+            case "ENTITLEMENT" -> entitlementRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
+            default -> throw new BusinessException("INVALID_ENTITY_TYPE",
+                "Invalid entity type: " + entityType + ". Supported types: LEAD, CONTACT, ACCOUNT, DEAL, ENTITLEMENT");
         };
 
         if (!exists) {
@@ -79,6 +83,7 @@ public class EntityResolverService {
             case "CONTACT" -> resolveContactName(entityId);
             case "ACCOUNT" -> resolveAccountName(entityId);
             case "DEAL" -> resolveDealName(entityId);
+            case "ENTITLEMENT" -> resolveEntitlementName(entityId);
             default -> null;
         };
     }
@@ -153,6 +158,18 @@ public class EntityResolverService {
         
         Optional<Deal> dealOpt = dealRepository.findById(dealId);
         return dealOpt.map(Deal::getName).orElse(null);
+    }
+
+    /**
+     * Resolves an entitlement's name.
+     */
+    public String resolveEntitlementName(UUID entitlementId) {
+        if (entitlementId == null) {
+            return null;
+        }
+
+        Optional<CustomerEntitlement> entitlementOpt = entitlementRepository.findById(entitlementId);
+        return entitlementOpt.map(CustomerEntitlement::getName).orElse(null);
     }
 
    /**

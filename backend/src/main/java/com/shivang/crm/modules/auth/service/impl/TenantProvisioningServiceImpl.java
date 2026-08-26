@@ -60,8 +60,8 @@ public class TenantProvisioningServiceImpl implements TenantProvisioningService 
                 .planType("free")
                 .maxUsers(request.getMaxUsers() != null ? request.getMaxUsers() : 5)
                 .isActive(true)
-                .companyEmail(request.getCompanyEmail().trim())
-                .companyPhone(request.getCompanyPhone().trim())
+                .companyEmail(request.getCompanyEmail() == null ? "" : request.getCompanyEmail().trim())
+                .companyPhone(request.getCompanyPhone() == null ? "" : request.getCompanyPhone().trim())
                 .website(request.getWebsite() == null ? "" : request.getWebsite().trim())
                 .industry(request.getIndustry() == null ? "" : request.getIndustry().trim())
                 .timezone(request.getTimezone() == null ? "" : request.getTimezone().trim())
@@ -264,6 +264,7 @@ public class TenantProvisioningServiceImpl implements TenantProvisioningService 
         UserRole userRole = new UserRole();
         userRole.setUserId(user.getId());
         userRole.setRoleId(adminRole.getId());
+        userRole.setRole(adminRole);
         userRole.setTenantId(tenant.getId());
         userRoleRepository.save(userRole);
     }

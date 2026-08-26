@@ -78,12 +78,16 @@ export interface LeadUpdateRequest {
 export interface LeadConvertRequest {
   accountId?: string;
   contactId?: string;
+  createDeal?: boolean;
+  dealName?: string;
+  dealAmount?: number;
 }
 
 export interface LeadConvertResponse {
   leadId: string;
   accountId: string;
   contactId: string;
+  dealId?: string;
 }
 
 export interface LeadCustomFieldResponse {

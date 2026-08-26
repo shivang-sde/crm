@@ -39,6 +39,7 @@ public class LeadEntityController {
 
     private final EntityHistoryService entityHistoryService;
     private final EntityNoteService entityNoteService;
+    private final com.shivang.crm.modules.lead.service.LeadService leadService;
     private final TenantContext tenantContext;
 
     /**
@@ -59,6 +60,9 @@ public class LeadEntityController {
         log.info("GET /api/v1/leads/{}/histories - Getting histories", leadId);
 
         UUID tenantId = currentTenantId();
+
+        // RBAC-7: parent lead must be within the caller's read scope.
+        leadService.assertLeadAccessible(tenantId, leadId, "read");
 
         Page<EntityHistoryResponse> activities = entityHistoryService.getLeadHistories(leadId, tenantId, page, size);
 
@@ -91,6 +95,9 @@ public class LeadEntityController {
 
         UUID tenantId = currentTenantId();
 
+        // RBAC-7: parent lead must be within the caller's read scope.
+        leadService.assertLeadAccessible(tenantId, leadId, "read");
+
         Page<EntityNoteResponse> notes = entityNoteService.getEntityNotes(leadId, "LEAD", tenantId, page, size);
 
         Map<String, Object> meta = Map.of(
@@ -119,6 +126,9 @@ public class LeadEntityController {
         UUID userId = currentUserId();
         String noteText = request.get("note");
 
+        // RBAC-7: parent lead must be within the caller's write scope.
+        leadService.assertLeadAccessible(tenantId, leadId, "write");
+
         EntityNoteResponse noteResponse = entityNoteService.addEntityNote(leadId, "LEAD", tenantId, noteText, userId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(noteResponse));
@@ -140,6 +150,9 @@ public class LeadEntityController {
 
         UUID tenantId = currentTenantId();
         UUID userId = currentUserId();
+
+        // RBAC-7: parent lead must be within the caller's write scope.
+        leadService.assertLeadAccessible(tenantId, leadId, "write");
 
         entityNoteService.deleteEntityNote(noteId, leadId, "LEAD", tenantId, userId);
 

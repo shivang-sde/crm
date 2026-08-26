@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import { useAccounts } from "@/lib/hooks/accounts";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { AccountResponse } from "@/types/accounts";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ const INITIAL_FILTERS: AccountFilters = {
 
 export function AccountList() {
   const router = useRouter();
+  const { canEditAccounts } = usePermissions();
 
   const [filters, setFilters] =
     useState<AccountFilters>(INITIAL_FILTERS);
@@ -102,7 +104,7 @@ export function AccountList() {
         onFiltersChange={handleFiltersChange}
         totalElements={totalElements}
         totalPages={totalPages}
-        canEdit
+        canEdit={canEditAccounts}
         canDelete={false}
         onView={handleViewAccount}
         onEdit={handleEditAccount}

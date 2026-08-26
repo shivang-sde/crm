@@ -22,19 +22,24 @@ import com.shivang.crm.modules.auth.repository.UserRepository;
 import com.shivang.crm.modules.contact.dto.ContactCreateRequest;
 import com.shivang.crm.modules.contact.dto.ContactResponse;
 import com.shivang.crm.modules.contact.service.ContactService;
+import com.shivang.crm.modules.deal.dto.DealCreateRequest;
+import com.shivang.crm.modules.deal.service.DealService;
 import com.shivang.crm.modules.lead.dto.LeadConvertRequest;
 import com.shivang.crm.modules.lead.dto.LeadConvertResponse;
 import com.shivang.crm.modules.lead.dto.LeadCreateRequest;
 import com.shivang.crm.modules.lead.dto.LeadResponse;
 import com.shivang.crm.modules.lead.dto.LeadUpdateRequest;
 import com.shivang.crm.modules.lead.entity.Lead;
+import com.shivang.crm.modules.lead.entity.LeadSource;
 import com.shivang.crm.modules.lead.entity.LeadStatus;
 import com.shivang.crm.modules.lead.mapper.LeadMapper;
 import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.modules.lead.repository.LeadSpecifications;
+import com.shivang.crm.modules.lead.repository.LeadSourceRepository;
 import com.shivang.crm.modules.lead.repository.LeadStatusRepository;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.exception.BusinessException;
+import com.shivang.crm.shared.event.CanonicalCrmEvent;
 import com.shivang.crm.shared.event.CanonicalCrmEventPublisher;
 import com.shivang.crm.util.UserUtil;
 
@@ -49,16 +54,18 @@ public class LeadService {
 
     private final LeadRepository leadRepository;
     private final LeadStatusRepository leadStatusRepository;
+    private final LeadSourceRepository leadSourceRepository;
     private final LeadMapper leadMapper;
 
     private final AccountService accountService;
     private final ContactService contactService;
-
+    private final DealService dealService;
     private final ActivityService activityService;
     private final EntityHistoryService HistoryService;
 
     private final UserRepository userRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
     private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
 
      /**
@@ -66,6 +73,21 @@ public class LeadService {
      * Get the user ID inside the method, not in the constructor.
      */
 
+
+    /**
+     * RBAC-7: ensures the parent lead is within the caller's read/write scope
+     * before nested resources (notes, histories, activities) are served.
+     */
+    public void assertLeadAccessible(UUID tenantId, UUID leadId, String action) {
+        UUID currentUserId = UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "lead", action);
+
+        Lead lead = leadRepository.findByIdAndTenantId(leadId, tenantId)
+            .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, lead.getOwnerId(), lead.getCreatedBy());
+    }
 
     /**
      * Create a new lead
@@ -90,6 +112,13 @@ public class LeadService {
             LeadStatus defaultStatus = leadStatusRepository.findDefaultStatusByTenant(tenantId)
                 .orElseThrow(() -> new RuntimeException("Default status not found for Lead."));
             lead.setStatus(defaultStatus);
+        }
+
+        // Resolve the tenant-owned source when provided at creation time.
+        if (lead.getSource() == null && request.getSourceId() != null) {
+            LeadSource source = leadSourceRepository.findByIdAndTenantId(request.getSourceId(), tenantId)
+                .orElseThrow(() -> new BusinessException("VALIDATION_ERROR", "Invalid lead source"));
+            lead.setSource(source);
         }
 
         if(request.getEmail() != null && existsWithEmail(request.getEmail(), tenantId)) {
@@ -177,8 +206,14 @@ public class LeadService {
     public LeadResponse getLeadById(UUID id, UUID tenantId) {
         log.info("Fetching lead: {} for tenant: {}", id, tenantId);
 
+        UUID currentUserId = UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "lead", "read");
+
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, lead.getOwnerId(), lead.getCreatedBy());
 
         return leadMapper.toResponse(lead);
     }
@@ -237,8 +272,13 @@ public class LeadService {
     public LeadResponse updateLead(UUID id, UUID tenantId, UUID userId, LeadUpdateRequest request) {
         log.info("Updating lead: {} for tenant: {}", id, tenantId);
 
+        String scope = recordScopeGuard.requireScope(tenantId, userId, "lead", "write");
+
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, userId, lead.getOwnerId(), lead.getCreatedBy());
 
         if (request.getEmail() != null) {
     leadRepository
@@ -299,14 +339,39 @@ public class LeadService {
     public LeadResponse assignLead(UUID id, UUID tenantId, UUID ownerUserId, UUID userId) {
         log.info("Assigning lead: {} to user: {} for tenant: {}", id, ownerUserId, tenantId);
 
+        String scope = recordScopeGuard.requireScope(tenantId, userId, "lead", "assign");
+
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, userId, lead.getOwnerId(), lead.getCreatedBy());
 
         UUID oldOwner = lead.getOwnerId();
         lead.setOwnerId(ownerUserId);
         lead.setUpdatedBy(userId);
 
         Lead updatedLead = leadRepository.save(lead);
+
+        boolean ownerChanged = !java.util.Objects.equals(oldOwner, ownerUserId);
+        if (ownerChanged) {
+            Map<String, Object> eventMetadata = new HashMap<>();
+            if (oldOwner != null) {
+                eventMetadata.put("previousOwnerId", oldOwner.toString());
+            }
+            if (ownerUserId != null) {
+                eventMetadata.put("newOwnerId", ownerUserId.toString());
+            }
+            eventMetadata.put("actorId", userId.toString());
+            eventMetadata.put("actorType", "USER");
+            canonicalCrmEventPublisher.publish(
+                tenantId,
+                CanonicalCrmEvent.LEAD_ENTITY_TYPE,
+                CanonicalCrmEvent.OWNER_CHANGED_EVENT_TYPE,
+                updatedLead.getId(),
+                eventMetadata
+            );
+        }
 
         // Log activity
         Map<String, Object> metadata = new HashMap<>();
@@ -325,17 +390,44 @@ public class LeadService {
     public LeadResponse changeStatus(UUID id, UUID tenantId, UUID statusId, UUID userId) {
         log.info("Changing status of lead: {} to: {} for tenant: {}", id, statusId, tenantId);
 
+        String scope = recordScopeGuard.requireScope(tenantId, userId, "lead", "write");
+
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, userId, lead.getOwnerId(), lead.getCreatedBy());
 
         LeadStatus newStatus = leadStatusRepository.findByIdAndTenantId(statusId, tenantId)
             .orElseThrow(() -> new RuntimeException("Status not found"));
 
+        UUID previousStatusId = lead.getStatus() == null ? null : lead.getStatus().getId();
         String oldStatusName = lead.getStatus().getName();
         lead.setStatus(newStatus);
         lead.setUpdatedBy(userId);
 
         Lead updatedLead = leadRepository.save(lead);
+
+        boolean statusChanged = previousStatusId == null
+            || !previousStatusId.equals(newStatus.getId());
+        if (statusChanged) {
+            Map<String, Object> eventMetadata = new HashMap<>();
+            if (previousStatusId != null) {
+                eventMetadata.put("previousStatusId", previousStatusId.toString());
+                eventMetadata.put("previousStatus", oldStatusName);
+            }
+            eventMetadata.put("newStatusId", newStatus.getId().toString());
+            eventMetadata.put("newStatus", newStatus.getName());
+            eventMetadata.put("actorId", userId.toString());
+            eventMetadata.put("actorType", "USER");
+            canonicalCrmEventPublisher.publish(
+                tenantId,
+                CanonicalCrmEvent.LEAD_ENTITY_TYPE,
+                CanonicalCrmEvent.STATUS_CHANGED_EVENT_TYPE,
+                updatedLead.getId(),
+                eventMetadata
+            );
+        }
 
         // Log activity
         Map<String, Object> metadata = new HashMap<>();
@@ -356,8 +448,13 @@ public class LeadService {
     public void deleteLead(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting lead: {} for tenant: {}", id, tenantId);
 
+        String scope = recordScopeGuard.requireScope(tenantId, userId, "lead", "delete");
+
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, userId, lead.getOwnerId(), lead.getCreatedBy());
 
         lead.softDelete(userId);
         lead.setUpdatedBy(userId);
@@ -371,6 +468,10 @@ public class LeadService {
 
         Lead lead = leadRepository.findByIdAndTenantId(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        String convertScope = recordScopeGuard.requireScope(tenantId, userId, "lead", "write");
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                convertScope, tenantId, userId, lead.getOwnerId(), lead.getCreatedBy());
 
         if (Boolean.TRUE.equals(lead.getIsConverted())) {
             throw new BusinessException("ALREADY_CONVERTED", "Lead has already been converted");
@@ -419,6 +520,31 @@ public class LeadService {
             contactResponse = contactService.createContact(tenantId, userId, contactRequest);
         }
 
+        UUID dealId = null;
+        if (Boolean.TRUE.equals(request.getCreateDeal())) {
+            DealCreateRequest dealRequest = DealCreateRequest.builder()
+                .name(resolveDealName(lead, request.getDealName()))
+                .accountId(accountResponse.getId())
+                .contactId(contactResponse.getId())
+                .leadId(lead.getId())
+                .amount(request.getDealAmount())
+                .ownerUserId(lead.getOwnerId())
+                .leadSource(lead.getSource() != null ? lead.getSource().getName() : null)
+                .description("Deal created from lead conversion")
+                .build();
+            com.shivang.crm.modules.deal.dto.DealResponse dealResponse =
+                dealService.createDeal(tenantId, userId, dealRequest);
+            dealId = dealResponse.getId();
+            activityService.logActivity(
+                tenantId,
+                dealResponse.getId(),
+                "DEAL",
+                "DEAL_CREATED_FROM_LEAD",
+                "Deal created from lead conversion",
+                userId,
+                Map.of("leadId", lead.getId(), "accountId", accountResponse.getId(), "contactId", contactResponse.getId()));
+        }
+
         lead.setIsConverted(true);
         lead.setConvertedAt(Instant.now());
         lead.setConvertedAccountId(accountResponse.getId());
@@ -429,9 +555,28 @@ public class LeadService {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("accountId", accountResponse.getId());
         metadata.put("contactId", contactResponse.getId());
+        if (dealId != null) {
+            metadata.put("dealId", dealId);
+        }
 
         HistoryService.logEntityUpdated(tenantId, lead.getId(), "LEAD", userId, metadata);
         activityService.logActivity(tenantId, lead.getId(), "LEAD", "CONVERTED", "Lead converted to account and contact", userId, metadata);
+
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("accountId", accountResponse.getId().toString());
+        eventMetadata.put("contactId", contactResponse.getId().toString());
+        if (dealId != null) {
+            eventMetadata.put("dealId", dealId.toString());
+        }
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+            lead.getTenantId(),
+            CanonicalCrmEvent.LEAD_ENTITY_TYPE,
+            CanonicalCrmEvent.CONVERTED_EVENT_TYPE,
+            lead.getId(),
+            eventMetadata
+        );
 
         if (request.getAccountId() == null) {
             activityService.logActivity(tenantId, accountResponse.getId(), "ACCOUNT", "ACCOUNT_CREATED_FROM_LEAD", "Account created from lead", userId, Map.of("leadId", lead.getId()));
@@ -444,7 +589,18 @@ public class LeadService {
             .leadId(lead.getId())
             .accountId(accountResponse.getId())
             .contactId(contactResponse.getId())
+            .dealId(dealId)
             .build();
+    }
+
+    private String resolveDealName(Lead lead, String requestedName) {
+        if (requestedName != null && !requestedName.isBlank()) {
+            return requestedName.trim();
+        }
+        String base = (lead.getCompany() != null && !lead.getCompany().isBlank())
+            ? lead.getCompany()
+            : lead.getFullName();
+        return base + " Opportunity";
     }
 
     /**

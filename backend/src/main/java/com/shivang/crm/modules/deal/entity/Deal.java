@@ -1,6 +1,7 @@
 package com.shivang.crm.modules.deal.entity;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
@@ -103,6 +104,13 @@ public class Deal extends TenantOwnedEntity {
 
     @Column(name = "closed_date")
     private LocalDate closedDate;
+
+    /**
+     * Authoritative timestamp for when the deal entered its current stage.
+     * Maintained by DealService on creation and on every actual stage change.
+     */
+    @Column(name = "stage_entered_at")
+    private Instant stageEnteredAt;
 
     @Column(name = "won_reason", columnDefinition = "TEXT")
     private String wonReason;
