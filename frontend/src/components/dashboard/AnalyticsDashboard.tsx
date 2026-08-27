@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, RefreshCw, Users, UserCheck, Briefcase, CheckSquare, Phone, Calendar } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Loader2, RefreshCw, Users, UserCheck, Briefcase, CheckSquare, Phone, Calendar, TrendingUp, Target, Clock } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useAnalyticsSummary } from "@/lib/hooks/analytics";
 import { useAuthStore } from "@/lib/store/authStore";
-import type { AnalyticsScope } from "@/types/analytics";
+import type { AnalyticsScope, LeadMetrics, DealMetrics, ActivityMetrics } from "@/types/analytics";
 
 const SCOPE_LABELS: Record<AnalyticsScope, string> = {
   PLATFORM: "Platform Overview",
@@ -30,6 +30,15 @@ const RANGE_PRESETS: { label: string; value: RangePreset }[] = [
   { label: "Last 30 days", value: "30d" },
   { label: "Last 90 days", value: "90d" },
 ];
+
+function formatMoney(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "\u2014";
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function formatRate(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
 
 interface KpiCardProps {
   label: string;
@@ -55,6 +64,39 @@ function KpiCard({ label, value, icon }: KpiCardProps) {
   );
 }
 
+function MetricRow({ label, value, tone }: { label: string; value: string; tone?: "default" | "positive" | "negative" | "warning" }) {
+  const tones: Record<string, string> = {
+    default: "",
+    positive: "text-emerald-600",
+    negative: "text-rose-600",
+    warning: "text-amber-600",
+  };
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className={`text-sm font-medium ${tones[tone ?? "default"]}`}>{value}</span>
+    </div>
+  );
+}
+
+function MetricSectionSkeleton() {
+  return (
+    <Card className="shadow-sm border border-muted">
+      <CardHeader className="pb-2">
+        <Skeleton className="h-5 w-32" />
+      </CardHeader>
+      <CardContent>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex items-center justify-between py-1.5">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-12" />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function KpiCardSkeleton() {
   return (
     <Card className="shadow-sm border border-muted">
@@ -64,6 +106,63 @@ function KpiCardSkeleton() {
           <Skeleton className="h-3 w-20" />
         </div>
         <Skeleton className="mt-3 h-8 w-16" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeadMetricsCard({ data }: { data: LeadMetrics }) {
+  return (
+    <Card className="shadow-sm border border-muted">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Target className="h-4 w-4 text-blue-600" />
+          Lead Performance
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <MetricRow label="New leads" value={data.newLeads.toLocaleString()} />
+        <MetricRow label="Converted" value={data.convertedLeads.toLocaleString()} tone="positive" />
+        <MetricRow label="Conversion rate" value={formatRate(data.conversionRate)} tone={data.conversionRate > 0 ? "positive" : "default"} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function DealMetricsCard({ data }: { data: DealMetrics }) {
+  return (
+    <Card className="shadow-sm border border-muted">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-emerald-600" />
+          Deal Performance
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <MetricRow label="Open deals" value={data.openDeals.toLocaleString()} />
+        <MetricRow label="Won deals" value={data.wonDeals.toLocaleString()} tone="positive" />
+        <MetricRow label="Lost deals" value={data.lostDeals.toLocaleString()} tone={data.lostDeals > 0 ? "negative" : "default"} />
+        <MetricRow label="Pipeline value" value={formatMoney(data.pipelineValue)} />
+        <MetricRow label="Won value" value={formatMoney(data.wonValue)} tone="positive" />
+        <MetricRow label="Win rate" value={formatRate(data.winRate)} tone={data.winRate > 0 ? "positive" : "default"} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActivityMetricsCard({ data }: { data: ActivityMetrics }) {
+  return (
+    <Card className="shadow-sm border border-muted">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Clock className="h-4 w-4 text-amber-600" />
+          Task &amp; Activity
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <MetricRow label="Open tasks" value={data.openTasks.toLocaleString()} />
+        <MetricRow label="Completed" value={data.completedTasks.toLocaleString()} tone="positive" />
+        <MetricRow label="Overdue" value={data.overdueTasks.toLocaleString()} tone={data.overdueTasks > 0 ? "negative" : "default"} />
       </CardContent>
     </Card>
   );
@@ -101,6 +200,11 @@ export function AnalyticsDashboard() {
           {Array.from({ length: 6 }).map((_, i) => (
             <KpiCardSkeleton key={i} />
           ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MetricSectionSkeleton />
+          <MetricSectionSkeleton />
+          <MetricSectionSkeleton />
         </div>
       </div>
     );
@@ -160,11 +264,21 @@ export function AnalyticsDashboard() {
         </div>
       </div>
 
+      {/* AN-2: Basic entity counts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {kpis.map((kpi) => (
           <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} />
         ))}
       </div>
+
+      {/* AN-3: Expanded metrics */}
+      {data && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {data.leadMetrics && <LeadMetricsCard data={data.leadMetrics} />}
+          {data.dealMetrics && <DealMetricsCard data={data.dealMetrics} />}
+          {data.activityMetrics && <ActivityMetricsCard data={data.activityMetrics} />}
+        </div>
+      )}
 
       {!isFetching && data && (
         <p className="text-xs text-muted-foreground text-center">
