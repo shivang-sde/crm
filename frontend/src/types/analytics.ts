@@ -36,6 +36,14 @@ export interface AnalyticsSummaryResponse {
   activityMetrics: ActivityMetrics;
 }
 
+export interface AnalyticsTrendPoint {
+  bucket: string;
+  leads: number;
+  contacts: number;
+  deals: number;
+  tasks: number;
+}
+
 export interface AnalyticsDateRange {
   from: string | null;
   to: string | null;

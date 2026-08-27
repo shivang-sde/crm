@@ -5,8 +5,9 @@ import { Loader2, RefreshCw, Users, UserCheck, Briefcase, CheckSquare, Phone, Ca
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { useAnalyticsSummary } from "@/lib/hooks/analytics";
+import { useAnalyticsSummary, useAnalyticsTrends } from "@/lib/hooks/analytics";
 import { useAuthStore } from "@/lib/store/authStore";
+import { AnalyticsTrendChart } from "./AnalyticsTrendChart";
 import type { AnalyticsScope, LeadMetrics, DealMetrics, ActivityMetrics } from "@/types/analytics";
 
 const SCOPE_LABELS: Record<AnalyticsScope, string> = {
@@ -174,6 +175,7 @@ export function AnalyticsDashboard() {
   const dateRange = useMemo(() => getPresetRange(selectedPreset), [selectedPreset]);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useAnalyticsSummary(dateRange);
+  const { data: trendData } = useAnalyticsTrends(dateRange);
 
   const userRole = useAuthStore((s) => s.userRole);
   const scopeLabel = data?.scope
@@ -206,6 +208,14 @@ export function AnalyticsDashboard() {
           <MetricSectionSkeleton />
           <MetricSectionSkeleton />
         </div>
+        <Card className="shadow-sm border border-muted">
+          <CardHeader className="pb-2">
+            <Skeleton className="h-5 w-40" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[320px] w-full" />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -278,6 +288,11 @@ export function AnalyticsDashboard() {
           {data.dealMetrics && <DealMetricsCard data={data.dealMetrics} />}
           {data.activityMetrics && <ActivityMetricsCard data={data.activityMetrics} />}
         </div>
+      )}
+
+      {/* AN-4: Trend chart */}
+      {trendData && trendData.length > 0 && (
+        <AnalyticsTrendChart data={trendData} />
       )}
 
       {!isFetching && data && (

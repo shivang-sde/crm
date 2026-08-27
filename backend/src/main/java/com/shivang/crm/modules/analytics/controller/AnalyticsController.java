@@ -1,5 +1,7 @@
 package com.shivang.crm.modules.analytics.controller;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +13,7 @@ import com.shivang.crm.modules.analytics.AnalyticsContext;
 import com.shivang.crm.modules.analytics.AnalyticsDateRange;
 import com.shivang.crm.modules.analytics.AnalyticsScopeResolver;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse;
+import com.shivang.crm.modules.analytics.dto.AnalyticsTrendResponse;
 import com.shivang.crm.modules.analytics.service.AnalyticsService;
 import com.shivang.crm.shared.dto.ApiResponse;
 
@@ -49,6 +52,28 @@ public class AnalyticsController {
         AnalyticsContext context = scopeResolver.resolve(scope);
         AnalyticsDateRange range = AnalyticsDateRange.resolve(from, to);
         AnalyticsSummaryResponse response = analyticsService.getSummary(context, range);
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/trends")
+    @PreAuthorize("@rbac.has(authentication, 'report', 'read')")
+    @Operation(summary = "Get time-bucketed trend data",
+            description = "Returns lead/contact/deal/task counts per time bucket "
+                    + "(DAY, WEEK or MONTH auto-selected based on range).")
+    public ResponseEntity<ApiResponse<List<AnalyticsTrendResponse>>> getTrends(
+            @Parameter(description = "Optional requested scope downgrade")
+            @RequestParam(name = "scope", required = false) String scope,
+            @Parameter(description = "Range start, ISO-8601 instant (default: to minus 30 days)")
+            @RequestParam(name = "from", required = false) String from,
+            @Parameter(description = "Range end (exclusive), ISO-8601 instant (default: now)")
+            @RequestParam(name = "to", required = false) String to) {
+
+        log.info("GET /api/v1/analytics/trends - scope={}, from={}, to={}", scope, from, to);
+
+        AnalyticsContext context = scopeResolver.resolve(scope);
+        AnalyticsDateRange range = AnalyticsDateRange.resolve(from, to);
+        List<AnalyticsTrendResponse> response = analyticsService.getTrends(context, range);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }

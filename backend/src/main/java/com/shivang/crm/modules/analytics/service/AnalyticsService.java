@@ -2,6 +2,7 @@ package com.shivang.crm.modules.analytics.service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -23,10 +24,12 @@ import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 
 import com.shivang.crm.modules.analytics.AnalyticsDateRange;
+import com.shivang.crm.modules.analytics.AnalyticsScope;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse.ActivityMetrics;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse.DealMetrics;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse.LeadMetrics;
+import com.shivang.crm.modules.analytics.dto.AnalyticsTrendResponse;
 import com.shivang.crm.modules.call.entity.Call;
 import com.shivang.crm.modules.contact.entity.Contact;
 import com.shivang.crm.modules.deal.entity.Deal;
@@ -296,5 +299,104 @@ public class AnalyticsService {
 
     private static long nullToZero(Long value) {
         return value != null ? value : 0L;
+    }
+
+    // ======================== Trends (AN-4) ========================
+
+    /**
+     * Returns time-bucketed counts for leads, contacts, deals and tasks.
+     * Bucket granularity is auto-selected: DAY for ≤31 days,
+     * WEEK for 32–180 days, MONTH for >180 days.
+     *
+     * Uses a native SQL UNION ALL query for clean date_trunc support.
+     * Scope filtering mirrors {@link #basePredicates} via dynamic WHERE clauses.
+     */
+    public List<AnalyticsTrendResponse> getTrends(AnalyticsContext ctx, AnalyticsDateRange range) {
+        long days = range.from().until(range.to(), ChronoUnit.DAYS);
+        String unit = days <= 31 ? "day" : days <= 180 ? "week" : "month";
+
+        String scopeFilter = buildScopeFilter(ctx);
+
+        String sql = """
+                SELECT bucket, SUM(leads) AS leads, SUM(contacts) AS contacts,
+                       SUM(deals) AS deals, SUM(tasks) AS tasks
+                FROM (
+                    SELECT date_trunc(:unit, created_at) AS bucket,
+                           COUNT(*) AS leads, 0::bigint AS contacts, 0::bigint AS deals, 0::bigint AS tasks
+                    FROM leads WHERE deleted = false AND %s AND created_at >= :from AND created_at < :to
+                    GROUP BY bucket
+                    UNION ALL
+                    SELECT date_trunc(:unit, created_at) AS bucket,
+                           0::bigint AS leads, COUNT(*) AS contacts, 0::bigint AS deals, 0::bigint AS tasks
+                    FROM contacts WHERE deleted = false AND %s AND created_at >= :from AND created_at < :to
+                    GROUP BY bucket
+                    UNION ALL
+                    SELECT date_trunc(:unit, created_at) AS bucket,
+                           0::bigint AS leads, 0::bigint AS contacts, COUNT(*) AS deals, 0::bigint AS tasks
+                    FROM deals WHERE deleted = false AND %s AND created_at >= :from AND created_at < :to
+                    GROUP BY bucket
+                    UNION ALL
+                    SELECT date_trunc(:unit, created_at) AS bucket,
+                           0::bigint AS leads, 0::bigint AS contacts, 0::bigint AS deals, COUNT(*) AS tasks
+                    FROM tasks WHERE deleted = false AND %s AND created_at >= :from AND created_at < :to
+                    GROUP BY bucket
+                ) combined
+                GROUP BY bucket
+                ORDER BY bucket
+                """.formatted(scopeFilter, scopeFilter, scopeFilter, scopeFilter);
+
+        @SuppressWarnings("unchecked")
+        jakarta.persistence.Query query = em.createNativeQuery(sql);
+        query.setParameter("unit", unit);
+        query.setParameter("from", range.from());
+        query.setParameter("to", range.to());
+
+        List<Object[]> rows = query.getResultList();
+        List<AnalyticsTrendResponse> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            result.add(AnalyticsTrendResponse.builder()
+                    .bucket(instantFromTimestamp(row[0]))
+                    .leads(nullToZero(asLong(row[1])))
+                    .contacts(nullToZero(asLong(row[2])))
+                    .deals(nullToZero(asLong(row[3])))
+                    .tasks(nullToZero(asLong(row[4])))
+                    .build());
+        }
+        return result;
+    }
+
+    /**
+     * PostgreSQL timestamp columns map to java.time.LocalDateTime here, but
+     * some drivers return java.sql.Timestamp. Both encode UTC wall-clock time.
+     */
+    private static Instant instantFromTimestamp(Object value) {
+        if (value instanceof java.sql.Timestamp ts) {
+            return ts.toInstant();
+        }
+        if (value instanceof java.time.LocalDateTime ldt) {
+            return ldt.toInstant(java.time.ZoneOffset.UTC);
+        }
+        return (Instant) value;
+    }
+
+    private static long asLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        return Long.parseLong(value.toString());
+    }
+
+    private String buildScopeFilter(AnalyticsContext ctx) {
+        return switch (ctx.scope()) {
+            case PLATFORM -> "1=1";
+            case RESELLER -> "tenant_id IN (SELECT id FROM tenants WHERE reseller_id = '%s')"
+                    .formatted(ctx.resellerId());
+            case TENANT -> "tenant_id = '%s'".formatted(ctx.tenantId());
+            case USER -> "tenant_id = '%s' AND (owner_id = '%s' OR created_by = '%s')"
+                    .formatted(ctx.tenantId(), ctx.userId(), ctx.userId());
+        };
     }
 }

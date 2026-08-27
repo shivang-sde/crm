@@ -11,3 +11,11 @@ export function useAnalyticsSummary(range?: AnalyticsDateRange) {
     staleTime: 30_000,
   });
 }
+
+export function useAnalyticsTrends(range?: AnalyticsDateRange) {
+  return useQuery({
+    queryKey: ["analytics-trends", range?.from ?? null, range?.to ?? null],
+    queryFn: () => analyticsApi.getTrends(range),
+    staleTime: 30_000,
+  });
+}
