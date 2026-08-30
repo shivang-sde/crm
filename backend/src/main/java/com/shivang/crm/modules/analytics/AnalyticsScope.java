@@ -7,9 +7,10 @@ package com.shivang.crm.modules.analytics;
  */
 public enum AnalyticsScope {
     USER(0),
-    TENANT(1),
-    RESELLER(2),
-    PLATFORM(3);
+    TEAM(1),
+    TENANT(2),
+    RESELLER(3),
+    PLATFORM(4);
 
     private final int rank;
 

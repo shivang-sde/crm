@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, RefreshCw, Users, UserCheck, Briefcase, CheckSquare, Phone, Calendar, TrendingUp, Target, Clock } from "lucide-react";
+import { Loader2, RefreshCw, Users, UserCheck, Briefcase, CheckSquare, Phone, Calendar, TrendingUp, Target, Clock, ShieldAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useAnalyticsSummary, useAnalyticsTrends } from "@/lib/hooks/analytics";
 import { useAuthStore } from "@/lib/store/authStore";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import { AnalyticsTrendChart } from "./AnalyticsTrendChart";
 import type { AnalyticsScope, LeadMetrics, DealMetrics, ActivityMetrics } from "@/types/analytics";
 
@@ -14,6 +15,7 @@ const SCOPE_LABELS: Record<AnalyticsScope, string> = {
   PLATFORM: "Platform Overview",
   RESELLER: "Reseller Overview",
   TENANT: "Company Overview",
+  TEAM: "Team Overview",
   USER: "My Dashboard",
 };
 
@@ -177,16 +179,25 @@ export function AnalyticsDashboard() {
   const { data, isLoading, isError, error, refetch, isFetching } = useAnalyticsSummary(dateRange);
   const { data: trendData } = useAnalyticsTrends(dateRange);
 
+  // Permission gate (UX only; the backend remains authoritative). The scope is
+  // always read from the backend response, never derived from role names.
+  const { hasPermission } = usePermissions();
   const userRole = useAuthStore((s) => s.userRole);
-  const scopeLabel = data?.scope
-    ? SCOPE_LABELS[data.scope]
-    : userRole === "SUPERADMIN"
-      ? SCOPE_LABELS.PLATFORM
-      : userRole === "RESELLER"
-        ? SCOPE_LABELS.RESELLER
-        : userRole === "ADMIN"
-          ? SCOPE_LABELS.TENANT
-          : SCOPE_LABELS.USER;
+  const isPlatformRole = userRole === "SUPERADMIN" || userRole === "RESELLER";
+
+  if (!isPlatformRole && !hasPermission("report", "read")) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4 text-center">
+        <ShieldAlert className="h-10 w-10 text-muted-foreground" />
+        <h1 className="text-2xl font-bold tracking-tight">Analytics Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          You don&apos;t have permission to view analytics.
+        </p>
+      </div>
+    );
+  }
+
+  const scopeLabel = data?.scope ? SCOPE_LABELS[data.scope] : "";
 
   if (isLoading) {
     return (

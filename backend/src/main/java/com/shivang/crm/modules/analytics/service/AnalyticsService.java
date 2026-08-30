@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,7 @@ import com.shivang.crm.modules.deal.entity.DealStage;
 import com.shivang.crm.modules.deal.entity.RecordCategory;
 import com.shivang.crm.modules.lead.entity.Lead;
 import com.shivang.crm.modules.meeting.entity.Meeting;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.modules.task.entity.Task;
 import com.shivang.crm.modules.task.entity.TaskStatus;
 import com.shivang.crm.modules.tenant.entity.Tenant;
@@ -69,6 +71,12 @@ public class AnalyticsService {
 
     @PersistenceContext
     private EntityManager em;
+
+    private final PermissionEvaluatorService permissionEvaluatorService;
+
+    public AnalyticsService(PermissionEvaluatorService permissionEvaluatorService) {
+        this.permissionEvaluatorService = permissionEvaluatorService;
+    }
 
     public AnalyticsSummaryResponse getSummary(AnalyticsContext context, AnalyticsDateRange range) {
         long totalLeads = count(Lead.class, context, range.from(), range.to());
@@ -261,6 +269,21 @@ public class AnalyticsService {
                         cb.equal(root.<UUID>get("ownerId"), ctx.userId()),
                         cb.equal(root.<UUID>get("createdBy"), ctx.userId())));
             }
+            case TEAM -> {
+                // Same visibility as the CRM record scopes (RecordScopeGuard /
+                // *Specifications.visibleToUser): records owned or created by the
+                // caller, plus records owned by the caller's direct reports
+                // (existing users.manager_id manager hierarchy).
+                predicates.add(cb.equal(root.<UUID>get("tenantId"), ctx.tenantId()));
+                List<UUID> team = permissionEvaluatorService.getTeamUserIds(ctx.userId(), ctx.tenantId());
+                Predicate teamOwned = team.isEmpty()
+                        ? cb.disjunction()
+                        : root.<UUID>get("ownerId").in(team);
+                predicates.add(cb.or(
+                        cb.equal(root.<UUID>get("ownerId"), ctx.userId()),
+                        cb.equal(root.<UUID>get("createdBy"), ctx.userId()),
+                        teamOwned));
+            }
             case RESELLER -> predicates.add(root.<UUID>get("tenantId").in(
                     resellerTenantIds(ctx.resellerId())));
             case PLATFORM -> {
@@ -395,8 +418,18 @@ public class AnalyticsService {
             case RESELLER -> "tenant_id IN (SELECT id FROM tenants WHERE reseller_id = '%s')"
                     .formatted(ctx.resellerId());
             case TENANT -> "tenant_id = '%s'".formatted(ctx.tenantId());
-            case USER -> "tenant_id = '%s' AND (owner_id = '%s' OR created_by = '%s')"
+            case USER -> "tenant_id = '%s' AND (owner_user_id = '%s' OR created_by = '%s')"
                     .formatted(ctx.tenantId(), ctx.userId(), ctx.userId());
+            case TEAM -> {
+                List<UUID> team = permissionEvaluatorService.getTeamUserIds(ctx.userId(), ctx.tenantId());
+                String teamIds = team.isEmpty()
+                        ? "'00000000-0000-0000-0000-000000000000'"
+                        : team.stream()
+                                .map(id -> "'%s'".formatted(id))
+                                .collect(Collectors.joining(","));
+                yield "tenant_id = '%s' AND (owner_user_id = '%s' OR created_by = '%s' OR owner_user_id IN (%s))"
+                        .formatted(ctx.tenantId(), ctx.userId(), ctx.userId(), teamIds);
+            }
         };
     }
 }

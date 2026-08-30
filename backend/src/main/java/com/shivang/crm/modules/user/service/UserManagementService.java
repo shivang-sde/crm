@@ -112,12 +112,7 @@ public class UserManagementService {
     }
 
     public UserResponse getUser(UUID userId) {
-        Optional<UUID> tenantId = parseTenantId();
-        User user = tenantId.isPresent()
-                ? userRepository.findByIdAndTenantId(userId, tenantId.get())
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()))
-                : userRepository.findPlatformUserById(userId)
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()));
+        User user = resolveAccessibleUser(userId);
         return toUserResponse(user);
     }
 
@@ -206,11 +201,7 @@ public class UserManagementService {
         UserRole currentUserRole = findUserRole(currentUser)
                 .orElseThrow(() -> new BusinessException("UNAUTHORIZED", "Authenticated user role not found"));
 
-        User user = currentTenantId.isPresent()
-                ? userRepository.findByIdAndTenantId(userId, currentTenantId.get())
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()))
-                : userRepository.findById(userId)
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()));
+        User user = resolveAccessibleUser(userId);
 
         if (request.getFirstName() != null) {
             user.setFirstName(request.getFirstName());
@@ -271,26 +262,58 @@ public class UserManagementService {
     }
 
     public void activateUser(UUID userId, boolean active) {
-        Optional<UUID> currentTenantId = parseTenantId();
-        User user = currentTenantId.isPresent()
-                ? userRepository.findByIdAndTenantId(userId, currentTenantId.get())
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()))
-                : userRepository.findById(userId)
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()));
+        User user = resolveAccessibleUser(userId);
 
         user.setIsActive(active);
         userRepository.save(user);
     }
 
     public void deleteUser(UUID userId) {
-        Optional<UUID> currentTenantId = parseTenantId();
-        User user = currentTenantId.isPresent()
-                ? userRepository.findByIdAndTenantId(userId, currentTenantId.get())
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()))
-                : userRepository.findById(userId)
-                        .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()));
+        User user = resolveAccessibleUser(userId);
 
         userRepository.delete(user);
+    }
+
+    /**
+     * AN-6: Resolves a target user strictly within the caller's authority.
+     * Tenant context: the user must belong to the caller's tenant (pre-existing
+     * isolation). Platform context: SUPERADMIN is unrestricted; RESELLER may only
+     * reach tenant users whose tenant lists the reseller as its reseller
+     * (tenants.reseller_id == caller id). Authority always comes from the data
+     * model, never from client-supplied ids or role names.
+     */
+    private User resolveAccessibleUser(UUID targetUserId) {
+        UUID currentTenantId = parseTenantId().orElse(null);
+
+        if (currentTenantId != null) {
+            return userRepository.findByIdAndTenantId(targetUserId, currentTenantId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User", targetUserId.toString()));
+        }
+
+        User user = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", targetUserId.toString()));
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw new BusinessException("UNAUTHORIZED", "Authenticated user is required");
+        }
+        UUID currentUserId = UUID.fromString((String) authentication.getPrincipal());
+        User currentUser = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new BusinessException("UNAUTHORIZED", "Authenticated user not found"));
+        UserRole currentUserRole = findUserRole(currentUser)
+                .orElseThrow(() -> new BusinessException("UNAUTHORIZED", "Authenticated user role not found"));
+
+        if (!isSuperAdmin(currentUserRole)) {
+            UUID targetTenantId = user.getTenantId();
+            if (targetTenantId == null
+                    || !currentUserId.equals(tenantRepository.findById(targetTenantId)
+                            .map(Tenant::getResellerId)
+                            .orElse(null))) {
+                throw new BusinessException("FORBIDDEN", "You do not have access to this user");
+            }
+        }
+
+        return user;
     }
 
     private UserResponse toUserResponse(User user) {

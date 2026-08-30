@@ -1,4 +1,4 @@
-export type AnalyticsScope = "PLATFORM" | "RESELLER" | "TENANT" | "USER";
+export type AnalyticsScope = "PLATFORM" | "RESELLER" | "TENANT" | "TEAM" | "USER";
 
 export interface LeadMetrics {
   newLeads: number;

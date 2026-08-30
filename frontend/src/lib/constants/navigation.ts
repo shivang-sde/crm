@@ -71,6 +71,7 @@ type PermissionAlternative = [string, string];
  * can never collide with "/leads".
  */
 const ROUTE_PERMISSIONS: { segment: string; anyOf: PermissionAlternative[] }[] = [
+  { segment: "dashboard", anyOf: [["report", "read"]] },
   { segment: "leads", anyOf: [["lead", "read"]] },
   { segment: "deals", anyOf: [["deal", "read"]] },
   { segment: "offerings", anyOf: [["offering", "read"]] },
@@ -94,6 +95,7 @@ const ROUTE_PERMISSIONS: { segment: string; anyOf: PermissionAlternative[] }[] =
  * chain entirely (see getDefaultRoute).
  */
 const DEFAULT_ROUTE_PRIORITY: { anyOf: PermissionAlternative[]; href: string }[] = [
+  { anyOf: [["report", "read"]], href: "/dashboard" },
   { anyOf: [["lead", "read"]], href: "/leads" },
   { anyOf: [["deal", "read"]], href: "/deals" },
   { anyOf: [["offering", "read"]], href: "/offerings" },
@@ -227,9 +229,12 @@ function hasGrant(
  * their names.
  */
 export function getNavigationItems(role: string | null, permissions?: Map<string, string>): NavItem[] {
-  const baseItems: NavItem[] = [
-    { name: "Dashboard", href: getDefaultRoute(permissions ?? null, role), icon: Home, show: true },
-  ];
+  const platformRole = role === "SUPERADMIN" || role === "RESELLER";
+  const canViewDashboard = platformRole || hasGrant(permissions, "report:read");
+
+  const baseItems: NavItem[] = canViewDashboard
+    ? [{ name: "Dashboard", href: getDefaultRoute(permissions ?? null, role), icon: Home, show: true }]
+    : [];
 
   if (!role) {
     return baseItems;

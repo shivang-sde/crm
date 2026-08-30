@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 import com.shivang.crm.modules.auth.security.TenantContext;
+import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
 import com.shivang.crm.shared.exception.BusinessException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 
@@ -17,13 +18,21 @@ import lombok.extern.slf4j.Slf4j;
  * TenantResolutionFilter from the JWT). No second role hierarchy and no
  * client-supplied identifiers are involved.
  *
- * Actual role mapping found in this application:
+ * The analytics perspective is derived from the authenticated user's stored
+ * {@code report:read} access scope (via
+ * {@link PermissionEvaluatorService#getAccessScope}), NOT from role names.
+ * Role/level is consulted only to distinguish the platform shell:
  *
- *   SUPERADMIN (level PLATFORM)          -> PLATFORM
- *   RESELLER   (level PLATFORM)          -> RESELLER (resellerId = user id,
- *                                           matching tenants.reseller_id)
- *   ADMIN      (tenant level)            -> TENANT
- *   MANAGER / EMPLOYEE / custom roles    -> USER
+ *   PLATFORM level, role SUPERADMIN       -> PLATFORM
+ *   PLATFORM level, role RESELLER         -> RESELLER (resellerId = user id,
+ *                                          matching tenants.reseller_id)
+ *   TENANT level, report:read = ALL       -> TENANT
+ *   TENANT level, report:read = TEAM      -> TEAM
+ *   TENANT level, report:read = OWN       -> USER
+ *   report:read missing / NONE            -> denied (fail-closed)
+ *
+ * A tenant-created custom role with report:read = ALL/TEAM/OWN therefore gets
+ * TENANT/TEAM/USER respectively, independent of its role name.
  */
 @Slf4j
 @Component
@@ -31,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AnalyticsScopeResolver {
 
     private final TenantContext tenantContext;
+    private final PermissionEvaluatorService permissionEvaluatorService;
 
     /**
      * @param requestedScope optional client-requested downgrade; may never
@@ -59,21 +69,38 @@ public class AnalyticsScopeResolver {
     }
 
     private AnalyticsScope deriveScope() {
-        String level = tenantContext.getUserLevel();
-        String role = tenantContext.getRole();
+        UUID userId = tenantContext.getUserId();
+        if (userId == null) {
+            throw new BusinessException("INVALID_ANALYTICS_SCOPE", "User identity is not available");
+        }
 
-        if ("PLATFORM".equals(level)) {
-            // Platform roles are SUPERADMIN and RESELLER.
-            if ("RESELLER".equals(role)) {
-                return AnalyticsScope.RESELLER;
-            }
-            return AnalyticsScope.PLATFORM;
+        if ("PLATFORM".equals(tenantContext.getUserLevel())) {
+            requireReportRead(userId, null);
+            // Platform shell: only SUPERADMIN and RESELLER exist here.
+            return "RESELLER".equals(tenantContext.getRole())
+                    ? AnalyticsScope.RESELLER
+                    : AnalyticsScope.PLATFORM;
         }
-        // Tenant level: ADMIN sees the whole tenant, everyone else own records.
-        if ("ADMIN".equals(role)) {
-            return AnalyticsScope.TENANT;
+
+        // Tenant level: the stored report:read access scope is authoritative.
+        UUID tenantId = tenantContext.requireTenantId();
+        String scope = requireReportRead(userId, tenantId);
+        return switch (scope) {
+            case "ALL" -> AnalyticsScope.TENANT;
+            case "TEAM" -> AnalyticsScope.TEAM;
+            case "OWN" -> AnalyticsScope.USER;
+            default -> throw new PermissionDeniedException("ACCESS_DENIED",
+                    "You do not have permission to view analytics");
+        };
+    }
+
+    private String requireReportRead(UUID userId, UUID tenantId) {
+        String scope = permissionEvaluatorService.getAccessScope(userId, tenantId, "report", "read");
+        if (!"ALL".equals(scope) && !"TEAM".equals(scope) && !"OWN".equals(scope)) {
+            throw new PermissionDeniedException("ACCESS_DENIED",
+                    "You do not have permission to view analytics");
         }
-        return AnalyticsScope.USER;
+        return scope;
     }
 
     private AnalyticsScope parseRequested(String requestedScope) {
@@ -98,6 +125,7 @@ public class AnalyticsScopeResolver {
                 // tenants.reseller_id references the platform reseller user id.
                 new AnalyticsContext(scope, null, userId, userId);
             case TENANT -> new AnalyticsContext(scope, tenantContext.requireTenantId(), null, userId);
+            case TEAM -> new AnalyticsContext(scope, tenantContext.requireTenantId(), null, userId);
             case USER -> new AnalyticsContext(scope, tenantContext.requireTenantId(), null, userId);
         };
     }
