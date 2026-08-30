@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   useCreateWorkflow,
   useDeactivateWorkflow,
@@ -21,6 +22,7 @@ import { WorkflowResponse } from "@/types/workflow";
 export default function WorkflowsPage() {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { canViewWorkflows, canEditWorkflows } = usePermissions();
   const workflowsQuery = useWorkflows({ page: 0, size: 50 });
@@ -38,12 +40,95 @@ export default function WorkflowsPage() {
     );
   }
 
-  const workflows: WorkflowResponse[] = workflowsQuery.data?.data ?? [];
+  const allWorkflows: WorkflowResponse[] = workflowsQuery.data?.data ?? [];
 
-  const handleCreated = async (workflowId: string) => {
-    setCreateOpen(false);
-    toast.success("Workflow created");
-    router.push(`/workflows/${workflowId}`);
+  const filteredWorkflows = useMemo(() => {
+    if (!searchQuery.trim()) return allWorkflows;
+    const query = searchQuery.trim().toLowerCase();
+    return allWorkflows.filter((w) => w.name.toLowerCase().includes(query));
+  }, [allWorkflows, searchQuery]);
+
+  const renderContent = () => {
+    if (workflowsQuery.isLoading) {
+      return <p className="text-sm text-muted-foreground">Loading workflows…</p>;
+    }
+    if (workflowsQuery.isError) {
+      return <p className="text-sm text-muted-foreground">Failed to load workflows.</p>;
+    }
+    if (filteredWorkflows.length === 0) {
+      if (searchQuery.trim()) {
+        return (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              No workflows match your search.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => setSearchQuery("")}>
+              Show all workflows
+            </Button>
+          </div>
+        );
+      }
+      if (allWorkflows.length === 0) {
+        return (
+          <p className="text-sm text-muted-foreground">
+            No workflows yet. Create your first workflow to get started.
+          </p>
+        );
+      }
+      return (
+        <div className="space-y-3">
+          {filteredWorkflows.map((workflow) => (
+            <div
+              key={workflow.id}
+              className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/workflows/${workflow.id}`}
+                    className="truncate text-sm font-medium hover:underline"
+                  >
+                    {workflow.name}
+                  </Link>
+                  <Badge variant={workflow.status === "ACTIVE" ? "default" : "secondary"}>
+                    {workflow.status}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Created {new Date(workflow.createdAt).toLocaleString()} · Updated{" "}
+                  {new Date(workflow.updatedAt).toLocaleString()}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/workflows/${workflow.id}`}>
+                  <Button variant="outline" size="sm">
+                    Open
+                  </Button>
+                </Link>
+                {canEditWorkflows && workflow.status === "ACTIVE" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={deactivate.isPending}
+                    onClick={async () => {
+                      try {
+                        await deactivate.mutateAsync(workflow.id);
+                        toast.success("Workflow deactivated");
+                      } catch {
+                        toast.error("Failed to deactivate workflow");
+                      }
+                    }}
+                  >
+                    Deactivate
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
   };
 
   return (
@@ -69,70 +154,29 @@ export default function WorkflowsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All workflows</CardTitle>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <CardTitle>All workflows</CardTitle>
+            <div className="w-full md:w-auto">
+              <label htmlFor="workflow-search" className="sr-only">
+                Search workflows
+              </label>
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  id="workflow-search"
+                  type="search"
+                  placeholder="Search workflows by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                  aria-label="Search workflows by name"
+                />
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {workflowsQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading workflows…</p>
-          ) : workflowsQuery.isError ? (
-            <p className="text-sm text-muted-foreground">Failed to load workflows.</p>
-          ) : workflows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No workflows yet. Create your first workflow to get started.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {workflows.map((workflow) => (
-                <div
-                  key={workflow.id}
-                  className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/workflows/${workflow.id}`}
-                        className="truncate text-sm font-medium hover:underline"
-                      >
-                        {workflow.name}
-                      </Link>
-                      <Badge variant={workflow.status === "ACTIVE" ? "default" : "secondary"}>
-                        {workflow.status}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Created {new Date(workflow.createdAt).toLocaleString()} · Updated{" "}
-                      {new Date(workflow.updatedAt).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/workflows/${workflow.id}`}>
-                      <Button variant="outline" size="sm">
-                        Open
-                      </Button>
-                    </Link>
-                    {canEditWorkflows && workflow.status === "ACTIVE" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={deactivate.isPending}
-                        onClick={async () => {
-                          try {
-                            await deactivate.mutateAsync(workflow.id);
-                            toast.success("Workflow deactivated");
-                          } catch {
-                            toast.error("Failed to deactivate workflow");
-                          }
-                        }}
-                      >
-                        Deactivate
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {renderContent()}
         </CardContent>
       </Card>
 

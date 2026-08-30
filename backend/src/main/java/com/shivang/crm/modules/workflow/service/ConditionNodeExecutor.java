@@ -11,6 +11,8 @@ import com.shivang.crm.modules.workflow.entity.WorkflowEdge;
 import com.shivang.crm.modules.workflow.entity.WorkflowExecution;
 import com.shivang.crm.modules.workflow.entity.WorkflowNode;
 import com.shivang.crm.modules.workflow.entity.WorkflowNodeType;
+import com.shivang.crm.modules.workflow.service.WorkflowResolvedValue;
+import com.shivang.crm.modules.workflow.service.WorkflowValueResolver;
 
 @Component
 public class ConditionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExecutorRegistrationProvider {
@@ -18,9 +20,11 @@ public class ConditionNodeExecutor implements WorkflowNodeExecutor, WorkflowNode
     private static final Set<String> LOGICS = Set.of("AND", "OR");
 
     private final WorkflowConditionEvaluator conditionEvaluator;
+    private final WorkflowValueResolver valueResolver;
 
-    public ConditionNodeExecutor(WorkflowConditionEvaluator conditionEvaluator) {
+    public ConditionNodeExecutor(WorkflowConditionEvaluator conditionEvaluator, WorkflowValueResolver valueResolver) {
         this.conditionEvaluator = conditionEvaluator;
+        this.valueResolver = valueResolver;
     }
 
     @Override
@@ -45,11 +49,41 @@ public class ConditionNodeExecutor implements WorkflowNodeExecutor, WorkflowNode
         }
 
         List<Boolean> results = new java.util.ArrayList<>();
+        List<Map<String, Object>> ruleResults = new java.util.ArrayList<>();
+        int index = 0;
         for (Object rawCondition : conditions) {
             if (!(rawCondition instanceof Map<?, ?> condition)) {
                 throw conditionFailure("WORKFLOW_CONDITION_CONFIG_INVALID", "Each condition must be an object");
             }
-            results.add(conditionEvaluator.evaluate(condition, context));
+            String field = valueText(condition.get("field"));
+            String operator = keyword(condition.get("operator"));
+            Object expected = condition.get("value");
+            Object actual = null;
+            boolean passed;
+            try {
+                // Resolve actual for debugging even if evaluate will throw
+                try {
+                    WorkflowResolvedValue resolved = valueResolver.resolve(context, field);
+                    actual = resolved.found() ? resolved.value() : null;
+                } catch (Exception ignore) {
+                    actual = null;
+                }
+                passed = conditionEvaluator.evaluate(condition, context);
+            } catch (RuntimeException ex) {
+                passed = false;
+                // actual already captured
+                // still record and continue to next rule for debugging
+            }
+            results.add(passed);
+            Map<String, Object> rr = new java.util.LinkedHashMap<>();
+            rr.put("index", index);
+            rr.put("field", field);
+            rr.put("operator", operator);
+            rr.put("expected", expected);
+            rr.put("actual", actual);
+            rr.put("passed", passed);
+            ruleResults.add(rr);
+            index++;
         }
 
         boolean result = "AND".equals(logic)
@@ -57,9 +91,13 @@ public class ConditionNodeExecutor implements WorkflowNodeExecutor, WorkflowNode
             : results.stream().anyMatch(Boolean.TRUE::equals);
 
         UUID selectedEdgeId = selectEdge(outgoingEdges, result ? "TRUE" : "FALSE");
+        java.util.Map<String, Object> output = new java.util.LinkedHashMap<>();
+        output.put("result", result);
+        output.put("ruleResults", ruleResults);
+        output.put("logic", logic);
         return new WorkflowNodeExecutionResult(
             com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.COMPLETED,
-            Map.of("result", result),
+            output,
             List.of(selectedEdgeId),
             null,
             null
@@ -84,6 +122,10 @@ public class ConditionNodeExecutor implements WorkflowNodeExecutor, WorkflowNode
 
     private String keyword(Object value) {
         return value == null ? "" : String.valueOf(value).trim().toUpperCase();
+    }
+
+    private String valueText(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
     }
 
     private WorkflowRuntimeException conditionFailure(String code, String message) {

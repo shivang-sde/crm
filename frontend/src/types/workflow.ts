@@ -115,6 +115,9 @@ export interface WorkflowEdgeRequest {
 export interface WorkflowValidationIssue {
   code: string;
   message: string;
+  nodeId?: string | null;
+  nodeKey?: string | null;
+  edgeId?: string | null;
 }
 
 export type WorkflowExecutionStatus =
@@ -156,6 +159,7 @@ export interface WorkflowExecutionNodeExecutionResponse {
   startedAt: string | null;
   completedAt: string | null;
   nextAttemptAt: string | null;
+  inputContext?: Record<string, unknown> | null;
   outputContext?: Record<string, unknown> | null;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
@@ -178,6 +182,9 @@ export interface WorkflowExecutionDetailResponse {
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
   replayedFromExecutionId: string | null;
+  causedByExecutionId: string | null;
+  causedByEventId: string | null;
+  chainDepth: number | null;
   nodeExecutions: WorkflowExecutionNodeExecutionResponse[];
 }
 

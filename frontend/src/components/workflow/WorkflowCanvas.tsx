@@ -13,10 +13,14 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
+import { toast } from "sonner";
 import { buildNodeTypes } from "./nodes/WorkflowNode";
+import { WorkflowEdge } from "./edges/WorkflowEdge";
+import { getConnectionReason } from "./utils/connection-validation";
 
 const nodeTypes = buildNodeTypes();
+const edgeTypes = { workflow: WorkflowEdge };
 
 interface WorkflowCanvasProps {
   nodes: Node[];
@@ -25,6 +29,7 @@ interface WorkflowCanvasProps {
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
+  onReconnect?: (oldEdge: Edge, newConnection: Connection) => void;
   onDrop: (event: React.DragEvent) => void;
   onDragOver: (event: React.DragEvent) => void;
   onSelectionChanged?: (params: { nodes: Node[]; edges: Edge[] }) => void;
@@ -37,6 +42,7 @@ export function WorkflowCanvas({
   onNodesChange,
   onEdgesChange,
   onConnect,
+  onReconnect,
   onDrop,
   onDragOver,
   onSelectionChanged,
@@ -44,57 +50,28 @@ export function WorkflowCanvas({
   const { fitView } = useReactFlow();
 
   const isValidConnection = useMemo(
-    () =>
-      (connection: Connection | Edge): boolean => {
-        if (connection.source === connection.target) return false;
-        if (readOnly) return false;
-
-        const sourceNode = nodes.find((node) => node.id === connection.source);
-        if (!sourceNode) return false;
-
-        const sourceType = (sourceNode.data as { nodeType?: string }).nodeType;
-        // END is terminal; TRIGGER must not receive inbound connections.
-        if (sourceType === "END") return false;
-        if (connection.target === undefined) return false;
-        const targetNode = nodes.find((node) => node.id === connection.target);
-        if (!targetNode) return false;
-        const targetType = (targetNode.data as { nodeType?: string }).nodeType;
-        if (targetType === "TRIGGER") return false;
-
-        const duplicate = edges.some(
-          (edge) =>
-            edge.source === connection.source &&
-            edge.target === connection.target &&
-            ((edge as Edge).sourceHandle ?? null) === (connection.sourceHandle ?? null)
-        );
-        if (duplicate) return false;
-
-        // Linear node types allow exactly one outgoing edge.
-        if (
-          (sourceType === "TRIGGER" ||
-            sourceType === "WAIT" ||
-            sourceType === "ACTION") &&
-          edges.some((edge) => edge.source === connection.source)
-        ) {
-          return false;
-        }
-
-        // CONDITION/BRANCH: one edge per outcome handle.
-        if (
-          (sourceType === "CONDITION" || sourceType === "BRANCH") &&
-          connection.sourceHandle &&
-          edges.some(
-            (edge) =>
-              edge.source === connection.source &&
-              ((edge as Edge).sourceHandle ?? null) === connection.sourceHandle
-          )
-        ) {
-          return false;
-        }
-
-        return true;
-      },
+    () => (connection: Connection | Edge): boolean => {
+      const { valid } = getConnectionReason(connection, nodes as Array<{ id: string; data?: { nodeType?: string } }>, edges as Edge[], readOnly);
+      return valid;
+    },
     [edges, nodes, readOnly]
+  );
+
+  const handleConnectEnd = useCallback(
+    (_event: MouseEvent | TouchEvent, connectionState: { fromNode?: { id: string } | null; toNode?: { id: string } | null; fromHandle?: { id: string | null } | null; toHandle?: { id: string | null } | null; from?: string; to?: string; fromHandleId?: string | null; toHandleId?: string | null }) => {
+      // React Flow's connectionState shape varies by version; normalize
+      const source = (connectionState as unknown as { from?: string; fromNode?: { id: string } })?.from ?? (connectionState as unknown as { fromNode?: { id: string } })?.fromNode?.id;
+      const target = (connectionState as unknown as { to?: string; toNode?: { id: string } })?.to ?? (connectionState as unknown as { toNode?: { id: string } })?.toNode?.id;
+      const sourceHandle = (connectionState as unknown as { fromHandleId?: string | null; fromHandle?: { id: string | null } })?.fromHandleId ?? (connectionState as unknown as { fromHandle?: { id: string | null } })?.fromHandle?.id ?? null;
+      const targetHandle = (connectionState as unknown as { toHandleId?: string | null; toHandle?: { id: string | null } })?.toHandleId ?? (connectionState as unknown as { toHandle?: { id: string | null } })?.toHandle?.id ?? null;
+      if (!source || !target) return; // dropped on pane
+      const conn: Connection = { source, target, sourceHandle, targetHandle } as Connection;
+      const { valid, reason } = getConnectionReason(conn, nodes as Array<{ id: string; data?: { nodeType?: string } }>, edges as Edge[], readOnly);
+      if (!valid && reason) {
+        toast.error(reason);
+      }
+    },
+    [nodes, edges, readOnly]
   );
 
   return (
@@ -103,6 +80,7 @@ export function WorkflowCanvas({
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -113,6 +91,9 @@ export function WorkflowCanvas({
         }}
         onSelectionChange={onSelectionChanged}
         isValidConnection={isValidConnection}
+        onConnectEnd={handleConnectEnd as unknown as (event: MouseEvent | TouchEvent, connectionState: unknown) => void}
+        onReconnect={onReconnect}
+        edgesReconnectable={!readOnly}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         elementsSelectable

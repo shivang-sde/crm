@@ -26,14 +26,21 @@ export interface GraphReconciliationPlan {
 }
 
 function stableStringify(value: unknown): string {
-  return JSON.stringify(value, Object.keys(flatten(value)).sort());
+  return JSON.stringify(canonicalize(value));
 }
 
-function flatten(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+function canonicalize(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map((item) => canonicalize(item));
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      sorted[key] = canonicalize(obj[key]);
+    }
+    return sorted;
   }
-  return { value };
+  return value;
 }
 
 export function buildGraphSnapshot(

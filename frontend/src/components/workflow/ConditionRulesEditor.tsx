@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +16,8 @@ import {
 import {
   WorkflowFieldOption,
 } from "./utils/field-options";
+import { WorkflowValuePicker } from "./WorkflowValuePicker";
+import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
 
 type WorkflowValueOption = { value: string; label: string };
 
@@ -54,6 +57,10 @@ interface ConditionRulesEditorProps {
   fieldOptions?: WorkflowFieldOption[];
   /** Resolves controlled value options for a selected field, if any. */
   resolveValueOptions?: (field: string) => WorkflowValueOption[] | null;
+  triggerEntityType?: string;
+  currentNodeId?: string;
+  nodes?: BuilderNode[];
+  edges?: BuilderEdge[];
 }
 
 /**
@@ -81,13 +88,28 @@ export function ConditionRulesEditor({
   onChange,
   fieldOptions,
   resolveValueOptions,
+  triggerEntityType,
+  currentNodeId,
+  nodes,
+  edges,
 }: ConditionRulesEditorProps) {
-  const updateRule = (index: number, patch: Partial<ConditionRule>) => {
-    const next = rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule));
-    onChange(logic, next);
-  };
+  const updateRule = useCallback(
+    (index: number, patch: Partial<ConditionRule>) => {
+      const next = rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule));
+      onChange(logic, next);
+    },
+    [rules, logic, onChange]
+  );
 
-  const knownFields = new Set((fieldOptions ?? []).map((option) => option.field));
+  const orderedGroupsMemo = useMemo(
+    () => orderedGroups(fieldOptions ?? []),
+    [fieldOptions]
+  );
+
+  const knownFields = useMemo(
+    () => new Set((fieldOptions ?? []).map((option) => option.field)),
+    [fieldOptions]
+  );
 
   return (
     <>
@@ -98,7 +120,7 @@ export function ConditionRulesEditor({
           disabled={readOnly}
           onValueChange={(value) => onChange(value as "AND" | "OR", rules)}
         >
-          <SelectTrigger>
+          <SelectTrigger aria-label="Condition logic">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -108,7 +130,7 @@ export function ConditionRulesEditor({
         </Select>
       </div>
 
-      {rules.map((rule, index) => {
+{rules.map((rule, index) => {
         const options = resolveValueOptions?.(rule.field) ?? null;
         return (
           <div key={index} className="space-y-2 rounded-md border p-3">
@@ -126,11 +148,11 @@ export function ConditionRulesEditor({
                   updateRule(index, { field: value === "__legacy__" ? "" : value })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label={`Condition ${index + 1} field`}>
                   <SelectValue placeholder="Field" />
                 </SelectTrigger>
                 <SelectContent>
-                  {orderedGroups(fieldOptions).map((group) => {
+                  {orderedGroupsMemo.map((group) => {
                       const groupOptions = fieldOptions.filter(
                         (option) => option.group === group.id
                       );
@@ -170,12 +192,12 @@ export function ConditionRulesEditor({
                 onBlur={(event) => updateRule(index, { field: event.target.value })}
               />
             )}
-            <Select
+<Select
               value={rule.operator}
               disabled={readOnly}
               onValueChange={(value) => updateRule(index, { operator: value })}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label={`Condition ${index + 1} operator`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -192,7 +214,7 @@ export function ConditionRulesEditor({
                 disabled={readOnly || NULL_OPERATORS.has(rule.operator)}
                 onValueChange={(value) => updateRule(index, { value })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label={`Condition ${index + 1} value`}>
                   <SelectValue placeholder="Value" />
                 </SelectTrigger>
                 <SelectContent>
@@ -204,12 +226,28 @@ export function ConditionRulesEditor({
                 </SelectContent>
               </Select>
             ) : (
-              <Input
-                placeholder="Value"
-                defaultValue={rule.value}
-                disabled={readOnly || NULL_OPERATORS.has(rule.operator)}
-                onBlur={(event) => updateRule(index, { value: event.target.value })}
-              />
+              <div className="flex gap-2">
+                <Input
+                  aria-label={`Condition ${index + 1} value`}
+                  placeholder={rule.operator === "IN" || rule.operator === "NOT_IN" ? "Value — comma separated" : "Value"}
+                  defaultValue={rule.value}
+                  disabled={readOnly || NULL_OPERATORS.has(rule.operator)}
+                  onBlur={(event) => updateRule(index, { value: event.target.value })}
+                  className="flex-1"
+                />
+                {!readOnly && !NULL_OPERATORS.has(rule.operator) && (
+                  <WorkflowValuePicker
+                    triggerEntityType={triggerEntityType}
+                    currentNodeId={currentNodeId}
+                    nodes={nodes}
+                    edges={edges}
+                    onSelect={(insertion) => {
+                      const nextVal = rule.value ? `${rule.value} ${insertion}` : insertion;
+                      updateRule(index, { value: nextVal });
+                    }}
+                  />
+                )}
+              </div>
             )}
             {!readOnly && rules.length > 1 && (
               <Button

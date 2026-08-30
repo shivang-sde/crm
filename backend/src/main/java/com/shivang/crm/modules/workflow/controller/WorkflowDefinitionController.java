@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -60,16 +61,19 @@ public class WorkflowDefinitionController {
     private final TenantContext tenantContext;
 
     @GetMapping("/metadata")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<WorkflowMetadataResponse>> getMetadata() {
         return ResponseEntity.ok(ApiResponse.success(workflowMetadataService.getMetadata()));
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<UUID>> createWorkflow(@Valid @RequestBody WorkflowCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(workflowDefinitionService.createWorkflow(tenant(), request.getName())));
     }
 
     @GetMapping
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<List<WorkflowResponse>>> listWorkflows(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
@@ -89,17 +93,21 @@ public class WorkflowDefinitionController {
     }
 
     @GetMapping("/{workflowId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<WorkflowResponse>> getWorkflow(@PathVariable UUID workflowId) {
         Workflow workflow = workflowDefinitionService.getWorkflow(tenant(), workflowId);
-        return ResponseEntity.ok(ApiResponse.success(toWorkflowResponse(workflow, null)));
+        UUID activeVersionId = workflowDefinitionService.getActiveVersionIds(tenant()).get(workflow.getId());
+        return ResponseEntity.ok(ApiResponse.success(toWorkflowResponse(workflow, activeVersionId)));
     }
 
     @GetMapping("/{workflowId}/versions")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<List<WorkflowVersionResponse>>> listVersions(@PathVariable UUID workflowId) {
         return ResponseEntity.ok(ApiResponse.success(workflowDefinitionService.listVersions(tenant(), workflowId)));
     }
 
     @GetMapping("/versions/{versionId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<WorkflowVersionResponse>> getVersion(@PathVariable UUID versionId) {
         WorkflowVersion version = workflowDefinitionService.getVersion(tenant(), versionId);
         return ResponseEntity.ok(ApiResponse.success(new WorkflowVersionResponse(
@@ -115,6 +123,7 @@ public class WorkflowDefinitionController {
     }
 
     @GetMapping("/versions/{versionId}/graph")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<WorkflowGraphResponse>> getGraph(@PathVariable UUID versionId) {
         return ResponseEntity.ok(ApiResponse.success(workflowDefinitionService.getGraph(tenant(), versionId)));
     }
@@ -131,68 +140,80 @@ public class WorkflowDefinitionController {
     }
 
     @PostMapping("/{workflowId}/versions")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<UUID>> createVersion(@PathVariable UUID workflowId, @Valid @RequestBody WorkflowVersionCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(workflowDefinitionService.createDraftVersion(tenant(), workflowId, request)));
     }
 
     @PostMapping("/versions/{versionId}/nodes")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<UUID>> addNode(@PathVariable UUID versionId, @Valid @RequestBody WorkflowNodeRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(workflowDefinitionService.addNode(tenant(), versionId, request)));
     }
 
     @PutMapping("/versions/{versionId}/nodes/{nodeId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<String>> updateNode(@PathVariable UUID versionId, @PathVariable UUID nodeId, @Valid @RequestBody WorkflowNodeRequest request) {
         workflowDefinitionService.updateNode(tenant(), versionId, nodeId, request);
         return ResponseEntity.ok(ApiResponse.success("Workflow node updated"));
     }
 
     @DeleteMapping("/versions/{versionId}/nodes/{nodeId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'delete')")
     public ResponseEntity<ApiResponse<String>> deleteNode(@PathVariable UUID versionId, @PathVariable UUID nodeId) {
         workflowDefinitionService.deleteNode(tenant(), versionId, nodeId, user());
         return ResponseEntity.ok(ApiResponse.success("Workflow node deleted"));
     }
 
     @PostMapping("/versions/{versionId}/edges")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<UUID>> addEdge(@PathVariable UUID versionId, @Valid @RequestBody WorkflowEdgeRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(workflowDefinitionService.addEdge(tenant(), versionId, request)));
     }
 
     @PutMapping("/versions/{versionId}/edges/{edgeId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<String>> updateEdge(@PathVariable UUID versionId, @PathVariable UUID edgeId, @Valid @RequestBody WorkflowEdgeRequest request) {
         workflowDefinitionService.updateEdge(tenant(), versionId, edgeId, request);
         return ResponseEntity.ok(ApiResponse.success("Workflow edge updated"));
     }
 
     @DeleteMapping("/versions/{versionId}/edges/{edgeId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'delete')")
     public ResponseEntity<ApiResponse<String>> deleteEdge(@PathVariable UUID versionId, @PathVariable UUID edgeId) {
         workflowDefinitionService.deleteEdge(tenant(), versionId, edgeId, user());
         return ResponseEntity.ok(ApiResponse.success("Workflow edge deleted"));
     }
 
     @PostMapping("/versions/{versionId}/validate")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<List<WorkflowGraphValidationError>>> validate(@PathVariable UUID versionId) {
         return ResponseEntity.ok(ApiResponse.success(workflowDefinitionService.validate(tenant(), versionId)));
     }
 
     @PostMapping("/versions/{versionId}/activate")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<String>> activate(@PathVariable UUID versionId) {
         workflowDefinitionService.activate(tenant(), versionId);
         return ResponseEntity.ok(ApiResponse.success("Workflow version activated"));
     }
 
     @PostMapping("/{workflowId}/deactivate")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<String>> deactivate(@PathVariable UUID workflowId) {
         workflowDefinitionService.deactivate(tenant(), workflowId);
         return ResponseEntity.ok(ApiResponse.success("Workflow deactivated"));
     }
 
     @PostMapping("/executions/{executionId}/retry")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<WorkflowExecutionControlResponse>> retryExecution(@PathVariable UUID executionId) {
         return ResponseEntity.ok(ApiResponse.success(
             workflowExecutionControlService.retryExecution(tenant(), executionId)));
     }
 
     @PostMapping("/executions/{executionId}/replay")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<WorkflowExecutionReplayResponse>> replay(@PathVariable UUID executionId) {
         WorkflowExecution replay = workflowExecutionReplayService.replay(tenant(), executionId);
         WorkflowExecutionReplayResponse response = new WorkflowExecutionReplayResponse(
@@ -204,6 +225,7 @@ public class WorkflowDefinitionController {
     }
 
     @GetMapping("/executions")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<List<WorkflowExecutionSummaryResponse>>> listExecutions(
         @RequestParam(required = false) WorkflowExecutionStatus status,
         @RequestParam(required = false) UUID workflowId,
@@ -225,6 +247,7 @@ public class WorkflowDefinitionController {
     }
 
     @GetMapping("/executions/{executionId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<WorkflowExecutionDetailResponse>> getExecution(@PathVariable UUID executionId) {
         UUID tenantId = tenant();
         WorkflowExecution execution = workflowExecutionQueryService.getExecution(tenantId, executionId);
@@ -286,6 +309,7 @@ public class WorkflowDefinitionController {
             nodeExecution.getStartedAt(),
             nodeExecution.getCompletedAt(),
             nodeExecution.getNextAttemptAt(),
+            nodeExecution.getInputContext(),
             nodeExecution.getOutputContext(),
             nodeExecution.getLastErrorCode(),
             nodeExecution.getLastErrorMessage()

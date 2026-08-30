@@ -11,6 +11,8 @@ import com.shivang.crm.modules.workflow.entity.WorkflowEdge;
 import com.shivang.crm.modules.workflow.entity.WorkflowExecution;
 import com.shivang.crm.modules.workflow.entity.WorkflowNode;
 import com.shivang.crm.modules.workflow.entity.WorkflowNodeType;
+import com.shivang.crm.modules.workflow.service.WorkflowResolvedValue;
+import com.shivang.crm.modules.workflow.service.WorkflowValueResolver;
 
 /**
  * Evaluates configured conditions (same rule model as CONDITION) and selects
@@ -24,9 +26,11 @@ public class BranchNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
     private static final Set<String> LOGICS = Set.of("AND", "OR");
 
     private final WorkflowConditionEvaluator conditionEvaluator;
+    private final WorkflowValueResolver valueResolver;
 
-    public BranchNodeExecutor(WorkflowConditionEvaluator conditionEvaluator) {
+    public BranchNodeExecutor(WorkflowConditionEvaluator conditionEvaluator, WorkflowValueResolver valueResolver) {
         this.conditionEvaluator = conditionEvaluator;
+        this.valueResolver = valueResolver;
     }
 
     @Override
@@ -51,11 +55,38 @@ public class BranchNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
         }
 
         List<Boolean> results = new java.util.ArrayList<>();
+        List<Map<String, Object>> ruleResults = new java.util.ArrayList<>();
+        int index = 0;
         for (Object rawCondition : conditions) {
             if (!(rawCondition instanceof Map<?, ?> condition)) {
                 throw branchFailure("WORKFLOW_BRANCH_INVALID", "Each branch condition must be an object");
             }
-            results.add(conditionEvaluator.evaluate(condition, context));
+            String field = valueText(condition.get("field"));
+            String operator = keyword(condition.get("operator"));
+            Object expected = condition.get("value");
+            Object actual = null;
+            boolean passed;
+            try {
+                try {
+                    WorkflowResolvedValue resolved = valueResolver.resolve(context, field);
+                    actual = resolved.found() ? resolved.value() : null;
+                } catch (Exception ignore) {
+                    actual = null;
+                }
+                passed = conditionEvaluator.evaluate(condition, context);
+            } catch (RuntimeException ex) {
+                passed = false;
+            }
+            results.add(passed);
+            Map<String, Object> rr = new java.util.LinkedHashMap<>();
+            rr.put("index", index);
+            rr.put("field", field);
+            rr.put("operator", operator);
+            rr.put("expected", expected);
+            rr.put("actual", actual);
+            rr.put("passed", passed);
+            ruleResults.add(rr);
+            index++;
         }
 
         boolean outcomeBoolean = "AND".equals(logic)
@@ -65,9 +96,14 @@ public class BranchNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
 
         UUID selectedEdgeId = selectEdge(outgoingEdges, outcome);
 
+        java.util.Map<String, Object> output = new java.util.LinkedHashMap<>();
+        output.put("outcome", outcome);
+        output.put("selectedEdgeId", String.valueOf(selectedEdgeId));
+        output.put("ruleResults", ruleResults);
+        output.put("logic", logic);
         return new WorkflowNodeExecutionResult(
             com.shivang.crm.modules.workflow.entity.WorkflowNodeExecutionStatus.COMPLETED,
-            Map.of("outcome", outcome, "selectedEdgeId", String.valueOf(selectedEdgeId)),
+            output,
             List.of(selectedEdgeId),
             null,
             null
@@ -93,6 +129,10 @@ public class BranchNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
 
     private String keyword(Object value) {
         return value == null ? "" : String.valueOf(value).trim().toUpperCase();
+    }
+
+    private String valueText(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
     }
 
     private WorkflowRuntimeException branchFailure(String code, String message) {

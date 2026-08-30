@@ -127,12 +127,16 @@ export default function WorkflowExecutionsPage() {
         </CardHeader>
         <CardContent>
           {executionsQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading executions…</p>
+            <div className="space-y-3">
+              <div className="h-20 w-full motion-safe:animate-pulse rounded-lg bg-muted" />
+              <div className="h-20 w-full motion-safe:animate-pulse rounded-lg bg-muted" />
+            </div>
           ) : executionsQuery.isError ? (
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Failed to load executions.</p>
+              <p className="text-sm font-medium">Unable to load executions.</p>
+              <p className="text-sm text-muted-foreground">Please try again.</p>
               <Button variant="outline" size="sm" onClick={() => executionsQuery.refetch()}>
-                Retry
+                Try again
               </Button>
             </div>
           ) : executions.length === 0 ? (
@@ -146,10 +150,15 @@ export default function WorkflowExecutionsPage() {
                 </Button>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                No executions yet. Runs appear here when the active workflow version
-                is triggered.
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">No workflow executions yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  Activate this workflow and trigger its event to see executions here.
+                </p>
+                <Link href={`/workflows/${workflowId}`}>
+                  <Button variant="outline" size="sm">Open Workflow</Button>
+                </Link>
+              </div>
             )
           ) : (
             <div className="space-y-3">
@@ -165,7 +174,7 @@ export default function WorkflowExecutionsPage() {
                         <div className="flex items-center gap-1.5">
                           {(execution.status === "RUNNING" || execution.status === "PENDING") && (
                             <span className="relative flex h-2 w-2">
-                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                              <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-blue-400 opacity-75"></span>
                               <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
                             </span>
                           )}

@@ -16,6 +16,7 @@ export interface BuilderNode {
 
 export interface BuilderEdge {
   id: string;
+  type?: string;
   source: string;
   target: string;
   sourceHandle?: string | null;
@@ -56,28 +57,54 @@ export function generateNodeKey(nodeType: WorkflowNodeType, existingKeys: string
   return candidate;
 }
 
+interface NodePosition {
+  x: number;
+  y: number;
+}
+
+function hasPersistedPosition(config: Record<string, unknown>): config is Record<string, unknown> & { position: NodePosition } {
+  return (
+    typeof config === "object" &&
+    config !== null &&
+    typeof (config as Record<string, unknown>).position === "object" &&
+    (config as Record<string, unknown>).position !== null &&
+    typeof ((config as Record<string, unknown>).position as Record<string, unknown>).x === "number" &&
+    typeof ((config as Record<string, unknown>).position as Record<string, unknown>).y === "number"
+  );
+}
+
+function extractPosition(config: Record<string, unknown>): NodePosition | null {
+  if (hasPersistedPosition(config)) {
+    return { x: config.position.x, y: config.position.y };
+  }
+  return null;
+}
+
 /**
  * Converts a persisted backend graph into React Flow nodes/edges.
  *
- * The backend does not persist node positions, so a deterministic layered
- * layout is derived here. This is isolated so persisted positions can be
- * introduced later without touching UI code.
+ * If node.configuration.position exists, it is used. Otherwise a deterministic
+ * layered layout is applied to nodes without persisted positions.
  */
 export function toFlowGraph(
   nodes: WorkflowGraphNodeResponse[],
   edges: WorkflowGraphEdgeResponse[]
 ): { nodes: BuilderNode[]; edges: BuilderEdge[] } {
-  const flowNodes: BuilderNode[] = nodes.map((node) => ({
-    id: node.id,
-    type: node.nodeType.toLowerCase(),
-    position: { x: 0, y: 0 },
-    data: {
-      nodeKey: node.nodeKey,
-      nodeType: node.nodeType,
-      name: node.name,
-      configuration: { ...(node.configuration ?? {}) },
-    },
-  }));
+  const flowNodes: BuilderNode[] = nodes.map((node) => {
+    const config = { ...(node.configuration ?? {}) };
+    const persistedPos = extractPosition(config);
+    return {
+      id: node.id,
+      type: node.nodeType.toLowerCase(),
+      position: persistedPos ?? { x: 0, y: 0 },
+      data: {
+        nodeKey: node.nodeKey,
+        nodeType: node.nodeType,
+        name: node.name,
+        configuration: config,
+      },
+    };
+  });
 
   const flowEdges: BuilderEdge[] = edges.map((edge) => {
     const outcome =
@@ -94,6 +121,7 @@ export function toFlowGraph(
 
     return {
       id: edge.id,
+      type: "workflow",
       source: edge.sourceNodeId,
       target: edge.targetNodeId,
       sourceHandle:
@@ -107,6 +135,7 @@ export function toFlowGraph(
     };
   });
 
+  // Apply layered layout only to nodes without persisted positions
   applyLayeredLayout(flowNodes, flowEdges);
 
   return { nodes: flowNodes, edges: flowEdges };
@@ -115,8 +144,9 @@ export function toFlowGraph(
 /**
  * Deterministic layout: breadth-first layers starting from TRIGGER nodes,
  * then any remaining unreachable nodes in their original order.
+ * Only positions nodes that don't already have a persisted position (configuration.position presence is authoritative).
  */
-function applyLayeredLayout(nodes: BuilderNode[], edges: BuilderEdge[]): void {
+export function applyLayeredLayout(nodes: BuilderNode[], edges: BuilderEdge[]): void {
   const HORIZONTAL_SPACING = 280;
   const VERTICAL_SPACING = 160;
 
@@ -160,6 +190,9 @@ function applyLayeredLayout(nodes: BuilderNode[], edges: BuilderEdge[]): void {
 
   const byDepth = new Map<number, BuilderNode[]>();
   for (const node of nodes) {
+    // Persisted-position check is authoritative via configuration.position, not coordinates.
+    if (hasPersistedPosition(node.data.configuration)) continue;
+    
     const d = depth.get(node.id) ?? 0;
     const list = byDepth.get(d) ?? [];
     list.push(node);
