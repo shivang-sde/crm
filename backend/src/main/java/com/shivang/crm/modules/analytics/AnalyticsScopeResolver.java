@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.rbac.service.PermissionEvaluatorService;
+import com.shivang.crm.modules.tenant.repository.TenantRepository;
 import com.shivang.crm.shared.exception.BusinessException;
 import com.shivang.crm.shared.exception.PermissionDeniedException;
 
@@ -33,6 +34,10 @@ import lombok.extern.slf4j.Slf4j;
  *
  * A tenant-created custom role with report:read = ALL/TEAM/OWN therefore gets
  * TENANT/TEAM/USER respectively, independent of its role name.
+ *
+ * Optional tenantId parameter allows SUPERADMIN/RESELLER to drill into a
+ * specific tenant. When authorized, the effective scope becomes TENANT
+ * for the selected tenant.
  */
 @Slf4j
 @Component
@@ -41,14 +46,15 @@ public class AnalyticsScopeResolver {
 
     private final TenantContext tenantContext;
     private final PermissionEvaluatorService permissionEvaluatorService;
+    private final TenantRepository tenantRepository;
 
     /**
-     * @param requestedScope optional client-requested downgrade; may never
-     *                       exceed the caller's derived authority and is only
-     *                       honored when it can be resolved without trusting
-     *                       client-supplied IDs.
+     * @param requestedScope optional client-requested scope downgrade; may never
+     *                       exceed the caller's derived authority
+     * @param requestedTenantId optional tenant UUID to drill into; validated
+     *                          against caller's authority before use
      */
-    public AnalyticsContext resolve(String requestedScope) {
+    public AnalyticsContext resolve(String requestedScope, UUID requestedTenantId) {
         AnalyticsScope effective = deriveScope();
         AnalyticsScope requested = parseRequested(requestedScope);
 
@@ -65,7 +71,58 @@ public class AnalyticsScopeResolver {
             effective = AnalyticsScope.USER;
         }
 
+        // Handle tenantId drill-down
+        if (requestedTenantId != null) {
+            validateTenantAccess(requestedTenantId);
+            // When a specific tenant is selected, analytics run as TENANT scope
+            // for that tenant, regardless of the caller's original scope
+            return buildTenantContext(requestedTenantId);
+        }
+
         return build(effective);
+    }
+
+    private void validateTenantAccess(UUID tenantId) {
+        UUID userId = tenantContext.getUserId();
+        String userLevel = tenantContext.getUserLevel();
+        String role = tenantContext.getRole();
+
+        if (userId == null) {
+            throw new BusinessException("INVALID_ANALYTICS_SCOPE", "User identity is not available");
+        }
+
+        // SUPERADMIN can access any existing tenant
+        if ("PLATFORM".equals(userLevel) && "SUPERADMIN".equals(role)) {
+            tenantRepository.findById(tenantId)
+                    .orElseThrow(() -> new BusinessException("NOT_FOUND", "Tenant not found"));
+            return;
+        }
+
+        // RESELLER can only access tenants owned by them. Non-existent tenants
+        // return the same denial, so tenant existence is not leaked.
+        if ("PLATFORM".equals(userLevel) && "RESELLER".equals(role)) {
+            boolean owned = tenantRepository.findById(tenantId)
+                    .map(t -> userId.equals(t.getResellerId()))
+                    .orElse(false);
+            if (!owned) {
+                throw new PermissionDeniedException("ACCESS_DENIED",
+                        "You do not have permission to access this tenant");
+            }
+            return;
+        }
+
+        // TENANT users can only access their own tenant
+        if ("TENANT".equals(userLevel)) {
+            UUID currentTenantId = tenantContext.getTenantId();
+            if (currentTenantId == null || !currentTenantId.equals(tenantId)) {
+                throw new PermissionDeniedException("ACCESS_DENIED",
+                        "You do not have permission to access this tenant");
+            }
+            return;
+        }
+
+        throw new PermissionDeniedException("ACCESS_DENIED",
+                "You do not have permission to access this tenant");
     }
 
     private AnalyticsScope deriveScope() {
@@ -128,5 +185,14 @@ public class AnalyticsScopeResolver {
             case TEAM -> new AnalyticsContext(scope, tenantContext.requireTenantId(), null, userId);
             case USER -> new AnalyticsContext(scope, tenantContext.requireTenantId(), null, userId);
         };
+    }
+
+    private AnalyticsContext buildTenantContext(UUID tenantId) {
+        UUID userId = tenantContext.getUserId();
+        if (userId == null) {
+            throw new BusinessException("INVALID_ANALYTICS_SCOPE", "User identity is not available");
+        }
+        // When drilling into a specific tenant, always use TENANT scope
+        return new AnalyticsContext(AnalyticsScope.TENANT, tenantId, null, userId);
     }
 }

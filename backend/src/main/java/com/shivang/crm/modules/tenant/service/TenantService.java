@@ -76,7 +76,7 @@ public class TenantService {
             // SUPERADMIN can access any tenant
         } else if ("RESELLER".equals(userRole)) {
             // RESELLER can only access their own tenants
-            if (!tenant.getResellerId().equals(userId)) {
+            if (!userId.equals(tenant.getResellerId())) {
                 throw new BusinessException("FORBIDDEN", "You don't have access to this tenant");
             }
         } else {

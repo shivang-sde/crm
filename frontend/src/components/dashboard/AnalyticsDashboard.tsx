@@ -171,13 +171,13 @@ function ActivityMetricsCard({ data }: { data: ActivityMetrics }) {
   );
 }
 
-export function AnalyticsDashboard() {
+export function AnalyticsDashboard({ tenantId }: { tenantId?: string }) {
   const [selectedPreset, setSelectedPreset] = useState<RangePreset>("30d");
 
   const dateRange = useMemo(() => getPresetRange(selectedPreset), [selectedPreset]);
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useAnalyticsSummary(dateRange);
-  const { data: trendData } = useAnalyticsTrends(dateRange);
+  const { data, isLoading, isError, error, refetch, isFetching } = useAnalyticsSummary(dateRange, tenantId);
+  const { data: trendData } = useAnalyticsTrends(dateRange, tenantId);
 
   // Permission gate (UX only; the backend remains authoritative). The scope is
   // always read from the backend response, never derived from role names.
