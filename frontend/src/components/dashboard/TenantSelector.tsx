@@ -1,8 +1,8 @@
 "use client";
 
-import { Building2, Loader2 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { Building2, Loader2, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { TenantResponse } from "@/types/tenant";
 
 interface TenantSelectorProps {
@@ -12,7 +12,11 @@ interface TenantSelectorProps {
   placeholder?: string;
   disabled?: boolean;
   isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
+
+const ALL_VALUE = "__all_tenants__";
 
 export function TenantSelector({
   tenants,
@@ -21,68 +25,64 @@ export function TenantSelector({
   placeholder = "All Tenants",
   disabled = false,
   isLoading = false,
+  isError = false,
+  onRetry,
 }: TenantSelectorProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (selectRef.current && !selectRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const handleSelect = (value: string) => {
-    onSelect(value === "all" ? null : value);
-    setIsOpen(false);
+    onSelect(value === ALL_VALUE ? null : value);
   };
 
-  const getTenantLabel = (tenant: TenantResponse) => {
-    return tenant.name || tenant.slug || tenant.id;
-  };
-
-  if (isLoading || tenants.length === 0) {
+  if (isError) {
     return (
-      <div className="relative w-full max-w-xs">
-        <Select disabled>
-          <SelectTrigger className="w-full" aria-label="Tenant selector">
-            <SelectValue placeholder={isLoading ? "Loading tenants..." : "No tenants available"} />
-            {isLoading && (
-              <Loader2 className="ml-2 h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </SelectTrigger>
-        </Select>
+      <div className="flex w-full items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-1.5 sm:w-auto sm:max-w-xs">
+        <span className="text-sm text-destructive">Couldn&apos;t load tenants.</span>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RefreshCw className="mr-1.5 h-3 w-3" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex w-full items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground sm:w-auto sm:max-w-xs">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading tenants...
+      </div>
+    );
+  }
+
+  if (tenants.length === 0) {
+    return (
+      <div className="flex w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground sm:w-auto sm:max-w-xs">
+        <Building2 className="h-4 w-4" />
+        No tenants available
       </div>
     );
   }
 
   return (
-    <div className="relative w-full max-w-xs" ref={selectRef}>
-      <Select
-        value={selectedTenantId ?? "all"}
-        onValueChange={handleSelect}
-        disabled={disabled}
-        open={isOpen}
-        onOpenChange={setIsOpen}
-      >
-        <SelectTrigger className="w-full" aria-label="Tenant selector">
+    <div className="w-full sm:w-auto sm:max-w-xs">
+      <Select value={selectedTenantId ?? ALL_VALUE} onValueChange={handleSelect} disabled={disabled}>
+        <SelectTrigger className="w-full" aria-label={placeholder}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent position="popper" sideOffset={5}>
-          <SelectItem value="all">
+          <SelectItem value={ALL_VALUE}>
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-muted-foreground" />
-              <span>All Tenants</span>
+              <span>{placeholder}</span>
             </div>
           </SelectItem>
           {tenants.map((tenant) => (
             <SelectItem key={tenant.id} value={tenant.id}>
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-muted-foreground" />
-                <span>{getTenantLabel(tenant)}</span>
+                <div className="flex flex-col leading-tight">
+                  <span>{tenant.name || tenant.slug || "Unnamed tenant"}</span>
+                  {tenant.slug && tenant.name && <span className="text-[11px] text-muted-foreground">{tenant.slug}</span>}
+                </div>
               </div>
             </SelectItem>
           ))}

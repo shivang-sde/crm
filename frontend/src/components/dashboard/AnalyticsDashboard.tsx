@@ -1,10 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2, RefreshCw, Users, UserCheck, Briefcase, CheckSquare, Phone, Calendar, TrendingUp, Target, Clock, ShieldAlert } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  Briefcase,
+  Calendar,
+  CheckSquare,
+  Clock,
+  Inbox,
+  Loader2,
+  Phone,
+  RefreshCw,
+  ShieldAlert,
+  Target,
+  TrendingUp,
+  UserCheck,
+  Users,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import { apiErrorMessage } from "@/lib/api/api-utils";
 import { useAnalyticsSummary, useAnalyticsTrends } from "@/lib/hooks/analytics";
 import { useAuthStore } from "@/lib/store/authStore";
 import { usePermissions } from "@/lib/hooks/usePermissions";
@@ -17,6 +34,14 @@ const SCOPE_LABELS: Record<AnalyticsScope, string> = {
   TENANT: "Company Overview",
   TEAM: "Team Overview",
   USER: "My Dashboard",
+};
+
+const SCOPE_BADGE_LABELS: Record<AnalyticsScope, string> = {
+  PLATFORM: "Platform",
+  RESELLER: "Reseller",
+  TENANT: "Tenant",
+  TEAM: "Team",
+  USER: "My activity",
 };
 
 type RangePreset = "7d" | "30d" | "90d";
@@ -43,10 +68,44 @@ function formatRate(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
+function isPermissionDenied(error: unknown): boolean {
+  const err = error as {
+    response?: { status?: number; data?: { error?: { code?: string } } };
+  };
+  const code = err?.response?.data?.error?.code;
+  return err?.response?.status === 403 || code === "FORBIDDEN" || code === "PERMISSION_DENIED" || code === "ACCESS_DENIED";
+}
+
+function getErrorMessage(error: unknown): string {
+  return apiErrorMessage(error, "Unable to load analytics data.");
+}
+
+function RangePresets({ value, onChange }: { value: RangePreset; onChange: (v: RangePreset) => void }) {
+  return (
+    <div role="group" aria-label="Date range" className="flex items-center gap-1 rounded-lg border bg-muted p-1">
+      {RANGE_PRESETS.map((preset) => (
+        <button
+          key={preset.value}
+          type="button"
+          aria-pressed={value === preset.value}
+          onClick={() => onChange(preset.value)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            value === preset.value
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {preset.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface KpiCardProps {
   label: string;
   value: number;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }
 
 function KpiCard({ label, value, icon }: KpiCardProps) {
@@ -61,7 +120,12 @@ function KpiCard({ label, value, icon }: KpiCardProps) {
             {label}
           </p>
         </div>
-        <p className="mt-3 text-3xl font-bold text-foreground">{value.toLocaleString()}</p>
+        <p
+          className="mt-3 text-2xl font-bold text-foreground tabular-nums sm:text-3xl"
+          aria-label={`${label}: ${value.toLocaleString()}`}
+        >
+          {value.toLocaleString()}
+        </p>
       </CardContent>
     </Card>
   );
@@ -77,7 +141,7 @@ function MetricRow({ label, value, tone }: { label: string; value: string; tone?
   return (
     <div className="flex items-center justify-between py-1.5">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={`text-sm font-medium ${tones[tone ?? "default"]}`}>{value}</span>
+      <span className={`text-sm font-medium tabular-nums ${tones[tone ?? "default"]}`}>{value}</span>
     </div>
   );
 }
@@ -171,21 +235,64 @@ function ActivityMetricsCard({ data }: { data: ActivityMetrics }) {
   );
 }
 
-export function AnalyticsDashboard({ tenantId }: { tenantId?: string }) {
+function DashboardSkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <KpiCardSkeleton key={i} />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricSectionSkeleton />
+        <MetricSectionSkeleton />
+        <MetricSectionSkeleton />
+      </div>
+      <Card className="shadow-sm border border-muted">
+        <CardHeader className="pb-2">
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-[320px] w-full" />
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+interface AnalyticsDashboardProps {
+  tenantId?: string;
+  tenantName?: string;
+  actions?: ReactNode;
+}
+
+export function AnalyticsDashboard({ tenantId, tenantName, actions }: AnalyticsDashboardProps) {
   const [selectedPreset, setSelectedPreset] = useState<RangePreset>("30d");
 
   const dateRange = useMemo(() => getPresetRange(selectedPreset), [selectedPreset]);
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useAnalyticsSummary(dateRange, tenantId);
-  const { data: trendData } = useAnalyticsTrends(dateRange, tenantId);
-
-  // Permission gate (UX only; the backend remains authoritative). The scope is
-  // always read from the backend response, never derived from role names.
+  // Permission gate (UX only; the backend remains authoritative). Applied via
+  // `enabled` so no analytics request fires without report:read.
   const { hasPermission } = usePermissions();
   const userRole = useAuthStore((s) => s.userRole);
-  const isPlatformRole = userRole === "SUPERADMIN" || userRole === "RESELLER";
+  const canView = userRole === "SUPERADMIN" || userRole === "RESELLER" || hasPermission("report", "read");
 
-  if (!isPlatformRole && !hasPermission("report", "read")) {
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useAnalyticsSummary(dateRange, tenantId, { enabled: canView });
+  const {
+    data: trendData,
+    isError: trendsError,
+    error: trendsQueryError,
+    refetch: refetchTrends,
+  } = useAnalyticsTrends(dateRange, tenantId, { enabled: canView });
+
+  if (!canView) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4 text-center">
         <ShieldAlert className="h-10 w-10 text-muted-foreground" />
@@ -197,53 +304,17 @@ export function AnalyticsDashboard({ tenantId }: { tenantId?: string }) {
     );
   }
 
-  const scopeLabel = data?.scope ? SCOPE_LABELS[data.scope] : "";
+  const scope = data?.scope;
+  const title = tenantName ?? (scope ? SCOPE_LABELS[scope] : "Analytics");
+  const scopeBadge = scope ? SCOPE_BADGE_LABELS[scope] : null;
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <Skeleton className="h-7 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <Skeleton className="h-9 w-36" />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <KpiCardSkeleton key={i} />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <MetricSectionSkeleton />
-          <MetricSectionSkeleton />
-          <MetricSectionSkeleton />
-        </div>
-        <Card className="shadow-sm border border-muted">
-          <CardHeader className="pb-2">
-            <Skeleton className="h-5 w-40" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-[320px] w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  let subtitle = "Aggregate metrics for your visibility scope.";
+  if (tenantName) subtitle = `Analytics scoped to ${tenantName}.`;
+  else if (scope === "PLATFORM") subtitle = "Platform-wide aggregates across all tenants.";
+  else if (scope === "RESELLER") subtitle = "Aggregated metrics across all tenants you manage.";
 
-  if (isError) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <p className="text-sm text-destructive">
-          {error instanceof Error ? error.message : "Unable to load analytics data."}
-        </p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Retry
-        </Button>
-      </div>
-    );
-  }
+  const totalCount = data ? data.leads + data.contacts + data.deals + data.tasks + data.calls + data.meetings : 0;
+  const isEmpty = Boolean(data) && totalCount === 0;
 
   const kpis = data
     ? [
@@ -258,60 +329,107 @@ export function AnalyticsDashboard({ tenantId }: { tenantId?: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{scopeLabel}</h1>
-          <p className="text-sm text-muted-foreground">
-            Aggregate metrics for your visibility scope.
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+            {scopeBadge && (
+              <Badge variant="outline" className="text-xs font-medium text-muted-foreground">
+                {scopeBadge}
+              </Badge>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {subtitle}
             {isFetching && (
-              <Loader2 className="inline ml-2 h-3 w-3 animate-spin text-muted-foreground" />
+              <Loader2 className="ml-2 inline h-3 w-3 animate-spin align-[-1px] text-muted-foreground" />
             )}
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border bg-muted p-1">
-          {RANGE_PRESETS.map((preset) => (
-            <button
-              key={preset.value}
-              onClick={() => setSelectedPreset(preset.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                selectedPreset === preset.value
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {actions}
+          <RangePresets value={selectedPreset} onChange={setSelectedPreset} />
         </div>
-      </div>
+      </header>
 
-      {/* AN-2: Basic entity counts */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {kpis.map((kpi) => (
-          <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} />
-        ))}
-      </div>
-
-      {/* AN-3: Expanded metrics */}
-      {data && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {data.leadMetrics && <LeadMetricsCard data={data.leadMetrics} />}
-          {data.dealMetrics && <DealMetricsCard data={data.dealMetrics} />}
-          {data.activityMetrics && <ActivityMetricsCard data={data.activityMetrics} />}
+      {isPending ? (
+        <DashboardSkeleton />
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-16 space-y-4 text-center">
+          {isPermissionDenied(error) ? (
+            <>
+              <ShieldAlert className="h-8 w-8 text-destructive" />
+              <div>
+                <p className="text-sm font-medium">You don&apos;t have permission to view these analytics.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Your role&apos;s access scope may not cover this view. Contact your administrator.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+              <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
+            </>
+          )}
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
         </div>
-      )}
+      ) : isEmpty ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-16 space-y-4 text-center">
+          <Inbox className="h-10 w-10 text-muted-foreground/60" />
+          <div>
+            <h2 className="text-base font-semibold">No activity in this period</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {tenantName
+                ? `No leads, deals, or activities were recorded for ${tenantName} in the selected date range. Try widening the range above.`
+                : "No leads, deals, or activities were recorded in the selected date range. Try widening the range above."}
+            </p>
+          </div>
+        </div>
+      ) : (
+        data && (
+          <>
+            {/* AN-2: Basic entity counts */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {kpis.map((kpi) => (
+                <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} />
+              ))}
+            </div>
 
-      {/* AN-4: Trend chart */}
-      {trendData && trendData.length > 0 && (
-        <AnalyticsTrendChart data={trendData} />
-      )}
+            {/* AN-3: Expanded metrics */}
+            {data.leadMetrics && data.dealMetrics && data.activityMetrics && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <LeadMetricsCard data={data.leadMetrics} />
+                <DealMetricsCard data={data.dealMetrics} />
+                <ActivityMetricsCard data={data.activityMetrics} />
+              </div>
+            )}
 
-      {!isFetching && data && (
-        <p className="text-xs text-muted-foreground text-center">
-          Showing data from{" "}
-          {new Date(data.from).toLocaleDateString()} to{" "}
-          {new Date(data.to).toLocaleDateString()}
-        </p>
+            {/* AN-4: Trend chart */}
+            {trendsError ? (
+              <Card className="shadow-sm border border-muted">
+                <CardContent className="flex items-center justify-between gap-4 py-6">
+                  <p className="text-sm text-destructive">
+                    {getErrorMessage(trendsQueryError)}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => refetchTrends()}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <AnalyticsTrendChart data={trendData ?? []} />
+            )}
+
+            <p className="text-xs text-muted-foreground text-center">
+              Showing data from {new Date(data.from).toLocaleDateString()} to {new Date(data.to).toLocaleDateString()}
+            </p>
+          </>
+        )
       )}
     </div>
   );

@@ -7,50 +7,40 @@ import { TenantSelector } from "@/components/dashboard/TenantSelector";
 import { useTenants } from "@/lib/hooks/tenants";
 
 export default function SuperAdminPage() {
-  const { data: tenants, isLoading: tenantsLoading } = useTenants();
+  const { data: tenants, isLoading: tenantsLoading, isError: tenantsError, refetch: refetchTenants } = useTenants();
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
 
-  const handleTenantSelect = (tenantId: string | null) => {
-    setSelectedTenantId(tenantId);
-  };
-
   const tenantOptions = tenants ?? [];
+  const selectedTenant = tenantOptions.find((t) => t.id === selectedTenantId);
 
   return (
     <div className="space-y-8">
       <section aria-label="Administrative health">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Administrative Health</h2>
-            <p className="text-sm text-muted-foreground">
-              Tenant and subscription status across your platform.
-            </p>
-          </div>
-          <div className="w-full sm:w-auto">
-            <TenantSelector
-              tenants={tenantOptions}
-              selectedTenantId={selectedTenantId}
-              onSelect={handleTenantSelect}
-              placeholder="All Tenants"
-              isLoading={tenantsLoading}
-            />
-          </div>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold tracking-tight">Administrative Health</h2>
+          <p className="text-sm text-muted-foreground">
+            Tenant and subscription status across your platform.
+          </p>
         </div>
         <TenantSummary showResellers />
       </section>
 
-      <section aria-label="CRM overview">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">CRM Overview</h2>
-            <p className="text-sm text-muted-foreground">
-              {selectedTenantId
-                ? "Analytics for selected tenant."
-                : "Platform-wide aggregate metrics."}
-            </p>
-          </div>
-        </div>
-        <AnalyticsDashboard tenantId={selectedTenantId ?? undefined} />
+      <section aria-label="CRM analytics">
+        <AnalyticsDashboard
+          tenantId={selectedTenantId ?? undefined}
+          tenantName={selectedTenant?.name || selectedTenant?.slug}
+          actions={
+            <TenantSelector
+              tenants={tenantOptions}
+              selectedTenantId={selectedTenantId}
+              onSelect={setSelectedTenantId}
+              placeholder="All Tenants"
+              isLoading={tenantsLoading}
+              isError={tenantsError}
+              onRetry={refetchTenants}
+            />
+          }
+        />
       </section>
     </div>
   );

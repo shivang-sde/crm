@@ -47,7 +47,7 @@ function StatCard({ label, value, icon, hint, tone = "default" }: StatCardProps)
             {label}
           </p>
         </div>
-        <p className={`mt-3 text-3xl font-bold text-foreground ${tones[tone]}`}>
+        <p className={`mt-3 text-2xl font-bold text-foreground tabular-nums sm:text-3xl ${tones[tone]}`}>
           {value.toLocaleString()}
         </p>
         {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
