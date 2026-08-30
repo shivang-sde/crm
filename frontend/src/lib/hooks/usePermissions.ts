@@ -104,6 +104,7 @@ export const usePermissions = () => {
   const canDeleteOfferings = hasPermission("offering", "delete");
 
   const canViewReports = hasPermission("report", "read");
+  const canExportReports = hasPermission("report", "export");
 
   const canViewTasks = hasPermission("task", "read");
   const canEditTasks = hasPermission("task", "write");
@@ -162,6 +163,7 @@ export const usePermissions = () => {
     canEditOfferings,
     canDeleteOfferings,
     canViewReports,
+    canExportReports,
     canViewTasks,
     canEditTasks,
     canDeleteTasks,

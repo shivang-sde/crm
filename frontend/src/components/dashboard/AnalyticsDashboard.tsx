@@ -3,10 +3,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
+  BarChart3,
   Briefcase,
   Calendar,
   CheckSquare,
   Clock,
+  Download,
+  FileText,
   Inbox,
   Loader2,
   Phone,
@@ -17,14 +20,23 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { analyticsApi } from "@/lib/api/analytics";
 import { apiErrorMessage } from "@/lib/api/api-utils";
 import { useAnalyticsSummary, useAnalyticsTrends } from "@/lib/hooks/analytics";
 import { useAuthStore } from "@/lib/store/authStore";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { csvExportFileName, downloadBlob } from "@/lib/utils";
 import { AnalyticsTrendChart } from "./AnalyticsTrendChart";
 import type { AnalyticsScope, LeadMetrics, DealMetrics, ActivityMetrics } from "@/types/analytics";
 
@@ -276,6 +288,25 @@ export function AnalyticsDashboard({ tenantId, tenantName, actions }: AnalyticsD
   const { hasPermission } = usePermissions();
   const userRole = useAuthStore((s) => s.userRole);
   const canView = userRole === "SUPERADMIN" || userRole === "RESELLER" || hasPermission("report", "read");
+  const canExport = userRole === "SUPERADMIN" || userRole === "RESELLER" || hasPermission("report", "export");
+
+  const [exporting, setExporting] = useState<"summary" | "trends" | null>(null);
+
+  const handleExport = async (kind: "summary" | "trends") => {
+    setExporting(kind);
+    try {
+      const blob =
+        kind === "summary"
+          ? await analyticsApi.exportSummary(dateRange, tenantId)
+          : await analyticsApi.exportTrends(dateRange, tenantId);
+      downloadBlob(blob, csvExportFileName(kind, dateRange.to));
+      toast.success(kind === "summary" ? "Summary report exported." : "Trend report exported.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Export failed."));
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const {
     data,
@@ -348,6 +379,38 @@ export function AnalyticsDashboard({ tenantId, tenantName, actions }: AnalyticsD
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {actions}
+          {canExport && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={exporting !== null || isPending || isError}>
+                  {exporting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled={exporting !== null} onSelect={() => handleExport("summary")}>
+                  {exporting === "summary" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-2 h-4 w-4" />
+                  )}
+                  Summary CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={exporting !== null} onSelect={() => handleExport("trends")}>
+                  {exporting === "trends" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                  )}
+                  Trends CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <RangePresets value={selectedPreset} onChange={setSelectedPreset} />
         </div>
       </header>

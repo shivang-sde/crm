@@ -111,12 +111,18 @@ public class AnalyticsScopeResolver {
             return;
         }
 
-        // TENANT users can only access their own tenant
+        // TENANT users can only access their own tenant, and only when they can
+        // already view the whole tenant (report:read = ALL). Users with TEAM/OWN
+        // scope must not widen their analytics via tenantId drill-down.
         if ("TENANT".equals(userLevel)) {
             UUID currentTenantId = tenantContext.getTenantId();
             if (currentTenantId == null || !currentTenantId.equals(tenantId)) {
                 throw new PermissionDeniedException("ACCESS_DENIED",
                         "You do not have permission to access this tenant");
+            }
+            if (!"ALL".equals(requireReportRead(userId, currentTenantId))) {
+                throw new PermissionDeniedException("ACCESS_DENIED",
+                        "You do not have permission to view analytics for this scope");
             }
             return;
         }
