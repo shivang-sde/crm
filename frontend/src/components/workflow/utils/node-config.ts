@@ -161,8 +161,152 @@ export function describeTrigger(configuration: Record<string, unknown>): string 
 }
 
 export function describeAction(configuration: Record<string, unknown>, name: string): string {
-  if (typeof configuration.actionType === "string") {
-    return name || configuration.actionType;
+  const actionType = typeof configuration.actionType === "string" ? configuration.actionType : "";
+  if (!actionType) return name || "Not configured";
+  const conf =
+    configuration.config && typeof configuration.config === "object"
+      ? (configuration.config as Record<string, unknown>)
+      : {};
+  const s = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
+  switch (actionType) {
+    case "UPDATE_ENTITY_FIELD": {
+      const field = s(conf.field);
+      const value = s(conf.value);
+      const entity = s(conf.entityType);
+      if (field && value) return `${entity ? entity + " " : ""}${field} → ${value.slice(0, 30)}`;
+      if (field) return `${field} → …`;
+      return name || "Update field";
+    }
+    case "CREATE_TASK": {
+      const subj = s(conf.subject);
+      if (subj) return subj.slice(0, 40);
+      return name || "Create task";
+    }
+    case "ASSIGN_OWNER": {
+      const owner = s(conf.ownerId);
+      const ent = s(conf.entityType);
+      if (owner) return `${ent ? ent + " → " : ""}${owner.slice(0, 12)}`;
+      return name || "Assign owner";
+    }
+    case "HTTP_API": {
+      const method = s(conf.method);
+      const url = s(conf.url);
+      let host = "";
+      try {
+        host = url ? new URL(url).hostname : "";
+      } catch {
+        host = url.slice(0, 20);
+      }
+      if (method && host) return `${method} ${host}`;
+      if (method) return method;
+      if (host) return host;
+      return name || "HTTP request";
+    }
+    case "SET_CONTEXT_VALUE": {
+      const key = s(conf.key);
+      const val = s(conf.value);
+      if (key) return `${key} = ${val.slice(0, 20)}`;
+      return name || "Set context";
+    }
+    case "CLICK_TO_CALL": {
+      const phone = s(conf.phoneNumber);
+      const subj = s(conf.subject);
+      if (phone) return `Call ${phone.slice(0, 16)}`;
+      if (subj) return subj.slice(0, 30);
+      return name || "Click to call";
+    }
+    case "NO_OP":
+      return s(configuration.message) || name || "No-op";
+    default:
+      return name || actionType;
   }
-  return name || "Not configured";
+}
+
+export function isNodeConfigured(data: BuilderNodeData): {
+  configured: boolean;
+  issues: string[];
+} {
+  const issues: string[] = [];
+  const cfg = data.configuration ?? {};
+  switch (data.nodeType) {
+    case "TRIGGER": {
+      const entityType = typeof cfg.entityType === "string" ? cfg.entityType.trim() : "";
+      const eventType = typeof cfg.eventType === "string" ? cfg.eventType.trim() : "";
+      if (!entityType) issues.push("Entity type required");
+      if (!eventType) issues.push("Event type required");
+      break;
+    }
+    case "CONDITION":
+    case "BRANCH": {
+      const logic = typeof cfg.logic === "string" ? String(cfg.logic).trim().toUpperCase() : "";
+      if (logic && logic !== "AND" && logic !== "OR") issues.push("Logic must be AND or OR");
+      const raw = Array.isArray(cfg.conditions) ? (cfg.conditions as Array<Record<string, unknown>>) : [];
+      if (raw.length === 0) issues.push("At least one condition required");
+      else {
+        for (const c of raw) {
+          const field = typeof c.field === "string" ? c.field.trim() : "";
+          if (!field) issues.push("Condition field required");
+        }
+      }
+      break;
+    }
+    case "ACTION": {
+      const actionType = typeof cfg.actionType === "string" ? cfg.actionType.trim() : "";
+      if (!actionType) {
+        issues.push("Action type required");
+        break;
+      }
+      const conf =
+        cfg.config && typeof cfg.config === "object"
+          ? (cfg.config as Record<string, unknown>)
+          : {};
+      if (actionType === "HTTP_API") {
+        const url = typeof conf.url === "string" ? conf.url.trim() : "";
+        const method = typeof conf.method === "string" ? conf.method.trim().toUpperCase() : "";
+        if (!url) issues.push("URL required");
+        if (!method) issues.push("Method required");
+        else if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method))
+          issues.push("Method must be GET, POST, PUT, PATCH, or DELETE");
+      } else if (actionType === "CREATE_TASK") {
+        const subject = typeof conf.subject === "string" ? conf.subject.trim() : "";
+        if (!subject) issues.push("Subject required");
+      } else if (actionType === "UPDATE_ENTITY_FIELD") {
+        for (const k of ["entityType", "field"]) {
+          const v = typeof conf[k] === "string" ? String(conf[k]).trim() : "";
+          if (!v) issues.push(`${k} required`);
+        }
+        if (!("value" in conf)) issues.push("value required");
+        const entityId = typeof conf.entityId === "string" ? conf.entityId.trim() : "";
+        if (!entityId) issues.push("entityId required");
+      } else if (actionType === "ASSIGN_OWNER") {
+        for (const k of ["entityType", "entityId", "ownerId"]) {
+          const v = typeof conf[k] === "string" ? String(conf[k]).trim() : "";
+          if (!v) issues.push(`${k} required`);
+        }
+      } else if (actionType === "CLICK_TO_CALL") {
+        const phone = typeof conf.phoneNumber === "string" ? conf.phoneNumber.trim() : "";
+        const et = typeof conf.entityType === "string" ? conf.entityType.trim() : "";
+        const eid = typeof conf.entityId === "string" ? conf.entityId.trim() : "";
+        if (!phone && !(et && eid)) issues.push("phoneNumber or entityType+entityId required");
+      } else if (actionType === "SET_CONTEXT_VALUE") {
+        const key = typeof conf.key === "string" ? conf.key.trim() : "";
+        if (!key) issues.push("Context key required");
+      }
+      break;
+    }
+    case "WAIT": {
+      const resumeAt = typeof cfg.resumeAt === "string" ? cfg.resumeAt.trim() : "";
+      if (!resumeAt) issues.push("Resume time required");
+      else {
+        const d = new Date(resumeAt);
+        if (Number.isNaN(d.getTime())) issues.push("Resume time must be ISO-8601 UTC");
+      }
+      break;
+    }
+    case "END":
+      break;
+    default:
+      break;
+  }
+  return { configured: issues.length === 0, issues };
 }

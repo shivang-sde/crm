@@ -432,4 +432,26 @@ public class AnalyticsController {
                         "attachment; filename=\"" + analyticsExportService.fileName(kind, context, range) + "\"")
                 .body(csv.getBytes(StandardCharsets.UTF_8));
     }
+
+    @GetMapping("/trends")
+    @PreAuthorize("@rbac.has(authentication, 'report', 'read')")
+    @Operation(summary = "Get time-bucketed trend data",
+            description = "Returns lead/contact/deal/task counts per time bucket "
+                    + "(DAY, WEEK or MONTH auto-selected based on range).")
+    public ResponseEntity<ApiResponse<List<AnalyticsTrendResponse>>> getTrends(
+            @Parameter(description = "Optional requested scope downgrade")
+            @RequestParam(name = "scope", required = false) String scope,
+            @Parameter(description = "Range start, ISO-8601 instant (default: to minus 30 days)")
+            @RequestParam(name = "from", required = false) String from,
+            @Parameter(description = "Range end (exclusive), ISO-8601 instant (default: now)")
+            @RequestParam(name = "to", required = false) String to) {
+
+        log.info("GET /api/v1/analytics/trends - scope={}, from={}, to={}", scope, from, to);
+
+        AnalyticsContext context = scopeResolver.resolve(scope);
+        AnalyticsDateRange range = AnalyticsDateRange.resolve(from, to);
+        List<AnalyticsTrendResponse> response = analyticsService.getTrends(context, range);
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
 }

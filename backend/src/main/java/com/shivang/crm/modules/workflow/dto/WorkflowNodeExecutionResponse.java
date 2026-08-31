@@ -17,6 +17,7 @@ public record WorkflowNodeExecutionResponse(
     Instant startedAt,
     Instant completedAt,
     Instant nextAttemptAt,
+    Map<String, Object> inputContext,
     Map<String, Object> outputContext,
     String lastErrorCode,
     String lastErrorMessage

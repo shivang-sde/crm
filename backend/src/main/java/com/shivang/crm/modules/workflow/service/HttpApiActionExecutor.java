@@ -82,6 +82,18 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
         // CONDITION/BRANCH nodes can traverse it via nodeOutputs.<key>.response...
         output.put("response", result.response() == null ? null : objectMapper.convertValue(result.response(), Object.class));
         output.put("correlationId", result.correlationId() == null ? null : result.correlationId().toString());
+        // Minimal safe request snapshot for debugging (method/url/query/headers/body already redacted via resolveMap)
+        try {
+            Map<String, Object> requestSnapshot = new LinkedHashMap<>();
+            requestSnapshot.put("method", method.name());
+            requestSnapshot.put("url", url);
+            requestSnapshot.put("query", resolved.get("queryParams") == null ? Map.of() : resolved.get("queryParams"));
+            requestSnapshot.put("headers", headers);
+            requestSnapshot.put("body", resolved.get("body"));
+            output.put("request", requestSnapshot);
+        } catch (Exception ignore) {
+            // request snapshot is best-effort debugging aid; never fail execution
+        }
         if (!result.success()) {
             output.put("errorCode", result.errorCode());
             output.put("errorMessage", result.errorMessage());

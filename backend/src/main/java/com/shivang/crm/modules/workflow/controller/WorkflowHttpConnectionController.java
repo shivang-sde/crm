@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,16 +43,19 @@ public class WorkflowHttpConnectionController {
     private final TenantContext tenantContext;
 
     @GetMapping("/http-connections")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<List<HttpConnectionResponse>>> listConnections() {
         return ResponseEntity.ok(ApiResponse.success(connectionService.list(tenantContext.requireTenantId())));
     }
 
     @GetMapping("/http-connections/{id}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<HttpConnectionResponse>> getConnection(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(connectionService.get(tenantContext.requireTenantId(), id)));
     }
 
     @PostMapping("/http-connections")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<HttpConnectionResponse>> createConnection(@Valid @RequestBody HttpConnectionRequest request) {
         UUID tenantId = tenantContext.requireTenantId();
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -59,6 +63,7 @@ public class WorkflowHttpConnectionController {
     }
 
     @PutMapping("/http-connections/{id}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<HttpConnectionResponse>> updateConnection(
             @PathVariable UUID id, @RequestBody HttpConnectionRequest request) {
         UUID tenantId = tenantContext.requireTenantId();
@@ -66,6 +71,7 @@ public class WorkflowHttpConnectionController {
     }
 
     @DeleteMapping("/http-connections/{id}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'delete')")
     public ResponseEntity<ApiResponse<String>> deleteConnection(@PathVariable UUID id) {
         UUID tenantId = tenantContext.requireTenantId();
         connectionService.delete(tenantId, tenantContext.getUserId(), id);
@@ -73,6 +79,7 @@ public class WorkflowHttpConnectionController {
     }
 
     @PostMapping("/http-connections/{id}/test")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
     public ResponseEntity<ApiResponse<ConnectionTestResponse>> testConnection(
             @PathVariable UUID id, @Valid @RequestBody ConnectionTestRequest request) {
         UUID tenantId = tenantContext.requireTenantId();

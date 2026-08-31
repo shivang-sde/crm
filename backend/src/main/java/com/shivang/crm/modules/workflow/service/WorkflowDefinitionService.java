@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -163,14 +164,18 @@ public class WorkflowDefinitionService {
             .findByWorkflowIdAndTenantIdAndDeletedFalseOrderByVersionNumberDesc(workflowId, tenantId)
             .stream().findFirst().map(version -> version.getVersionNumber() + 1).orElse(1);
 
-        return workflowVersionRepository.save(WorkflowVersion.builder()
-            .tenantId(tenantId)
-            .workflow(workflow)
-            .versionNumber(nextVersion)
-            .status(WorkflowVersionStatus.DRAFT)
-            .triggerEntityType(request.getTriggerEntityType().trim().toUpperCase())
-            .triggerEventType(request.getTriggerEventType().trim().toUpperCase())
-            .build()).getId();
+        try {
+            return workflowVersionRepository.save(WorkflowVersion.builder()
+                .tenantId(tenantId)
+                .workflow(workflow)
+                .versionNumber(nextVersion)
+                .status(WorkflowVersionStatus.DRAFT)
+                .triggerEntityType(request.getTriggerEntityType().trim().toUpperCase())
+                .triggerEventType(request.getTriggerEventType().trim().toUpperCase())
+                .build()).getId();
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException("WORKFLOW_CONCURRENT_DRAFT", "Another version was created concurrently. Refresh and try again.");
+        }
     }
 
     public UUID addNode(UUID tenantId, UUID versionId, WorkflowNodeRequest request) {
@@ -263,14 +268,19 @@ public class WorkflowDefinitionService {
         if (!errors.isEmpty()) {
             throw new BusinessException("WORKFLOW_INVALID_GRAPH", errors.stream().map(error -> error.code() + ": " + error.message()).reduce((left, right) -> left + "; " + right).orElse("Workflow graph is invalid"));
         }
-        workflowVersionRepository
-            .findByWorkflowIdAndTenantIdAndDeletedFalseOrderByVersionNumberDesc(version.getWorkflow().getId(), tenantId)
-            .stream()
-            .filter(existing -> existing.getStatus() == WorkflowVersionStatus.ACTIVE)
-            .forEach(existing -> existing.setStatus(WorkflowVersionStatus.ARCHIVED));
-        workflowVersionRepository.flush();
-        version.setStatus(WorkflowVersionStatus.ACTIVE);
-        version.getWorkflow().setStatus(WorkflowStatus.ACTIVE);
+        try {
+            workflowVersionRepository
+                .findByWorkflowIdAndTenantIdAndDeletedFalseOrderByVersionNumberDesc(version.getWorkflow().getId(), tenantId)
+                .stream()
+                .filter(existing -> existing.getStatus() == WorkflowVersionStatus.ACTIVE)
+                .forEach(existing -> existing.setStatus(WorkflowVersionStatus.ARCHIVED));
+            workflowVersionRepository.flush();
+            version.setStatus(WorkflowVersionStatus.ACTIVE);
+            version.getWorkflow().setStatus(WorkflowStatus.ACTIVE);
+            workflowVersionRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException("WORKFLOW_CONCURRENT_ACTIVATION", "Another version was activated concurrently. Refresh and try again.");
+        }
     }
 
     public void deactivate(UUID tenantId, UUID workflowId) {

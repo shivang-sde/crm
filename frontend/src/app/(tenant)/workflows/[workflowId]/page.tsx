@@ -9,12 +9,14 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   useActivateWorkflowVersion,
   useCreateWorkflowVersion,
   useWorkflow,
   useWorkflowVersions,
 } from "@/lib/hooks/workflow";
+import type { WorkflowVersionResponse } from "@/types/workflow";
 import { CreateVersionDialog } from "@/components/workflow/CreateVersionDialog";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 
@@ -25,6 +27,7 @@ export default function WorkflowDetailPage() {
 
   const { canViewWorkflows, canEditWorkflows } = usePermissions();
   const [createOpen, setCreateOpen] = useState(false);
+  const [confirmVersion, setConfirmVersion] = useState<WorkflowVersionResponse | null>(null);
 
   const workflowQuery = useWorkflow(workflowId);
   const versionsQuery = useWorkflowVersions(workflowId);
@@ -63,6 +66,7 @@ export default function WorkflowDetailPage() {
 
   const workflow = workflowQuery.data;
   const versions = versionsQuery.data?.data ?? [];
+  const activeVersion = versions.find((v) => v.status === "ACTIVE");
 
   return (
     <div className="space-y-6 p-6">
@@ -115,17 +119,28 @@ export default function WorkflowDetailPage() {
               {versions.map((version) => (
                 <div
                   key={version.id}
-                  className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+                  className={`flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between ${version.status === "ACTIVE" ? "border-primary/40 bg-primary/5" : ""}`}
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">Version {version.versionNumber}</span>
-                      <Badge variant={version.status === "DRAFT" ? "outline" : "default"}>
-                        {version.status}
+                      <Badge
+                        variant={
+                          version.status === "ACTIVE"
+                            ? "default"
+                            : version.status === "DRAFT"
+                              ? "outline"
+                              : "secondary"
+                        }
+                      >
+                        {version.status === "ACTIVE" ? "● ACTIVE" : version.status}
                       </Badge>
                       <Badge variant="outline">
                         WHEN {version.triggerEntityType} IS {version.triggerEventType}
                       </Badge>
+                      {version.status === "ACTIVE" && (
+                        <span className="text-xs font-medium text-primary">Live</span>
+                      )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Created {new Date(version.createdAt).toLocaleString()} · Updated{" "}
@@ -145,11 +160,9 @@ export default function WorkflowDetailPage() {
                         disabled={activate.isPending}
                         onClick={async () => {
                           try {
-                            await activate.mutateAsync(version.id);
-                            toast.success("Workflow version activated");
-                          } catch {
-                            toast.error("Failed to activate — run Validate first");
-                          }
+                            await versionsQuery.refetch();
+                          } catch {}
+                          setConfirmVersion(version);
                         }}
                       >
                         Activate
@@ -178,6 +191,48 @@ export default function WorkflowDetailPage() {
           }
         }}
       />
+
+      <Dialog open={!!confirmVersion} onOpenChange={(open) => !open && setConfirmVersion(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Activate workflow version?</DialogTitle>
+            <DialogDescription>
+              {confirmVersion ? `You are about to activate version ${confirmVersion.versionNumber}.` : "You are about to activate this version."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p>This version will become the live workflow.</p>
+            {activeVersion ? (
+              <p className="text-muted-foreground">
+                Current live version: v{activeVersion.versionNumber}. Activating v{confirmVersion?.versionNumber} will archive v{activeVersion.versionNumber}.
+              </p>
+            ) : (
+              <p className="text-muted-foreground">This version will become the live workflow.</p>
+            )}
+          </div>
+          <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" size="sm" onClick={() => setConfirmVersion(null)} disabled={activate.isPending}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={activate.isPending}
+              onClick={async () => {
+                if (!confirmVersion) return;
+                try {
+                  await activate.mutateAsync(confirmVersion.id);
+                  toast.success("Workflow version activated");
+                  setConfirmVersion(null);
+                } catch {
+                  toast.error("Failed to activate — run Validate first");
+                }
+              }}
+            >
+              {activate.isPending ? "Activating..." : "Activate version"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

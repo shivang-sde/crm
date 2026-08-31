@@ -50,11 +50,11 @@ public class WorkflowGraphValidationService {
         for (WorkflowNode node : nodes) {
             nodesById.put(node.getId(), node);
             if (nodesByKey.put(node.getNodeKey(), node) != null) {
-                errors.add(error("WORKFLOW_DUPLICATE_NODE_KEY", "Node key is duplicated: " + node.getNodeKey()));
+                errors.add(errorForNode("WORKFLOW_DUPLICATE_NODE_KEY", "Node key is duplicated: " + node.getNodeKey(), node));
             }
             if (!tenantId.equals(node.getTenantId()) || node.getWorkflowVersion() == null
                 || !versionId.equals(node.getWorkflowVersion().getId())) {
-                errors.add(error("WORKFLOW_CROSS_VERSION_EDGE", "Node does not belong to the workflow version"));
+                errors.add(errorForNode("WORKFLOW_CROSS_VERSION_EDGE", "Node does not belong to the workflow version", node));
             }
         }
 
@@ -76,21 +76,21 @@ public class WorkflowGraphValidationService {
             WorkflowNode target = edge.getTargetNode();
             if (!tenantId.equals(edge.getTenantId()) || edge.getWorkflowVersion() == null
                 || !versionId.equals(edge.getWorkflowVersion().getId())) {
-                errors.add(error("WORKFLOW_CROSS_VERSION_EDGE", "Edge does not belong to the workflow version"));
+                errors.add(errorForEdge("WORKFLOW_CROSS_VERSION_EDGE", "Edge does not belong to the workflow version", edge));
             }
             if (source == null || target == null || !nodesById.containsKey(source.getId()) || !nodesById.containsKey(target.getId())) {
-                errors.add(error("WORKFLOW_DANGLING_EDGE", "Edge references a missing node"));
+                errors.add(errorForEdge("WORKFLOW_DANGLING_EDGE", "Edge references a missing node", edge));
                 continue;
             }
             if (!tenantId.equals(source.getTenantId()) || !tenantId.equals(target.getTenantId())
                 || source.getWorkflowVersion() == null || target.getWorkflowVersion() == null
                 || !versionId.equals(source.getWorkflowVersion().getId()) || !versionId.equals(target.getWorkflowVersion().getId())) {
-                errors.add(error("WORKFLOW_CROSS_TENANT_REFERENCE", "Edge nodes must belong to the same tenant and version"));
+                errors.add(errorForEdge("WORKFLOW_CROSS_TENANT_REFERENCE", "Edge nodes must belong to the same tenant and version", edge));
             }
             outgoing.computeIfAbsent(source.getId(), ignored -> new HashSet<>()).add(target.getId());
             incoming.computeIfAbsent(target.getId(), ignored -> new HashSet<>()).add(source.getId());
             if (source.getNodeType() == WorkflowNodeType.END) {
-                errors.add(error("WORKFLOW_END_OUTGOING_EDGE", "END nodes cannot have outgoing edges"));
+                errors.add(errorForNodeEdge("WORKFLOW_END_OUTGOING_EDGE", "END nodes cannot have outgoing edges", source, edge));
             }
         }
 
@@ -103,13 +103,13 @@ public class WorkflowGraphValidationService {
                 Object rawOutcome = edge.getConfiguration() == null ? null : edge.getConfiguration().get("outcome");
                 String outcome = rawOutcome == null ? "" : String.valueOf(rawOutcome).trim().toUpperCase();
                 if (!Set.of("TRUE", "FALSE").contains(outcome)) {
-                    errors.add(error("WORKFLOW_EDGE_INVALID", "CONDITION edges must use TRUE or FALSE outcomes"));
+                    errors.add(errorForNodeEdge("WORKFLOW_EDGE_INVALID", "CONDITION edges must use TRUE or FALSE outcomes", condition, edge));
                 } else if (!outcomes.add(outcome)) {
-                    errors.add(error("WORKFLOW_EDGE_INVALID", "CONDITION cannot have duplicate " + outcome + " edges"));
+                    errors.add(errorForNodeEdge("WORKFLOW_EDGE_INVALID", "CONDITION cannot have duplicate " + outcome + " edges", condition, edge));
                 }
             }
             if (conditionEdges.size() != 2 || !outcomes.containsAll(Set.of("TRUE", "FALSE"))) {
-                errors.add(error("WORKFLOW_EDGE_INVALID", "CONDITION requires exactly one TRUE and one FALSE edge"));
+                errors.add(errorForNode("WORKFLOW_EDGE_INVALID", "CONDITION requires exactly one TRUE and one FALSE edge", condition));
             }
         }
 
@@ -118,23 +118,23 @@ public class WorkflowGraphValidationService {
                 .filter(edge -> edge.getSourceNode() != null && wait.getId().equals(edge.getSourceNode().getId()))
                 .toList();
             if (waitEdges.size() != 1) {
-                errors.add(error("WORKFLOW_EDGE_INVALID", "WAIT requires exactly one outgoing edge"));
+                errors.add(errorForNode("WORKFLOW_EDGE_INVALID", "WAIT requires exactly one outgoing edge", wait));
             }
 
             Map<String, Object> configuration = wait.getConfiguration();
             Object rawResumeAt = configuration == null ? null : configuration.get("resumeAt");
             if (rawResumeAt == null || String.valueOf(rawResumeAt).isBlank()) {
-                errors.add(error("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT nodes require a resumeAt timestamp"));
+                errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT nodes require a resumeAt timestamp", wait));
             } else {
                 try {
                     Instant resumeAt = Instant.parse(String.valueOf(rawResumeAt).trim());
                     if (!resumeAt.isAfter(Instant.now())) {
-                        errors.add(error("WORKFLOW_WAIT_RESUME_AT_PAST",
-                            "WAIT resumeAt must be in the future"));
+                        errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_PAST",
+                            "WAIT resumeAt must be in the future", wait));
                     }
                 } catch (DateTimeParseException parseEx) {
-                    errors.add(error("WORKFLOW_WAIT_RESUME_AT_INVALID",
-                        "WAIT resumeAt must be an ISO-8601 UTC timestamp, e.g. 2026-08-30T10:30:00Z"));
+                    errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_INVALID",
+                        "WAIT resumeAt must be an ISO-8601 UTC timestamp, e.g. 2026-08-30T10:30:00Z", wait));
                 }
             }
         }
@@ -148,39 +148,39 @@ public class WorkflowGraphValidationService {
             for (WorkflowEdge edge : branchEdges) {
                 String edgeKey = edge.getEdgeKey() == null ? "" : edge.getEdgeKey().trim().toUpperCase();
                 if (!Set.of("TRUE", "FALSE").contains(edgeKey)) {
-                    errors.add(error("WORKFLOW_BRANCH_INVALID", "BRANCH edges must use TRUE or FALSE edge keys"));
+                    errors.add(errorForNodeEdge("WORKFLOW_BRANCH_INVALID", "BRANCH edges must use TRUE or FALSE edge keys", branch, edge));
                 } else if (!keys.add(edgeKey)) {
-                    errors.add(error("WORKFLOW_BRANCH_INVALID", "BRANCH cannot have duplicate " + edgeKey + " edges"));
+                    errors.add(errorForNodeEdge("WORKFLOW_BRANCH_INVALID", "BRANCH cannot have duplicate " + edgeKey + " edges", branch, edge));
                 }
             }
             if (branchEdges.size() != 2 || !keys.containsAll(Set.of("TRUE", "FALSE"))) {
-                errors.add(error("WORKFLOW_BRANCH_INVALID", "BRANCH requires exactly one TRUE and one FALSE edge"));
+                errors.add(errorForNode("WORKFLOW_BRANCH_INVALID", "BRANCH requires exactly one TRUE and one FALSE edge", branch));
             }
 
             Map<String, Object> configuration = branch.getConfiguration();
             Object rawLogic = configuration == null ? null : configuration.get("logic");
             if (rawLogic == null
                 || !Set.of("AND", "OR").contains(String.valueOf(rawLogic).trim().toUpperCase())) {
-                errors.add(error("WORKFLOW_BRANCH_INVALID", "Branch logic must be AND or OR"));
+                errors.add(errorForNode("WORKFLOW_BRANCH_INVALID", "Branch logic must be AND or OR", branch));
             }
             Object rawConditions = configuration == null ? null : configuration.get("conditions");
             if (!(rawConditions instanceof List<?> conditions) || conditions.isEmpty()) {
-                errors.add(error("WORKFLOW_BRANCH_INVALID", "At least one branch condition is required"));
+                errors.add(errorForNode("WORKFLOW_BRANCH_INVALID", "At least one branch condition is required", branch));
             } else {
                 for (Object rawCondition : conditions) {
                     if (!(rawCondition instanceof Map<?, ?> condition)) {
-                        errors.add(error("WORKFLOW_BRANCH_INVALID", "Each branch condition must be an object"));
+                        errors.add(errorForNode("WORKFLOW_BRANCH_INVALID", "Each branch condition must be an object", branch));
                         continue;
                     }
                     Object field = condition.get("field");
                     if (field == null || String.valueOf(field).isBlank()) {
-                        errors.add(error("WORKFLOW_BRANCH_INVALID", "Branch condition field is required"));
+                        errors.add(errorForNode("WORKFLOW_BRANCH_INVALID", "Branch condition field is required", branch));
                     }
                     Object operator = condition.get("operator");
                     if (operator == null || !WorkflowConditionEvaluator.SUPPORTED_OPERATORS.contains(
                         String.valueOf(operator).trim().toUpperCase())) {
-                        errors.add(error("WORKFLOW_BRANCH_INVALID",
-                            "Unsupported branch condition operator: " + operator));
+                        errors.add(errorForNode("WORKFLOW_BRANCH_INVALID",
+                            "Unsupported branch condition operator: " + operator, branch));
                     }
                 }
             }
@@ -190,35 +190,35 @@ public class WorkflowGraphValidationService {
             Map<String, Object> configuration = action.getConfiguration();
             Object actionType = configuration == null ? null : configuration.get("actionType");
             if (actionType == null || String.valueOf(actionType).isBlank()) {
-                errors.add(error("WORKFLOW_ACTION_INVALID_CONFIG", "ACTION nodes require a non-blank actionType"));
+                errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "ACTION nodes require a non-blank actionType", action));
             }
             if (configuration != null && configuration.containsKey("config")
                 && !(configuration.get("config") instanceof Map<?, ?>)) {
-                errors.add(error("WORKFLOW_ACTION_INVALID_CONFIG", "ACTION config must be an object"));
+                errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "ACTION config must be an object", action));
             }
             if ("UPDATE_ENTITY_FIELD".equalsIgnoreCase(String.valueOf(actionType))
                 && configuration != null && configuration.get("config") instanceof Map<?, ?> actionConfig) {
                 for (String required : List.of("entityType", "entityId", "field")) {
                     if (actionConfig.get(required) == null || String.valueOf(actionConfig.get(required)).isBlank()) {
-                        errors.add(error("WORKFLOW_UPDATE_INVALID_CONFIG", "UPDATE_ENTITY_FIELD requires " + required));
+                        errors.add(errorForNode("WORKFLOW_UPDATE_INVALID_CONFIG", "UPDATE_ENTITY_FIELD requires " + required, action));
                     }
                 }
                 if (!actionConfig.containsKey("value")) {
-                    errors.add(error("WORKFLOW_UPDATE_INVALID_CONFIG", "UPDATE_ENTITY_FIELD requires value"));
+                    errors.add(errorForNode("WORKFLOW_UPDATE_INVALID_CONFIG", "UPDATE_ENTITY_FIELD requires value", action));
                 }
             }
             if ("ASSIGN_OWNER".equalsIgnoreCase(String.valueOf(actionType))
                 && configuration != null && configuration.get("config") instanceof Map<?, ?> ownerConfig) {
                 for (String required : List.of("entityType", "entityId", "ownerId")) {
                     if (ownerConfig.get(required) == null || String.valueOf(ownerConfig.get(required)).isBlank()) {
-                        errors.add(error("WORKFLOW_ASSIGN_OWNER_INVALID_CONFIG", "ASSIGN_OWNER requires " + required));
+                        errors.add(errorForNode("WORKFLOW_ASSIGN_OWNER_INVALID_CONFIG", "ASSIGN_OWNER requires " + required, action));
                     }
                 }
             }
             if ("CREATE_TASK".equalsIgnoreCase(String.valueOf(actionType))
                 && configuration != null && configuration.get("config") instanceof Map<?, ?> taskConfig) {
                 if (taskConfig.get("subject") == null || String.valueOf(taskConfig.get("subject")).isBlank()) {
-                    errors.add(error("WORKFLOW_CREATE_TASK_SUBJECT_REQUIRED", "CREATE_TASK requires subject"));
+                    errors.add(errorForNode("WORKFLOW_CREATE_TASK_SUBJECT_REQUIRED", "CREATE_TASK requires subject", action));
                 }
             }
             if ("CLICK_TO_CALL".equalsIgnoreCase(String.valueOf(actionType))
@@ -227,7 +227,7 @@ public class WorkflowGraphValidationService {
                 boolean hasEntityPair = callConfig.get("entityType") != null && !String.valueOf(callConfig.get("entityType")).isBlank()
                     && callConfig.get("entityId") != null && !String.valueOf(callConfig.get("entityId")).isBlank();
                 if (!hasPhone && !hasEntityPair) {
-                    errors.add(error("WORKFLOW_CLICK_TO_CALL_PHONE_REQUIRED", "CLICK_TO_CALL requires phoneNumber or entityType and entityId"));
+                    errors.add(errorForNode("WORKFLOW_CLICK_TO_CALL_PHONE_REQUIRED", "CLICK_TO_CALL requires phoneNumber or entityType and entityId", action));
                 }
             }
             if ("HTTP_API".equalsIgnoreCase(String.valueOf(actionType))
@@ -235,19 +235,19 @@ public class WorkflowGraphValidationService {
                 Object method = httpConfig.get("method");
                 if (method == null || !Set.of("GET", "POST", "PUT", "PATCH", "DELETE")
                     .contains(String.valueOf(method).trim().toUpperCase())) {
-                    errors.add(error("WORKFLOW_HTTP_API_INVALID_METHOD", "HTTP_API requires GET, POST, PUT, PATCH, or DELETE method"));
+                    errors.add(errorForNode("WORKFLOW_HTTP_API_INVALID_METHOD", "HTTP_API requires GET, POST, PUT, PATCH, or DELETE method", action));
                 }
                 Object url = httpConfig.get("url");
                 if (url == null || String.valueOf(url).isBlank()) {
-                    errors.add(error("WORKFLOW_HTTP_API_URL_REQUIRED", "HTTP_API requires url"));
+                    errors.add(errorForNode("WORKFLOW_HTTP_API_URL_REQUIRED", "HTTP_API requires url", action));
                 }
-                validateObjectField(httpConfig, "queryParams", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors);
-                validateObjectField(httpConfig, "headers", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors);
-                validateObjectField(httpConfig, "body", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors);
+                validateObjectFieldForNode(httpConfig, "queryParams", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors, action);
+                validateObjectFieldForNode(httpConfig, "headers", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors, action);
+                validateObjectFieldForNode(httpConfig, "body", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors, action);
                 Object connectionId = httpConfig.get("connectionId");
                 if (connectionId != null && !String.valueOf(connectionId).trim().startsWith("{{")) {
                     try { UUID.fromString(String.valueOf(connectionId)); }
-                    catch (IllegalArgumentException ex) { errors.add(error("WORKFLOW_HTTP_API_INVALID_CONNECTION", "connectionId must be a UUID or runtime expression")); }
+                    catch (IllegalArgumentException ex) { errors.add(errorForNode("WORKFLOW_HTTP_API_INVALID_CONNECTION", "connectionId must be a UUID or runtime expression", action)); }
                 }
             }
         }
@@ -255,23 +255,24 @@ public class WorkflowGraphValidationService {
         if (triggers.size() == 1) {
             WorkflowNode trigger = triggers.get(0);
             if (!incoming.getOrDefault(trigger.getId(), Set.of()).isEmpty()) {
-                errors.add(error("WORKFLOW_TRIGGER_INCOMING_EDGE", "TRIGGER nodes cannot have incoming edges"));
+                errors.add(errorForNode("WORKFLOW_TRIGGER_INCOMING_EDGE", "TRIGGER nodes cannot have incoming edges", trigger));
             }
 
             Set<UUID> reachable = traverse(trigger.getId(), outgoing);
             for (WorkflowNode node : nodes) {
                 if (!reachable.contains(node.getId())) {
-                    errors.add(error("WORKFLOW_UNREACHABLE_NODE", "Node is not reachable from the TRIGGER: " + node.getNodeKey()));
+                    errors.add(errorForNode("WORKFLOW_UNREACHABLE_NODE", "Node is not reachable from the TRIGGER: " + node.getNodeKey(), node));
                 }
                 if (node.getNodeType() != WorkflowNodeType.END && outgoing.getOrDefault(node.getId(), Set.of()).isEmpty()) {
-                    errors.add(error("WORKFLOW_DEAD_END", "Non-END node has no outgoing edge: " + node.getNodeKey()));
+                    errors.add(errorForNode("WORKFLOW_DEAD_END", "Non-END node has no outgoing edge: " + node.getNodeKey(), node));
                 }
             }
 
             Set<UUID> canReachEnd = reverseTraverse(ends, incoming);
             for (UUID nodeId : reachable) {
                 if (!canReachEnd.contains(nodeId)) {
-                    errors.add(error("WORKFLOW_END_UNREACHABLE", "Node cannot reach an END node"));
+                    WorkflowNode unreachable = nodesById.get(nodeId);
+                    errors.add(errorForNode("WORKFLOW_END_UNREACHABLE", "Node cannot reach an END node" + (unreachable != null ? ": " + unreachable.getNodeKey() : ""), unreachable));
                 }
             }
         }
@@ -285,13 +286,13 @@ public class WorkflowGraphValidationService {
     private void validateTriggerConfiguration(WorkflowVersion version, WorkflowNode trigger, List<WorkflowGraphValidationError> errors) {
         Map<String, Object> configuration = trigger.getConfiguration();
         if (configuration == null) {
-            errors.add(error("WORKFLOW_TRIGGER_MISMATCH", "TRIGGER configuration must contain entityType and eventType"));
+            errors.add(errorForNode("WORKFLOW_TRIGGER_MISMATCH", "TRIGGER configuration must contain entityType and eventType", trigger));
             return;
         }
         String entityType = String.valueOf(configuration.get("entityType"));
         String eventType = String.valueOf(configuration.get("eventType"));
         if (!version.getTriggerEntityType().equals(entityType) || !version.getTriggerEventType().equals(eventType)) {
-            errors.add(error("WORKFLOW_TRIGGER_MISMATCH", "TRIGGER configuration must match workflow version trigger fields"));
+            errors.add(errorForNode("WORKFLOW_TRIGGER_MISMATCH", "TRIGGER configuration must match workflow version trigger fields", trigger));
         }
     }
 
@@ -320,12 +321,35 @@ public class WorkflowGraphValidationService {
     }
 
     private WorkflowGraphValidationError error(String code, String message) {
-        return new WorkflowGraphValidationError(code, message);
+        return new WorkflowGraphValidationError(code, message, null, null, null);
+    }
+
+    private WorkflowGraphValidationError errorForNode(String code, String message, WorkflowNode node) {
+        if (node == null) return error(code, message);
+        return new WorkflowGraphValidationError(code, message, node.getId(), node.getNodeKey(), null);
+    }
+
+    private WorkflowGraphValidationError errorForEdge(String code, String message, WorkflowEdge edge) {
+        if (edge == null) return error(code, message);
+        return new WorkflowGraphValidationError(code, message, null, null, edge.getId());
+    }
+
+    private WorkflowGraphValidationError errorForNodeEdge(String code, String message, WorkflowNode node, WorkflowEdge edge) {
+        UUID nodeId = node != null ? node.getId() : null;
+        String nodeKey = node != null ? node.getNodeKey() : null;
+        UUID edgeId = edge != null ? edge.getId() : null;
+        return new WorkflowGraphValidationError(code, message, nodeId, nodeKey, edgeId);
     }
 
     private void validateObjectField(Map<?, ?> configuration, String field, String code, List<WorkflowGraphValidationError> errors) {
         if (configuration.containsKey(field) && configuration.get(field) != null && !(configuration.get(field) instanceof Map<?, ?>)) {
             errors.add(error(code, "HTTP_API " + field + " must be an object"));
+        }
+    }
+
+    private void validateObjectFieldForNode(Map<?, ?> configuration, String field, String code, List<WorkflowGraphValidationError> errors, WorkflowNode node) {
+        if (configuration.containsKey(field) && configuration.get(field) != null && !(configuration.get(field) instanceof Map<?, ?>)) {
+            errors.add(errorForNode(code, "HTTP_API " + field + " must be an object", node));
         }
     }
 }
