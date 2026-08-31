@@ -178,6 +178,12 @@ public class LeadService {
             lead.setStatus(defaultStatus);
         }
 
+        if (lead.getSource() == null && request.getSourceId() != null) {
+            LeadSource source = leadSourceRepository.findByIdAndTenantId(request.getSourceId(), tenantId)
+                .orElseThrow(() -> new BusinessException("VALIDATION_ERROR", "Invalid lead source"));
+            lead.setSource(source);
+        }
+
         if (request.getEmail() != null && existsWithEmail(request.getEmail(), tenantId)) {
             throw new BusinessException("DUPLICATE", "A lead with this email already exists");
         }
@@ -321,6 +327,13 @@ public class LeadService {
             LeadStatus status = leadStatusRepository.findByIdAndTenantId(request.getStatusId(), tenantId)
                 .orElseThrow(() -> new RuntimeException("Status not found"));
             lead.setStatus(status);
+        }
+
+        // Update source if provided (tenant-validated; preserve when omitted)
+        if (request.getSourceId() != null) {
+            LeadSource source = leadSourceRepository.findByIdAndTenantId(request.getSourceId(), tenantId)
+                .orElseThrow(() -> new BusinessException("VALIDATION_ERROR", "Invalid lead source"));
+            lead.setSource(source);
         }
 
         Lead updatedLead = leadRepository.save(lead);

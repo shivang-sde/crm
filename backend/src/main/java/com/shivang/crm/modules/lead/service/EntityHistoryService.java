@@ -50,7 +50,8 @@ public class EntityHistoryService {
     }
 
     /**
-     * Log activity with metadata
+     * Log activity with metadata (best-effort: a persistence failure is logged
+     * and swallowed so optional audit history never blocks the business op).
      */
     public void logHistoryWithMetadata(
             UUID tenantId,
@@ -60,24 +61,55 @@ public class EntityHistoryService {
             String description,
             UUID userId,
             Map<String, Object> metadata) {
+        logHistory(tenantId, entityId, entityType, eventType, description, userId, metadata, false);
+    }
 
-        try {   
+    /**
+     * Log authoritative analytics-critical history. A persistence failure is
+     * NOT swallowed: it propagates and rolls back the enclosing transaction so
+     * the transition never silently loses its history record.
+     */
+    public void logHistoryWithMetadataRequired(
+            UUID tenantId,
+            UUID entityId,
+            String entityType,
+            String eventType,
+            String description,
+            UUID userId,
+            Map<String, Object> metadata) {
+        logHistory(tenantId, entityId, entityType, eventType, description, userId, metadata, true);
+    }
 
-            EntityHistory activity = EntityHistory.builder()
-                .tenantId(tenantId)
-                .entityId(entityId)
-                .entityType(entityType)
-                .eventType(eventType)
-                .description(description)
-                .performedBy(userId)
-                .changes(metadata)
-                .build();
+    private void logHistory(
+            UUID tenantId,
+            UUID entityId,
+            String entityType,
+            String eventType,
+            String description,
+            UUID userId,
+            Map<String, Object> metadata,
+            boolean requireSuccess) {
 
+        EntityHistory activity = EntityHistory.builder()
+            .tenantId(tenantId)
+            .entityId(entityId)
+            .entityType(entityType)
+            .eventType(eventType)
+            .description(description)
+            .performedBy(userId)
+            .changes(metadata)
+            .build();
+
+        try {
             entityHistoryRepository.save(activity);
-            log.info("History logged: {} for lead: {}", eventType, entityId);
-
+            log.info("History logged: {} for entity: {}", eventType, entityId);
         } catch (Exception e) {
-            log.error("Failed to log activity: {} for lead: {}. Error: {}", eventType, entityId, e.getMessage());
+            if (requireSuccess) {
+                log.error("FAILED to write authoritative history {} for entity {} - rolling back", eventType, entityId, e);
+                throw new com.shivang.crm.shared.exception.BusinessException(
+                    "HISTORY_WRITE_FAILED", "Failed to persist " + eventType + " history");
+            }
+            log.error("Failed to log activity: {} for entity: {}. Error: {}", eventType, entityId, e.getMessage());
         }
     }
 

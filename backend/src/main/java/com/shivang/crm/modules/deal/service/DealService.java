@@ -511,12 +511,13 @@ public class DealService {
             entitlementProvisioningService.provisionFromWonDeal(tenantId, updatedDeal.getId(), userId);
         }
 
-        // Log activity
         Map<String, Object> metadata = stageChangeMetadata(oldStageId, oldStageName, oldCategory, updatedDeal);
-        logDealActivity(tenantId, updatedDeal.getId(), "STAGE_CHANGED", 
-            "Stage changed from " + oldStageName + " to " + newStage.getName(), userId, metadata);
-        logDealHistory(tenantId, updatedDeal.getId(), "STAGE_CHANGED",
-            "Stage changed from " + oldStageName + " to " + newStage.getName(), userId, metadata);
+        if (stageChanged) {
+            logDealActivity(tenantId, updatedDeal.getId(), "STAGE_CHANGED",
+                "Stage changed from " + oldStageName + " to " + newStage.getName(), userId, metadata);
+            logDealHistory(tenantId, updatedDeal.getId(), "STAGE_CHANGED",
+                "Stage changed from " + oldStageName + " to " + newStage.getName(), userId, metadata);
+        }
 
         if (newStage.isWonStage()) {
             logDealActivity(tenantId, updatedDeal.getId(), "DEAL_WON",
@@ -840,7 +841,8 @@ public class DealService {
 
     private void logDealHistory(UUID tenantId, UUID dealId, String eventType,
                                 String description, UUID performedBy, Map<String, Object> metadata) {
-        entityHistoryService.logHistoryWithMetadata(tenantId, dealId, "DEAL", eventType, description, performedBy, metadata);
+        entityHistoryService.logHistoryWithMetadataRequired(
+            tenantId, dealId, "DEAL", eventType, description, performedBy, metadata);
     }
 
     /**

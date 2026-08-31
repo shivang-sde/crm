@@ -242,7 +242,13 @@ public class CallService {
             call.setEndTime(request.getEndTime());
         }
         if (request.getStatus() != null) {
-            call.setStatus(request.getStatus());
+            boolean completed = previousStatus == Call.CallStatus.HELD
+                    || previousStatus == Call.CallStatus.NOT_HELD;
+            if (request.getStatus() == Call.CallStatus.HELD && !completed) {
+                call.markAsHeld(userId);
+            } else {
+                call.setStatus(request.getStatus());
+            }
         }
         if (request.getRemindAt() != null) {
             call.setRemindAt(request.getRemindAt());
