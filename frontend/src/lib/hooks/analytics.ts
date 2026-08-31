@@ -12,6 +12,14 @@ import {
   ConversionOwnerRow,
   DealAgingRow,
   CallStatusSummary,
+  ContactsPerAccountRow,
+  ConversionPeriodSummary,
+  ForecastCategoryRow,
+  CurrentStageAgeSummary,
+  ActivityRatesSummary,
+  CallDurationSummary,
+  LeadSourcePerformanceRow,
+  AccountsByOwnerRow,
 } from "@/types/analytics";
 
 type QueryOptions<T> = Omit<UseQueryOptions<T>, "queryKey" | "queryFn">;
@@ -87,6 +95,78 @@ export function useCallStatus(range?: AnalyticsDateRange, tenantId?: string, opt
   return useQuery({
     queryKey: groupedQueryKey("analytics-call-status", range, tenantId),
     queryFn: () => analyticsApi.getCallStatus(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useConversionDuringPeriod(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<ConversionPeriodSummary>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-conversion-period", range, tenantId),
+    queryFn: () => analyticsApi.getConversionDuringPeriod(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function usePipelineByForecastCategory(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<ForecastCategoryRow[]>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-forecast-category", range, tenantId),
+    queryFn: () => analyticsApi.getPipelineByForecastCategory(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useCurrentStageAge(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<CurrentStageAgeSummary>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-current-stage-age", range, tenantId),
+    queryFn: () => analyticsApi.getCurrentStageAge(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useActivityRates(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<ActivityRatesSummary>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-activity-rates", range, tenantId),
+    queryFn: () => analyticsApi.getActivityRates(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useCallDuration(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<CallDurationSummary>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-call-duration", range, tenantId),
+    queryFn: () => analyticsApi.getCallDuration(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useLeadSourcePerformance(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<LeadSourcePerformanceRow[]>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-lead-source", range, tenantId),
+    queryFn: () => analyticsApi.getLeadSourcePerformance(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useContactsPerAccount(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<ContactsPerAccountRow[]>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-contacts-account", range, tenantId),
+    queryFn: () => analyticsApi.getContactsPerAccount(range, tenantId),
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+export function useAccountsByOwner(range?: AnalyticsDateRange, tenantId?: string, options?: QueryOptions<AccountsByOwnerRow[]>) {
+  return useQuery({
+    queryKey: groupedQueryKey("analytics-accounts-owner", range, tenantId),
+    queryFn: () => analyticsApi.getAccountsByOwner(range, tenantId),
     staleTime: 30_000,
     ...options,
   });

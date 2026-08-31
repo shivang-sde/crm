@@ -55,7 +55,15 @@ export type GroupedDataset =
   | "pipeline-account"
   | "conversion-owner"
   | "deals-aging"
-  | "calls-status";
+  | "calls-status"
+  | "conversion-period"
+  | "forecast-category"
+  | "current-stage-age"
+  | "activity-rates"
+  | "calls-duration"
+  | "lead-source"
+  | "contacts-account"
+  | "accounts-owner";
 
 export interface PipelineStageRow {
   stageId: string;
@@ -110,4 +118,65 @@ export interface CallStatusSummary {
   notHeld: number;
   cancelled: number;
   heldRate: number;
+}
+
+export interface ConversionPeriodSummary {
+  convertedDuringPeriod: number;
+}
+
+export interface ForecastCategoryRow {
+  category: string;
+  dealCount: number;
+  pipelineValue: number;
+  wonValue: number;
+}
+
+export interface CurrentStageAgeSummary {
+  avgDealAgeDays: number;
+  avgCurrentStageAgeDays: number;
+  openDealsWithStageEnteredAt: number;
+  openDealsWithoutStageEnteredAt: number;
+}
+
+export interface MeetingStatusSummary {
+  planned: number;
+  held: number;
+  notHeld: number;
+  cancelled: number;
+  heldRate: number;
+}
+
+export interface ActivityRatesSummary {
+  taskCompletionRate: number;
+  taskOverdueRate: number;
+  meetingStatus: MeetingStatusSummary;
+}
+
+export interface CallDurationSummary {
+  callsTotal: number;
+  callsWithDuration: number;
+  callsWithoutDuration: number;
+  totalCallMinutes: number;
+  averageCallDurationMinutes: number;
+}
+
+export interface LeadSourcePerformanceRow {
+  sourceId: string | null;
+  source: string;
+  leadCount: number;
+  convertedCount: number;
+  conversionRate: number;
+}
+
+export interface ContactsPerAccountRow {
+  accountId: string | null;
+  accountName: string;
+  contactCount: number;
+}
+
+export interface AccountsByOwnerRow {
+  ownerUserId: string | null;
+  ownerDisplayName: string | null;
+  accountCount: number;
+  activeCount: number;
 }

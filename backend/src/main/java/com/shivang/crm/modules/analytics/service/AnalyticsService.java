@@ -34,9 +34,17 @@ import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse.ActivityMe
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse.DealMetrics;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse.LeadMetrics;
 import com.shivang.crm.modules.analytics.dto.AnalyticsTrendResponse;
+import com.shivang.crm.modules.analytics.dto.AccountsByOwnerRow;
+import com.shivang.crm.modules.analytics.dto.ActivityRatesSummary;
+import com.shivang.crm.modules.analytics.dto.CallDurationSummary;
 import com.shivang.crm.modules.analytics.dto.CallStatusSummary;
+import com.shivang.crm.modules.analytics.dto.ContactsPerAccountRow;
 import com.shivang.crm.modules.analytics.dto.ConversionOwnerRow;
+import com.shivang.crm.modules.analytics.dto.ConversionPeriodSummary;
+import com.shivang.crm.modules.analytics.dto.CurrentStageAgeSummary;
 import com.shivang.crm.modules.analytics.dto.DealAgingRow;
+import com.shivang.crm.modules.analytics.dto.ForecastCategoryRow;
+import com.shivang.crm.modules.analytics.dto.LeadSourcePerformanceRow;
 import com.shivang.crm.modules.analytics.dto.PipelineAccountRow;
 import com.shivang.crm.modules.analytics.dto.PipelineOwnerRow;
 import com.shivang.crm.modules.analytics.dto.PipelineStageRow;
@@ -632,6 +640,401 @@ public class AnalyticsService {
                 .build();
     }
 
+    // ======================== AN-15 advanced operational analytics ========================
+
+    /**
+     * AN-15 A: count leads whose convertedAt falls in the selected [from, to)
+     * window, inside the caller's resolved analytics scope. Conversion-EVENT
+     * semantics, deliberately distinct from the created-window
+     * {@link #getConversionByOwner}/{@code LeadMetrics.convertedLeads}.
+     */
+    public ConversionPeriodSummary getConversionDuringPeriod(AnalyticsContext ctx, AnalyticsDateRange range) {
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<Long> q = cb.createQuery(Long.class);
+        Root<Lead> root = q.from(Lead.class);
+
+        List<Predicate> predicates = basePredicates(root, cb, ctx);
+        predicates.add(cb.isNotNull(root.get("convertedAt")));
+        predicates.add(cb.greaterThanOrEqualTo(root.get("convertedAt"), range.from()));
+        predicates.add(cb.lessThan(root.get("convertedAt"), range.to()));
+
+        q.select(cb.count(root)).where(predicates.toArray(new Predicate[0]));
+        return ConversionPeriodSummary.builder()
+                .convertedDuringPeriod(nullToZero(em.createQuery(q).getSingleResult()))
+                .build();
+    }
+
+    /**
+     * AN-15 B: current-data breakout of the persisted {@code forecast_category}
+     * enum for deals created in the selected period, grouped after the
+     * authorized record set is defined. Deals with a null/blank category are a
+     * first-class "Unspecified" bucket so the summed dealCount reconciles with
+     * {@code summary.deals}. No probability or forecasting math is applied.
+     */
+    public List<ForecastCategoryRow> getPipelineByForecastCategory(AnalyticsContext ctx, AnalyticsDateRange range) {
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<Object[]> q = cb.createQuery(Object[].class);
+        Root<Deal> deal = q.from(Deal.class);
+        Join<Deal, DealStage> stage = deal.join("stage");
+
+        List<Predicate> predicates = basePredicates(deal, cb, ctx);
+        predicates.add(cb.greaterThanOrEqualTo(deal.get("createdAt"), range.from()));
+        predicates.add(cb.lessThan(deal.get("createdAt"), range.to()));
+
+        Expression<BigDecimal> amount = deal.get("amount");
+        CriteriaBuilder.Case<BigDecimal> pipelineCase = cb.<BigDecimal>selectCase()
+                .when(cb.equal(stage.get("recordCategory"), RecordCategory.OPEN), amount);
+        CriteriaBuilder.Case<BigDecimal> wonAmountCase = cb.<BigDecimal>selectCase()
+                .when(cb.equal(stage.get("recordCategory"), RecordCategory.CLOSED_WON), amount);
+
+        Expression<Object> categoryKey = cb.<Object>coalesce(
+                cb.function("upper", String.class, cb.<String>coalesce(deal.get("forecastCategory"), "")),
+                "");
+
+        q.multiselect(
+                categoryKey,
+                cb.count(deal),
+                cb.coalesce(cb.sum(pipelineCase.otherwise(BigDecimal.ZERO)), BigDecimal.ZERO),
+                cb.coalesce(cb.sum(wonAmountCase.otherwise(BigDecimal.ZERO)), BigDecimal.ZERO));
+        q.where(predicates.toArray(new Predicate[0]));
+        q.groupBy(categoryKey);
+        q.orderBy(cb.desc(cb.count(deal)));
+
+        List<Object[]> rows = em.createQuery(q).getResultList();
+        List<ForecastCategoryRow> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            String raw = (String) row[0];
+            String label = raw == null || raw.isBlank() ? "UNSPECIFIED" : raw;
+            result.add(ForecastCategoryRow.builder()
+                    .category(label)
+                    .dealCount(nullToZero(asLong(row[1])))
+                    .pipelineValue(orZero((BigDecimal) row[2]))
+                    .wonValue(orZero((BigDecimal) row[3]))
+                    .build());
+        }
+        return result;
+    }
+
+    /**
+     * AN-15 C: average age (created_at basis) and average time-in-current-stage
+     * (stage_entered_at basis) for OPEN deals created in the selected period and
+     * inside the authorized record set. Uses deterministic DB aggregation over
+     * the same open-deal population as {@link #getDealAging}. Deals without
+     * stage_entered_at are counted separately and excluded from the current-stage
+     * average - never fabricated.
+     */
+    public CurrentStageAgeSummary getCurrentStageAge(AnalyticsContext ctx, AnalyticsDateRange range) {
+        String scopeFilter = buildScopeFilter(ctx);
+        String sql = """
+                SELECT
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (now() - d.created_at)) / 86400.0), 0),
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (now() - d.stage_entered_at)) / 86400.0), 0),
+                    COUNT(*) FILTER (WHERE d.stage_entered_at IS NOT NULL),
+                    COUNT(*) FILTER (WHERE d.stage_entered_at IS NULL)
+                FROM deals d
+                WHERE d.deleted = false AND %s
+                  AND d.created_at >= :from AND d.created_at < :to
+                  AND d.stage_id IN (SELECT s.id FROM deal_stages s WHERE s.record_category = 'OPEN')
+                """.formatted(scopeFilter);
+
+        jakarta.persistence.Query query = em.createNativeQuery(sql);
+        query.setParameter("from", range.from());
+        query.setParameter("to", range.to());
+
+        Object[] row = (Object[]) query.getSingleResult();
+        return CurrentStageAgeSummary.builder()
+                .avgDealAgeDays(asDouble(row[0]))
+                .avgCurrentStageAgeDays(asDouble(row[1]))
+                .openDealsWithStageEnteredAt(nullToZero(asLong(row[2])))
+                .openDealsWithoutStageEnteredAt(nullToZero(asLong(row[3])))
+                .build();
+    }
+
+    /**
+     * AN-15 D: task completion/overdue rates plus meeting status distribution
+     * for calls/meetings activity in the selected period, inside the caller's
+     * resolved analytics scope. Denominator conventions are explicit and
+     * documented on {@link ActivityRatesSummary}. All rates bounded to [0,100].
+     */
+    public ActivityRatesSummary getActivityRates(AnalyticsContext ctx, AnalyticsDateRange range) {
+        // Task completion rate: completed(created+completed in range) / tasks(created in range)
+        long tasksCreated = count(Task.class, ctx, range.from(), range.to());
+
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+
+        CriteriaQuery<Long> cqCompleted = cb.createQuery(Long.class);
+        Root<Task> cRoot = cqCompleted.from(Task.class);
+        List<Predicate> cPred = basePredicates(cRoot, cb, ctx);
+        cPred.add(cb.greaterThanOrEqualTo(cRoot.get("createdAt"), range.from()));
+        cPred.add(cb.lessThan(cRoot.get("createdAt"), range.to()));
+        cPred.add(cb.equal(cRoot.get("status"), TaskStatus.COMPLETED));
+        cPred.add(cb.greaterThanOrEqualTo(cRoot.get("completedAt"), range.from()));
+        cPred.add(cb.lessThan(cRoot.get("completedAt"), range.to()));
+        cqCompleted.select(cb.count(cRoot)).where(cPred.toArray(new Predicate[0]));
+        long completed = nullToZero(em.createQuery(cqCompleted).getSingleResult());
+
+        // Overdue rate: overdue(created in range, not closed, dueDate<now) / open(created in range, not closed)
+        CriteriaQuery<Long> cqOverdue = cb.createQuery(Long.class);
+        Root<Task> oRoot = cqOverdue.from(Task.class);
+        List<Predicate> oPred = basePredicates(oRoot, cb, ctx);
+        oPred.add(cb.greaterThanOrEqualTo(oRoot.get("createdAt"), range.from()));
+        oPred.add(cb.lessThan(oRoot.get("createdAt"), range.to()));
+        oPred.add(notClosed(oRoot, cb));
+        oPred.add(cb.isNotNull(oRoot.get("dueDate")));
+        oPred.add(cb.lessThan(oRoot.get("dueDate"), Instant.now()));
+        cqOverdue.select(cb.count(oRoot)).where(oPred.toArray(new Predicate[0]));
+        long overdue = nullToZero(em.createQuery(cqOverdue).getSingleResult());
+
+        CriteriaQuery<Long> cqOpen = cb.createQuery(Long.class);
+        Root<Task> opRoot = cqOpen.from(Task.class);
+        List<Predicate> opPred = basePredicates(opRoot, cb, ctx);
+        opPred.add(cb.greaterThanOrEqualTo(opRoot.get("createdAt"), range.from()));
+        opPred.add(cb.lessThan(opRoot.get("createdAt"), range.to()));
+        opPred.add(notClosed(opRoot, cb));
+        cqOpen.select(cb.count(opRoot)).where(opPred.toArray(new Predicate[0]));
+        long openTasks = nullToZero(em.createQuery(cqOpen).getSingleResult());
+
+        double completionRate = tasksCreated > 0 ? completed * 100.0 / tasksCreated : 0.0;
+        double overdueRate = openTasks > 0 ? overdue * 100.0 / openTasks : 0.0;
+
+        ActivityRatesSummary.MeetingStatusSummary ms = meetingStatus(ctx, range);
+        return ActivityRatesSummary.builder()
+                .taskCompletionRate(completionRate)
+                .taskOverdueRate(overdueRate)
+                .meetingStatus(ms)
+                .build();
+    }
+
+    /**
+     * AN-15 D: call-duration metrics using ONLY authoritative durationMinutes.
+     * Calls without captured duration are reported, never assumed zero.
+     */
+    public CallDurationSummary getCallDuration(AnalyticsContext ctx, AnalyticsDateRange range) {
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<Object[]> q = cb.createQuery(Object[].class);
+        Root<Call> call = q.from(Call.class);
+
+        List<Predicate> predicates = basePredicates(call, cb, ctx);
+        predicates.add(cb.greaterThanOrEqualTo(call.get("createdAt"), range.from()));
+        predicates.add(cb.lessThan(call.get("createdAt"), range.to()));
+
+        CriteriaBuilder.Case<Long> withDurCase = cb.<Long>selectCase()
+                .when(cb.isNotNull(call.get("durationMinutes")), 1L);
+        q.multiselect(
+                cb.count(call),
+                cb.sum(withDurCase.otherwise(0L)),
+                cb.coalesce(cb.sum(call.<Integer>get("durationMinutes")), 0L));
+        q.where(predicates.toArray(new Predicate[0]));
+
+        Object[] row = em.createQuery(q).getSingleResult();
+        long total = nullToZero(asLong(row[0]));
+        long withDuration = nullToZero(asLong(row[1]));
+        long totalMinutes = nullToZero(asLong(row[2]));
+        double avg = withDuration > 0 ? totalMinutes * 1.0 / withDuration : 0.0;
+
+        return CallDurationSummary.builder()
+                .callsTotal(total)
+                .callsWithDuration(withDuration)
+                .callsWithoutDuration(Math.max(0, total - withDuration))
+                .totalCallMinutes(totalMinutes)
+                .averageCallDurationMinutes(avg)
+                .build();
+    }
+
+    /**
+     * AN-16 A1: lead source performance for leads created in the selected
+     * period, grouped by the authoritative LeadSource (AN-12/AN-14 capture).
+     * Created-window cohort semantics - convertedCount/conversionRate refer to
+     * leads created in the period (is_converted), matching summary.newLeads
+     * and leadMetrics. Leads with no (or unnamed) source fall into the stable
+     * UNSPECIFIED bucket so the summed leadCount reconciles with
+     * summary.leads. Grouping is derived only from the already-authorized lead
+     * set (buildScopeFilter); no source filter is accepted.
+     */
+    public List<LeadSourcePerformanceRow> getLeadSourcePerformance(AnalyticsContext ctx, AnalyticsDateRange range) {
+        String scopeFilter = buildQualifiedScopeFilter(ctx, "l");
+        String sql = """
+                SELECT COALESCE(NULLIF(ls.name, ''), 'UNSPECIFIED') AS source,
+                       l.source_id,
+                       COUNT(*) AS lead_count,
+                       COUNT(*) FILTER (WHERE l.is_converted = true AND l.converted_at IS NOT NULL) AS converted_count
+                FROM leads l
+                LEFT JOIN lead_sources ls ON ls.id = l.source_id
+                WHERE l.deleted = false AND %s
+                  AND l.created_at >= :from AND l.created_at < :to
+                GROUP BY COALESCE(NULLIF(ls.name, ''), 'UNSPECIFIED'), l.source_id
+                ORDER BY lead_count DESC, source
+                """.formatted(scopeFilter);
+
+        jakarta.persistence.Query query = em.createNativeQuery(sql);
+        query.setParameter("from", range.from());
+        query.setParameter("to", range.to());
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        List<LeadSourcePerformanceRow> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            String source = (String) row[0];
+            UUID sourceId = (UUID) row[1];
+            long leadCount = nullToZero(asLong(row[2]));
+            long convertedCount = nullToZero(asLong(row[3]));
+            double rate = leadCount > 0 ? convertedCount * 100.0 / leadCount : 0.0;
+            result.add(LeadSourcePerformanceRow.builder()
+                    .sourceId(sourceId)
+                    .source(source)
+                    .leadCount(leadCount)
+                    .convertedCount(convertedCount)
+                    .conversionRate(rate)
+                    .build());
+        }
+        return result;
+    }
+
+    /**
+     * AN-16 B3: contacts created in the selected period grouped by their own
+     * authorized account_id. Grouping is derived only from the already-scoped
+     * contact set (buildScopeFilter) - an account id can never widen scope.
+     * Contacts with no account are a first-class NO ACCOUNT bucket so the
+     * summed contactCount reconciles with summary.contacts.
+     */
+    public List<ContactsPerAccountRow> getContactsPerAccount(AnalyticsContext ctx, AnalyticsDateRange range) {
+        String scopeFilter = buildQualifiedScopeFilter(ctx, "c");
+        String sql = """
+                SELECT c.account_id,
+                       COALESCE(NULLIF(a.name, ''), 'NO ACCOUNT') AS account_name,
+                       COUNT(*) AS contact_count
+                FROM contacts c
+                LEFT JOIN accounts a ON a.id = c.account_id
+                WHERE c.deleted = false AND %s
+                  AND c.created_at >= :from AND c.created_at < :to
+                GROUP BY c.account_id, COALESCE(NULLIF(a.name, ''), 'NO ACCOUNT')
+                ORDER BY contact_count DESC, account_name
+                """.formatted(scopeFilter);
+
+        jakarta.persistence.Query query = em.createNativeQuery(sql);
+        query.setParameter("from", range.from());
+        query.setParameter("to", range.to());
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        List<ContactsPerAccountRow> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            UUID accountId = (UUID) row[0];
+            String accountName = (String) row[1];
+            long contactCount = nullToZero(asLong(row[2]));
+            result.add(ContactsPerAccountRow.builder()
+                    .accountId(accountId)
+                    .accountName(accountName)
+                    .contactCount(contactCount)
+                    .build());
+        }
+        return result;
+    }
+
+    /**
+     * AN-17 B2: accounts created in the selected period grouped by their own
+     * owner_user_id. Scope is applied to the accounts table itself via the
+     * authoritve account-visibility model (identical to
+     * AccountSpecifications.visibleToUser / RecordScopeGuard), so the group
+     * dimension is derived only from accounts inside the caller's authorized
+     * account set - an owner id can never widen scope. Accounts with no owner
+     * fall into the UNASSIGNED bucket so SUM(accountCount) reconciles with the
+     * authorized account population for the window.
+     */
+    public List<AccountsByOwnerRow> getAccountsByOwner(AnalyticsContext ctx, AnalyticsDateRange range) {
+        String scopeFilter = buildQualifiedScopeFilter(ctx, "a");
+        String sql = """
+                SELECT a.owner_user_id,
+                       COUNT(*) AS account_count,
+                       COUNT(*) FILTER (WHERE a.is_active = true) AS active_count
+                FROM accounts a
+                WHERE a.deleted = false AND %s
+                  AND a.created_at >= :from AND a.created_at < :to
+                GROUP BY a.owner_user_id
+                ORDER BY account_count DESC, a.owner_user_id
+                """.formatted(scopeFilter);
+
+        jakarta.persistence.Query query = em.createNativeQuery(sql);
+        query.setParameter("from", range.from());
+        query.setParameter("to", range.to());
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        List<AccountsByOwnerRow> result = new ArrayList<>(rows.size());
+        List<UUID> ownerIds = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            UUID ownerId = (UUID) row[0];
+            if (ownerId != null) {
+                ownerIds.add(ownerId);
+            }
+            result.add(AccountsByOwnerRow.builder()
+                    .ownerUserId(ownerId)
+                    .accountCount(nullToZero(asLong(row[1])))
+                    .activeCount(nullToZero(asLong(row[2])))
+                    .build());
+        }
+        Map<UUID, String> names = ownerDisplayNames(ownerIds);
+        for (AccountsByOwnerRow row : result) {
+            if (row.getOwnerUserId() != null) {
+                row.setOwnerDisplayName(names.get(row.getOwnerUserId()));
+            }
+        }
+        return result;
+    }
+
+    private ActivityRatesSummary.MeetingStatusSummary meetingStatus(AnalyticsContext ctx, AnalyticsDateRange range) {
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<Object[]> q = cb.createQuery(Object[].class);
+        Root<Meeting> m = q.from(Meeting.class);
+
+        List<Predicate> predicates = basePredicates(m, cb, ctx);
+        predicates.add(cb.greaterThanOrEqualTo(m.get("createdAt"), range.from()));
+        predicates.add(cb.lessThan(m.get("createdAt"), range.to()));
+
+        CriteriaBuilder.Case<Long> plannedCase = cb.<Long>selectCase()
+                .when(cb.equal(m.get("status"), Meeting.MeetingStatus.PLANNED), 1L);
+        CriteriaBuilder.Case<Long> heldCase = cb.<Long>selectCase()
+                .when(cb.equal(m.get("status"), Meeting.MeetingStatus.HELD), 1L);
+        CriteriaBuilder.Case<Long> notHeldCase = cb.<Long>selectCase()
+                .when(cb.equal(m.get("status"), Meeting.MeetingStatus.NOT_HELD), 1L);
+        CriteriaBuilder.Case<Long> cancelledCase = cb.<Long>selectCase()
+                .when(cb.equal(m.get("status"), Meeting.MeetingStatus.CANCELLED), 1L);
+
+        q.multiselect(cb.sum(plannedCase.otherwise(0L)), cb.sum(heldCase.otherwise(0L)),
+                cb.sum(notHeldCase.otherwise(0L)), cb.sum(cancelledCase.otherwise(0L)));
+        q.where(predicates.toArray(new Predicate[0]));
+
+        Object[] row = em.createQuery(q).getSingleResult();
+        long planned = nullToZero(asLong(row[0]));
+        long held = nullToZero(asLong(row[1]));
+        long notHeld = nullToZero(asLong(row[2]));
+        long cancelled = nullToZero(asLong(row[3]));
+        long denominator = held + notHeld + cancelled;
+        double heldRate = denominator > 0 ? held * 100.0 / denominator : 0.0;
+
+        return ActivityRatesSummary.MeetingStatusSummary.builder()
+                .planned(planned)
+                .held(held)
+                .notHeld(notHeld)
+                .cancelled(cancelled)
+                .heldRate(heldRate)
+                .build();
+    }
+
+    private Predicate notClosed(Root<Task> root, CriteriaBuilder cb) {
+        return cb.or(cb.equal(root.get("isClosed"), false), cb.isNull(root.get("isClosed")));
+    }
+
+    private static double asDouble(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        return Double.parseDouble(value.toString());
+    }
+
     // ======================== Identity decoration ========================
 
     /**
@@ -844,5 +1247,22 @@ public class AnalyticsService {
                         .formatted(ctx.tenantId(), ctx.userId(), ctx.userId(), teamIds);
             }
         };
+    }
+
+    /**
+     * Alias-qualified variant of {@link #buildScopeFilter} for native queries
+     * that join extra tables (accounts, lead_sources) carrying their own
+     * tenant_id/owner_user_id/created_by columns, avoiding the
+     * "column reference ... is ambiguous" error. The primary (scoped) table
+     * alias is prepended to every scope column reference.
+     */
+    private String buildQualifiedScopeFilter(AnalyticsContext ctx, String alias) {
+        String base = buildScopeFilter(ctx);
+        return base
+                .replace("tenant_id IN (", alias + ".tenant_id IN (")
+                .replace("tenant_id = ", alias + ".tenant_id = ")
+                .replace("owner_user_id = ", alias + ".owner_user_id = ")
+                .replace("owner_user_id IN (", alias + ".owner_user_id IN (")
+                .replace("created_by = ", alias + ".created_by = ");
     }
 }

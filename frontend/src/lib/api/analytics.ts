@@ -11,6 +11,14 @@ import {
   ConversionOwnerRow,
   DealAgingRow,
   CallStatusSummary,
+  ContactsPerAccountRow,
+  ConversionPeriodSummary,
+  ForecastCategoryRow,
+  CurrentStageAgeSummary,
+  ActivityRatesSummary,
+  CallDurationSummary,
+  LeadSourcePerformanceRow,
+  AccountsByOwnerRow,
 } from "@/types/analytics";
 import { unwrapResponse } from "./api-utils";
 
@@ -98,6 +106,70 @@ export const analyticsApi = {
   getCallStatus: async (range?: AnalyticsDateRange, tenantId?: string): Promise<CallStatusSummary> => {
     const response = await api.get<ApiResponse<CallStatusSummary>>(
       "/analytics/calls/status",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getConversionDuringPeriod: async (range?: AnalyticsDateRange, tenantId?: string): Promise<ConversionPeriodSummary> => {
+    const response = await api.get<ApiResponse<ConversionPeriodSummary>>(
+      "/analytics/conversion/period",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getPipelineByForecastCategory: async (range?: AnalyticsDateRange, tenantId?: string): Promise<ForecastCategoryRow[]> => {
+    const response = await api.get<ApiResponse<ForecastCategoryRow[]>>(
+      "/analytics/pipeline/forecast-category",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getCurrentStageAge: async (range?: AnalyticsDateRange, tenantId?: string): Promise<CurrentStageAgeSummary> => {
+    const response = await api.get<ApiResponse<CurrentStageAgeSummary>>(
+      "/analytics/deals/current-stage-age",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getActivityRates: async (range?: AnalyticsDateRange, tenantId?: string): Promise<ActivityRatesSummary> => {
+    const response = await api.get<ApiResponse<ActivityRatesSummary>>(
+      "/analytics/activity/rates",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getCallDuration: async (range?: AnalyticsDateRange, tenantId?: string): Promise<CallDurationSummary> => {
+    const response = await api.get<ApiResponse<CallDurationSummary>>(
+      "/analytics/calls/duration",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getLeadSourcePerformance: async (range?: AnalyticsDateRange, tenantId?: string): Promise<LeadSourcePerformanceRow[]> => {
+    const response = await api.get<ApiResponse<LeadSourcePerformanceRow[]>>(
+      "/analytics/leads/source",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getContactsPerAccount: async (range?: AnalyticsDateRange, tenantId?: string): Promise<ContactsPerAccountRow[]> => {
+    const response = await api.get<ApiResponse<ContactsPerAccountRow[]>>(
+      "/analytics/contacts/account",
+      { params: buildParams(range, tenantId) }
+    );
+    return unwrapResponse(response);
+  },
+
+  getAccountsByOwner: async (range?: AnalyticsDateRange, tenantId?: string): Promise<AccountsByOwnerRow[]> => {
+    const response = await api.get<ApiResponse<AccountsByOwnerRow[]>>(
+      "/analytics/accounts/owner",
       { params: buildParams(range, tenantId) }
     );
     return unwrapResponse(response);

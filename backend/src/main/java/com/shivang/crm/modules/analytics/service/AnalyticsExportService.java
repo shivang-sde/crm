@@ -8,9 +8,17 @@ import com.shivang.crm.modules.analytics.AnalyticsContext;
 import com.shivang.crm.modules.analytics.AnalyticsDateRange;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse;
 import com.shivang.crm.modules.analytics.dto.AnalyticsTrendResponse;
+import com.shivang.crm.modules.analytics.dto.AccountsByOwnerRow;
+import com.shivang.crm.modules.analytics.dto.ActivityRatesSummary;
+import com.shivang.crm.modules.analytics.dto.CallDurationSummary;
 import com.shivang.crm.modules.analytics.dto.CallStatusSummary;
+import com.shivang.crm.modules.analytics.dto.ContactsPerAccountRow;
 import com.shivang.crm.modules.analytics.dto.ConversionOwnerRow;
+import com.shivang.crm.modules.analytics.dto.ConversionPeriodSummary;
+import com.shivang.crm.modules.analytics.dto.CurrentStageAgeSummary;
 import com.shivang.crm.modules.analytics.dto.DealAgingRow;
+import com.shivang.crm.modules.analytics.dto.ForecastCategoryRow;
+import com.shivang.crm.modules.analytics.dto.LeadSourcePerformanceRow;
 import com.shivang.crm.modules.analytics.dto.PipelineAccountRow;
 import com.shivang.crm.modules.analytics.dto.PipelineOwnerRow;
 import com.shivang.crm.modules.analytics.dto.PipelineStageRow;
@@ -89,6 +97,14 @@ public class AnalyticsExportService {
             case "conversion-owner" -> conversionOwnerCsv(context, range);
             case "deals-aging" -> dealAgingCsv(context, range);
             case "calls-status" -> callStatusCsv(context, range);
+            case "conversion-period" -> conversionPeriodCsv(context, range);
+            case "forecast-category" -> forecastCategoryCsv(context, range);
+            case "current-stage-age" -> currentStageAgeCsv(context, range);
+            case "activity-rates" -> activityRatesCsv(context, range);
+            case "calls-duration" -> callDurationCsv(context, range);
+            case "lead-source" -> leadSourceCsv(context, range);
+            case "contacts-account" -> contactsPerAccountCsv(context, range);
+            case "accounts-owner" -> accountsOwnerCsv(context, range);
             default -> throw new BusinessException("INVALID_DATASET",
                     "Unknown grouped dataset: " + dataset);
         };
@@ -156,6 +172,91 @@ public class AnalyticsExportService {
         StringBuilder sb = headerRow(context, range);
         sb.append(CsvWriter.row("planned", "held", "notHeld", "cancelled", "heldRate"));
         sb.append(CsvWriter.row(s.getPlanned(), s.getHeld(), s.getNotHeld(), s.getCancelled(), s.getHeldRate()));
+        return sb.toString();
+    }
+
+    private String conversionPeriodCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        ConversionPeriodSummary s = analyticsService.getConversionDuringPeriod(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("convertedDuringPeriod"));
+        sb.append(CsvWriter.row(s.getConvertedDuringPeriod()));
+        return sb.toString();
+    }
+
+    private String forecastCategoryCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<ForecastCategoryRow> rows = analyticsService.getPipelineByForecastCategory(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("category", "dealCount", "pipelineValue", "wonValue"));
+        for (ForecastCategoryRow r : rows) {
+            sb.append(CsvWriter.row(r.getCategory(), r.getDealCount(), r.getPipelineValue(), r.getWonValue()));
+        }
+        return sb.toString();
+    }
+
+    private String currentStageAgeCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        CurrentStageAgeSummary s = analyticsService.getCurrentStageAge(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("avgDealAgeDays", "avgCurrentStageAgeDays",
+                "openDealsWithStageEnteredAt", "openDealsWithoutStageEnteredAt"));
+        sb.append(CsvWriter.row(s.getAvgDealAgeDays(), s.getAvgCurrentStageAgeDays(),
+                s.getOpenDealsWithStageEnteredAt(), s.getOpenDealsWithoutStageEnteredAt()));
+        return sb.toString();
+    }
+
+    private String activityRatesCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        ActivityRatesSummary s = analyticsService.getActivityRates(context, range);
+        ActivityRatesSummary.MeetingStatusSummary ms = s.getMeetingStatus();
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("metric", "value"));
+        sb.append(CsvWriter.row("taskCompletionRate", s.getTaskCompletionRate()));
+        sb.append(CsvWriter.row("taskOverdueRate", s.getTaskOverdueRate()));
+        sb.append(CsvWriter.row("meetingPlanned", ms.getPlanned()));
+        sb.append(CsvWriter.row("meetingHeld", ms.getHeld()));
+        sb.append(CsvWriter.row("meetingNotHeld", ms.getNotHeld()));
+        sb.append(CsvWriter.row("meetingCancelled", ms.getCancelled()));
+        sb.append(CsvWriter.row("meetingHeldRate", ms.getHeldRate()));
+        return sb.toString();
+    }
+
+    private String callDurationCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        CallDurationSummary s = analyticsService.getCallDuration(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("callsTotal", "callsWithDuration", "callsWithoutDuration",
+                "totalCallMinutes", "averageCallDurationMinutes"));
+        sb.append(CsvWriter.row(s.getCallsTotal(), s.getCallsWithDuration(), s.getCallsWithoutDuration(),
+                s.getTotalCallMinutes(), s.getAverageCallDurationMinutes()));
+        return sb.toString();
+    }
+
+    private String leadSourceCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<LeadSourcePerformanceRow> rows = analyticsService.getLeadSourcePerformance(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("sourceId", "source", "leadCount", "convertedCount", "conversionRate"));
+        for (LeadSourcePerformanceRow r : rows) {
+            sb.append(CsvWriter.row(r.getSourceId(), r.getSource(), r.getLeadCount(),
+                    r.getConvertedCount(), r.getConversionRate()));
+        }
+        return sb.toString();
+    }
+
+    private String contactsPerAccountCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<ContactsPerAccountRow> rows = analyticsService.getContactsPerAccount(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("accountId", "accountName", "contactCount"));
+        for (ContactsPerAccountRow r : rows) {
+            sb.append(CsvWriter.row(r.getAccountId(), r.getAccountName(), r.getContactCount()));
+        }
+        return sb.toString();
+    }
+
+    private String accountsOwnerCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<AccountsByOwnerRow> rows = analyticsService.getAccountsByOwner(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("ownerUserId", "ownerDisplayName", "accountCount", "activeCount"));
+        for (AccountsByOwnerRow r : rows) {
+            sb.append(CsvWriter.row(r.getOwnerUserId(), r.getOwnerDisplayName(),
+                    r.getAccountCount(), r.getActiveCount()));
+        }
         return sb.toString();
     }
 
