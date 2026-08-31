@@ -121,7 +121,7 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function csvExportFileName(kind: "summary" | "trends", to?: string): string {
+export function csvExportFileName(kind: "summary" | "trends" | string, to?: string): string {
   const date = to ? to.slice(0, 10) : new Date().toISOString().slice(0, 10);
   return `analytics-${kind}-${date}.csv`;
 }

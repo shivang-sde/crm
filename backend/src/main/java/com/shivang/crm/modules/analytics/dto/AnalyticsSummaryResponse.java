@@ -42,7 +42,7 @@ public class AnalyticsSummaryResponse {
     public static class LeadMetrics {
         /** Leads created in range (same as leads field). */
         private long newLeads;
-        /** Leads with isConverted=true and convertedAt in range. */
+        /** Of newLeads, those that have since converted (isConverted=true, convertedAt IS NOT NULL). */
         private long convertedLeads;
         /** convertedLeads / newLeads * 100, or 0 when newLeads == 0. */
         private double conversionRate;
@@ -74,7 +74,7 @@ public class AnalyticsSummaryResponse {
     public static class ActivityMetrics {
         /** Tasks created in range where isClosed != true. */
         private long openTasks;
-        /** Tasks completed (status = COMPLETED) in range. */
+        /** Tasks created in range that were also completed within the range (status = COMPLETED, completedAt in [from,to)). */
         private long completedTasks;
         /** Tasks created in range, not completed, with dueDate before now. */
         private long overdueTasks;

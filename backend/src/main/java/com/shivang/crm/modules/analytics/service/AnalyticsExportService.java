@@ -8,7 +8,14 @@ import com.shivang.crm.modules.analytics.AnalyticsContext;
 import com.shivang.crm.modules.analytics.AnalyticsDateRange;
 import com.shivang.crm.modules.analytics.dto.AnalyticsSummaryResponse;
 import com.shivang.crm.modules.analytics.dto.AnalyticsTrendResponse;
+import com.shivang.crm.modules.analytics.dto.CallStatusSummary;
+import com.shivang.crm.modules.analytics.dto.ConversionOwnerRow;
+import com.shivang.crm.modules.analytics.dto.DealAgingRow;
+import com.shivang.crm.modules.analytics.dto.PipelineAccountRow;
+import com.shivang.crm.modules.analytics.dto.PipelineOwnerRow;
+import com.shivang.crm.modules.analytics.dto.PipelineStageRow;
 import com.shivang.crm.modules.analytics.export.CsvWriter;
+import com.shivang.crm.shared.exception.BusinessException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -66,6 +73,97 @@ public class AnalyticsExportService {
             sb.append(CsvWriter.row(t.getBucket(), t.getLeads(), t.getContacts(), t.getDeals(), t.getTasks()));
         }
         return sb.toString();
+    }
+
+    /**
+     * AN-13: single dispatch point for grouped CSV exports. Reuses the exact
+     * scoped {@link AnalyticsService} methods and {@link CsvWriter}, so an
+     * export carries the same authorization/scope and escaping guarantees as
+     * the JSON endpoints.
+     */
+    public String groupedCsv(String dataset, AnalyticsContext context, AnalyticsDateRange range) {
+        return switch (dataset) {
+            case "pipeline-stage" -> pipelineStageCsv(context, range);
+            case "pipeline-owner" -> pipelineOwnerCsv(context, range);
+            case "pipeline-account" -> pipelineAccountCsv(context, range);
+            case "conversion-owner" -> conversionOwnerCsv(context, range);
+            case "deals-aging" -> dealAgingCsv(context, range);
+            case "calls-status" -> callStatusCsv(context, range);
+            default -> throw new BusinessException("INVALID_DATASET",
+                    "Unknown grouped dataset: " + dataset);
+        };
+    }
+
+    private String pipelineStageCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<PipelineStageRow> rows = analyticsService.getPipelineByStage(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("stageId", "stageName", "openCount", "wonCount", "lostCount",
+                "pipelineValue", "wonValue", "totalCount"));
+        for (PipelineStageRow r : rows) {
+            sb.append(CsvWriter.row(r.getStageId(), r.getStageName(), r.getOpenCount(), r.getWonCount(),
+                    r.getLostCount(), r.getPipelineValue(), r.getWonValue(), r.getTotalCount()));
+        }
+        return sb.toString();
+    }
+
+    private String pipelineOwnerCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<PipelineOwnerRow> rows = analyticsService.getPipelineByOwner(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("ownerUserId", "ownerDisplayName", "openCount", "wonCount", "lostCount",
+                "pipelineValue", "wonValue", "totalCount"));
+        for (PipelineOwnerRow r : rows) {
+            sb.append(CsvWriter.row(r.getOwnerUserId(), r.getOwnerDisplayName(), r.getOpenCount(), r.getWonCount(),
+                    r.getLostCount(), r.getPipelineValue(), r.getWonValue(), r.getTotalCount()));
+        }
+        return sb.toString();
+    }
+
+    private String pipelineAccountCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<PipelineAccountRow> rows = analyticsService.getPipelineByAccount(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("accountId", "accountName", "openCount", "wonCount", "lostCount",
+                "pipelineValue", "wonValue", "totalCount"));
+        for (PipelineAccountRow r : rows) {
+            sb.append(CsvWriter.row(r.getAccountId(), r.getAccountName(), r.getOpenCount(), r.getWonCount(),
+                    r.getLostCount(), r.getPipelineValue(), r.getWonValue(), r.getTotalCount()));
+        }
+        return sb.toString();
+    }
+
+    private String conversionOwnerCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<ConversionOwnerRow> rows = analyticsService.getConversionByOwner(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("ownerUserId", "ownerDisplayName", "newLeadCount", "convertedLeadCount", "conversionRate"));
+        for (ConversionOwnerRow r : rows) {
+            sb.append(CsvWriter.row(r.getOwnerUserId(), r.getOwnerDisplayName(), r.getNewLeadCount(),
+                    r.getConvertedLeadCount(), r.getConversionRate()));
+        }
+        return sb.toString();
+    }
+
+    private String dealAgingCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        List<DealAgingRow> rows = analyticsService.getDealAging(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("bucket", "count", "pipelineValue"));
+        for (DealAgingRow r : rows) {
+            sb.append(CsvWriter.row(r.getBucket(), r.getCount(), r.getPipelineValue()));
+        }
+        return sb.toString();
+    }
+
+    private String callStatusCsv(AnalyticsContext context, AnalyticsDateRange range) {
+        CallStatusSummary s = analyticsService.getCallStatus(context, range);
+        StringBuilder sb = headerRow(context, range);
+        sb.append(CsvWriter.row("planned", "held", "notHeld", "cancelled", "heldRate"));
+        sb.append(CsvWriter.row(s.getPlanned(), s.getHeld(), s.getNotHeld(), s.getCancelled(), s.getHeldRate()));
+        return sb.toString();
+    }
+
+    private StringBuilder headerRow(AnalyticsContext context, AnalyticsDateRange range) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(CsvWriter.row("scope", "from", "to"));
+        sb.append(CsvWriter.row(context.scope(), range.from(), range.to()));
+        return sb;
     }
 
     public String fileName(String kind, AnalyticsContext context, AnalyticsDateRange range) {

@@ -1,5 +1,6 @@
 import {
   Home,
+  BarChart3,
   Building,
   Shield,
   Users,
@@ -72,6 +73,7 @@ type PermissionAlternative = [string, string];
  */
 const ROUTE_PERMISSIONS: { segment: string; anyOf: PermissionAlternative[] }[] = [
   { segment: "dashboard", anyOf: [["report", "read"]] },
+  { segment: "reports", anyOf: [["report", "read"]] },
   { segment: "leads", anyOf: [["lead", "read"]] },
   { segment: "deals", anyOf: [["deal", "read"]] },
   { segment: "offerings", anyOf: [["offering", "read"]] },
@@ -177,6 +179,16 @@ export function canAccessRoute(
   }
 
   const segment = firstSegment(path);
+
+  // PLATFORM UX: platform roles hold report:read at the backend and open the
+  // shared operational-reports surface alongside their fixed platform menus.
+  if (
+    segment === "reports" &&
+    (role === "SUPERADMIN" || role === "RESELLER")
+  ) {
+    return true;
+  }
+
   const rule = ROUTE_PERMISSIONS.find((r) => r.segment === segment);
   if (rule) {
     return grantsAny(permissions, rule.anyOf);
@@ -233,7 +245,10 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
   const canViewDashboard = platformRole || hasGrant(permissions, "report:read");
 
   const baseItems: NavItem[] = canViewDashboard
-    ? [{ name: "Dashboard", href: getDefaultRoute(permissions ?? null, role), icon: Home, show: true }]
+    ? [
+        { name: "Dashboard", href: getDefaultRoute(permissions ?? null, role), icon: Home, show: true },
+        { name: "Reports", href: "/reports", icon: BarChart3, show: true },
+      ]
     : [];
 
   if (!role) {

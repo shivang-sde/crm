@@ -2,7 +2,7 @@
 
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { authApi } from "@/lib/api/auth";
@@ -38,6 +38,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const setPermissions = useAuthStore((state) => state.setPermissions);
   const permissions = useAuthStore((state) => state.permissions);
   const hydrated = useAuthStore((state) => state.hydrated);
+
+  const queryClient = useQueryClient();
 
   const [bootstrapComplete, setBootstrapComplete] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
@@ -109,6 +111,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         }
       } catch {
         logout();
+        queryClient.clear();
         router.replace("/sign-in");
       } finally {
         setBootstrapComplete(true);
@@ -116,7 +119,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     };
 
     initializeAuth();
-  }, [hydrated, bootstrapComplete, user, accessToken, setAuth, setPermissions, logout, router, userRole]);
+  }, [hydrated, bootstrapComplete, user, accessToken, setAuth, setPermissions, logout, router, userRole, queryClient]);
 
   React.useEffect(() => {
     if (!hydrated || !bootstrapComplete) {
@@ -132,11 +135,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
     mutationFn: () => authApi.logout(),
     onSuccess: () => {
       logout();
+      queryClient.clear();
       toast.success("Logged out successfully");
       router.replace("/sign-in");
     },
     onError: () => {
       logout();
+      queryClient.clear();
       router.replace("/sign-in");
     },
   });

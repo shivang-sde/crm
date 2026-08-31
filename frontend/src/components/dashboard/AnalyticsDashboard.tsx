@@ -143,7 +143,7 @@ function KpiCard({ label, value, icon }: KpiCardProps) {
   );
 }
 
-function MetricRow({ label, value, tone }: { label: string; value: string; tone?: "default" | "positive" | "negative" | "warning" }) {
+function MetricRow({ label, value, tone, hint }: { label: string; value: string; tone?: "default" | "positive" | "negative" | "warning"; hint?: string }) {
   const tones: Record<string, string> = {
     default: "",
     positive: "text-emerald-600",
@@ -152,7 +152,7 @@ function MetricRow({ label, value, tone }: { label: string; value: string; tone?
   };
   return (
     <div className="flex items-center justify-between py-1.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground" title={hint}>{label}</span>
       <span className={`text-sm font-medium tabular-nums ${tones[tone ?? "default"]}`}>{value}</span>
     </div>
   );
@@ -201,8 +201,18 @@ function LeadMetricsCard({ data }: { data: LeadMetrics }) {
       </CardHeader>
       <CardContent>
         <MetricRow label="New leads" value={data.newLeads.toLocaleString()} />
-        <MetricRow label="Converted" value={data.convertedLeads.toLocaleString()} tone="positive" />
-        <MetricRow label="Conversion rate" value={formatRate(data.conversionRate)} tone={data.conversionRate > 0 ? "positive" : "default"} />
+        <MetricRow
+          label="Converted (of new leads)"
+          value={data.convertedLeads.toLocaleString()}
+          tone="positive"
+          hint="Leads created in the selected period that have since been converted."
+        />
+        <MetricRow
+          label="Conversion rate"
+          value={formatRate(data.conversionRate)}
+          tone={data.conversionRate > 0 ? "positive" : "default"}
+          hint="Converted / new leads - both are leads created in the selected period."
+        />
       </CardContent>
     </Card>
   );
@@ -240,7 +250,12 @@ function ActivityMetricsCard({ data }: { data: ActivityMetrics }) {
       </CardHeader>
       <CardContent>
         <MetricRow label="Open tasks" value={data.openTasks.toLocaleString()} />
-        <MetricRow label="Completed" value={data.completedTasks.toLocaleString()} tone="positive" />
+        <MetricRow
+          label="Created & completed"
+          value={data.completedTasks.toLocaleString()}
+          tone="positive"
+          hint="Tasks created in the selected period that were completed within the same period."
+        />
         <MetricRow label="Overdue" value={data.overdueTasks.toLocaleString()} tone={data.overdueTasks > 0 ? "negative" : "default"} />
       </CardContent>
     </Card>

@@ -272,6 +272,22 @@ public class DealService {
                 "Deal updated", userId, metadata);
         }
 
+        // D1 stage-history consistency: an actual stage transition performed
+        // through the PUT update path must write the same authoritative
+        // STAGE_CHANGED history entry as changeStage (PATCH). Skipping this
+        // left time-in-stage / stage-movement analytics dependent on which
+        // update path moved the deal.
+        if (stageChanged) {
+            Map<String, Object> historyMetadata = stageChangeMetadata(
+                    (UUID) oldValues.get("oldStageId"),
+                    (String) oldValues.get("oldStageName"),
+                    previousCategory,
+                    updatedDeal);
+            logDealHistory(tenantId, updatedDeal.getId(), "STAGE_CHANGED",
+                    "Stage changed from " + oldValues.get("oldStageName") + " to " + updatedDeal.getStage().getName(),
+                    userId, historyMetadata);
+        }
+
         return dealMapper.toResponse(updatedDeal);
     }
 
@@ -496,16 +512,7 @@ public class DealService {
         }
 
         // Log activity
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("oldStageId", oldStageId);
-        metadata.put("oldStageName", oldStageName);
-        metadata.put("oldRecordCategory", oldCategory);
-        metadata.put("newStageId", newStage.getId());
-        metadata.put("newStageName", newStage.getName());
-        metadata.put("newRecordCategory", newStage.getRecordCategory());
-        metadata.put("probability", updatedDeal.getProbability());
-        metadata.put("forecastCategory", updatedDeal.getForecastCategory());
-        metadata.put("closedDate", updatedDeal.getClosedDate());
+        Map<String, Object> metadata = stageChangeMetadata(oldStageId, oldStageName, oldCategory, updatedDeal);
         logDealActivity(tenantId, updatedDeal.getId(), "STAGE_CHANGED", 
             "Stage changed from " + oldStageName + " to " + newStage.getName(), userId, metadata);
         logDealHistory(tenantId, updatedDeal.getId(), "STAGE_CHANGED",
@@ -834,6 +841,26 @@ public class DealService {
     private void logDealHistory(UUID tenantId, UUID dealId, String eventType,
                                 String description, UUID performedBy, Map<String, Object> metadata) {
         entityHistoryService.logHistoryWithMetadata(tenantId, dealId, "DEAL", eventType, description, performedBy, metadata);
+    }
+
+    /**
+     * Single source of truth for the STAGE_CHANGED metadata shape. Used by
+     * both {@link #changeStage} (PATCH) and the PUT update path so stage
+     * history is identical regardless of how the transition was performed.
+     */
+    private Map<String, Object> stageChangeMetadata(UUID oldStageId, String oldStageName,
+                                                    RecordCategory oldCategory, Deal updatedDeal) {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("oldStageId", oldStageId);
+        metadata.put("oldStageName", oldStageName);
+        metadata.put("oldRecordCategory", oldCategory);
+        metadata.put("newStageId", updatedDeal.getStage().getId());
+        metadata.put("newStageName", updatedDeal.getStage().getName());
+        metadata.put("newRecordCategory", updatedDeal.getStage().getRecordCategory());
+        metadata.put("probability", updatedDeal.getProbability());
+        metadata.put("forecastCategory", updatedDeal.getForecastCategory());
+        metadata.put("closedDate", updatedDeal.getClosedDate());
+        return metadata;
     }
 
     private boolean shouldProvisionEntitlements(RecordCategory previousCategory, RecordCategory newCategory) {
