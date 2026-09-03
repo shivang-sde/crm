@@ -6,6 +6,9 @@ spring:
     compose:
       enabled: false
 
+  main:
+    allow-bean-definition-overriding: true
+
   datasource:
     url: ${DATABASE_URL}
     username: ${POSTGRES_USER}
@@ -26,6 +29,17 @@ spring:
 
       data-source-properties:
         timezone: UTC
+
+  # ── JPA / Hibernate ──
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
 
   flyway:
     enabled: true
@@ -62,6 +76,11 @@ app:
     generation-delay-ms: 60000
     generation-window-days: 30
     batch-size: 100
+  entitlements:
+    expiry-enabled: true
+    expiry-delay-ms: ${ENTITLEMENT_EXPIRY_DELAY_MS:86400000}
+    renewal-task-enabled: true
+    renewal-task-delay-ms: ${ENTITLEMENT_RENEWAL_TASK_DELAY_MS:86400000}
   outbox:
     poll-delay-ms: ${OUTBOX_POLL_DELAY_MS:5000}
     batch-size: ${OUTBOX_BATCH_SIZE:100}
@@ -71,6 +90,7 @@ app:
   workflow-runtime:
     poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:5000}
     batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:25}
+    max-chain-depth: ${WORKFLOW_MAX_CHAIN_DEPTH:5}
     retry:
       enabled: ${WORKFLOW_NODE_RETRY_ENABLED:false}
       max-attempts: ${WORKFLOW_NODE_RETRY_MAX_ATTEMPTS:3}
@@ -84,11 +104,30 @@ app:
       stale-after-seconds: ${WORKFLOW_EXECUTION_RECOVERY_STALE_AFTER_SECONDS:300}
       batch-size: ${WORKFLOW_EXECUTION_RECOVERY_BATCH_SIZE:100}
       fixed-delay-ms: ${WORKFLOW_EXECUTION_RECOVERY_FIXED_DELAY_MS:60000}
+  
+
   outbound-http:
     connect-timeout-ms: ${OUTBOUND_HTTP_CONNECT_TIMEOUT_MS:5000}
     read-timeout-ms: ${OUTBOUND_HTTP_READ_TIMEOUT_MS:10000}
     max-request-bytes: ${OUTBOUND_HTTP_MAX_REQUEST_BYTES:1048576}
     max-response-bytes: ${OUTBOUND_HTTP_MAX_RESPONSE_BYTES:1048576}
+
+  import:
+    csv:
+      max-file-size-bytes: 10485760
+      max-rows: 5000
+      max-columns: 50
+
+# ── JWT Configuration ──
+jwt:
+  secret: ${JWT_SECRET:Y3JtLWFwcGxpY2F0aW9uLXN1cGVyLXNlY3JldC1rZXktdGhhdC1pcy1sb25nLWVub3VnaC1mb3ItaHMyNTY=}
+  access-token-expiry-ms: 36000000
+  refresh-token-expiry-days: 7
+
+integration:
+  security:
+    encryption-key: ${INTEGRATION_ENCRYPTION_KEY:XKM1/RmCg8xvU/iYTEY81mZUgZDWeHxwH3Cpqwz1D2w=}
+
 
 server:
   port: ${SERVER_PORT:8080}
@@ -100,6 +139,10 @@ server:
       cookie:
         secure: true
         same-site: lax
+
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 management:
   endpoints:
