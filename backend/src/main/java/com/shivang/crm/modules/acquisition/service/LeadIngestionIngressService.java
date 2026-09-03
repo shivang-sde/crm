@@ -22,6 +22,7 @@ import com.shivang.crm.shared.exception.NotFoundException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -43,15 +44,29 @@ public class LeadIngestionIngressService {
     private final ObjectMapper objectMapper;
 
     public LeadIngestionAcceptedResponse receive(String publicKey, String rawBody, HttpHeaders headers) {
+        return receiveInternal(publicKey, rawBody, headers, LeadIngestionTransportType.WEBHOOK, "Webhook endpoint key is required", "Invalid webhook endpoint");
+    }
+
+    public LeadIngestionAcceptedResponse receiveDirect(String publicKey, String rawBody, HttpHeaders headers) {
+        return receiveInternal(publicKey, rawBody, headers, LeadIngestionTransportType.API, "Direct API key is required", "Invalid direct API endpoint");
+    }
+
+    private LeadIngestionAcceptedResponse receiveInternal(String publicKey, String rawBody, HttpHeaders headers, LeadIngestionTransportType expectedTransport, String missingKeyMessage, String notFoundMessage) {
         if (publicKey == null || publicKey.isBlank()) {
-            throw new BusinessException("VALIDATION_ERROR", "Webhook endpoint key is required");
+            throw new BusinessException("VALIDATION_ERROR", missingKeyMessage);
         }
 
         LeadIngestionConfig config = leadIngestionConfigRepository
             .findByPublicKeyAndDeletedFalse(publicKey)
-            .orElseThrow(() -> new NotFoundException("Invalid webhook endpoint"));
+            .orElseThrow(() -> new NotFoundException(notFoundMessage));
 
-        validateWebhookEligibility(config);
+        if (expectedTransport == LeadIngestionTransportType.WEBHOOK) {
+            validateWebhookEligibility(config);
+        } else if (expectedTransport == LeadIngestionTransportType.API) {
+            validateDirectApiEligibility(config);
+        } else {
+            validateWebhookEligibility(config);
+        }
 
         Map<String, Object> payload = parsePayload(rawBody);
         Map<String, Object> sanitizedHeaders = sanitizeHeaders(headers);
@@ -85,7 +100,27 @@ public class LeadIngestionIngressService {
             .receivedAt(Instant.now())
             .build();
 
-        LeadIngestionEvent savedEvent = leadIngestionEventRepository.save(event);
+        LeadIngestionEvent savedEvent;
+        try {
+            savedEvent = leadIngestionEventRepository.saveAndFlush(event);
+        } catch (DataIntegrityViolationException ex) {
+            // Concurrent duplicate inserted between our check and save — DB unique index enforces idempotency.
+            // Resolve to the existing event and return it (idempotent semantics).
+            log.warn("Idempotency race detected for tenant={} configId={} idempotencyKey={}: {}",
+                config.getTenantId(), config.getId(), idempotencyKey, ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage());
+            Optional<LeadIngestionEvent> existingAfterRace = findDuplicateEvent(config, externalEventId, idempotencyKey);
+            if (existingAfterRace.isPresent()) {
+                LeadIngestionEvent existing = existingAfterRace.get();
+                log.info("Returning existing event after idempotency race for tenant={} configId={} eventId={}",
+                    config.getTenantId(), config.getId(), existing.getId());
+                return LeadIngestionAcceptedResponse.builder()
+                    .eventId(existing.getId())
+                    .status(existing.getStatus())
+                    .receivedAt(existing.getReceivedAt())
+                    .build();
+            }
+            throw ex;
+        }
         log.info("Webhook ingestion event captured for tenant={} configId={} eventId={}",
             config.getTenantId(),
             config.getId(),
@@ -94,6 +129,45 @@ public class LeadIngestionIngressService {
         LeadIngestionEvent processedEvent;
         try {
             processedEvent = leadIngestionProcessingService.processEvent(config.getTenantId(), config.getId(), savedEvent.getId());
+        } catch (BusinessException ex) {
+            if ("DUPLICATE".equals(ex.getErrorCode())) {
+                // Fallback: if duplicate escaped inner handling (e.g., after transaction boundary),
+                // ensure it is recorded as DUPLICATE not FAILED.
+                LeadIngestionEvent dup = leadIngestionFailureService.markDuplicate(
+                    config.getTenantId(), savedEvent.getId(), ex.getMessage());
+                if (dup != null) {
+                    processedEvent = dup;
+                } else {
+                    throw ex;
+                }
+            } else {
+                log.error("Processing failed for ingestion event {} tenant={} configId={}",
+                    savedEvent.getId(), config.getTenantId(), config.getId(), ex);
+                LeadIngestionEvent failedEvent = leadIngestionFailureService.markFailed(
+                    config.getTenantId(), savedEvent.getId(), "PROCESSING_ERROR", ex.getMessage());
+                if (failedEvent == null) throw ex;
+                processedEvent = failedEvent;
+            }
+        } catch (DataIntegrityViolationException ex) {
+            // Concurrent lead duplicate hit DB constraint outside inner transaction (flush at commit).
+            String cause = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+            boolean isLeadDuplicate = cause != null && (cause.toLowerCase().contains("uq_lead") || cause.toLowerCase().contains("duplicate"));
+            if (isLeadDuplicate) {
+                LeadIngestionEvent dup = leadIngestionFailureService.markDuplicate(
+                    config.getTenantId(), savedEvent.getId(), "A lead with this email or phone already exists");
+                if (dup != null) {
+                    processedEvent = dup;
+                } else {
+                    throw ex;
+                }
+            } else {
+                log.error("Processing failed for ingestion event {} tenant={} configId={}",
+                    savedEvent.getId(), config.getTenantId(), config.getId(), ex);
+                LeadIngestionEvent failedEvent = leadIngestionFailureService.markFailed(
+                    config.getTenantId(), savedEvent.getId(), "PROCESSING_ERROR", cause);
+                if (failedEvent == null) throw ex;
+                processedEvent = failedEvent;
+            }
         } catch (Exception ex) {
             log.error("Processing failed for ingestion event {} tenant={} configId={}",
                 savedEvent.getId(), config.getTenantId(), config.getId(), ex);
@@ -140,6 +214,16 @@ public class LeadIngestionIngressService {
 
         if (!Boolean.TRUE.equals(config.getActive())) {
             throw new BusinessException("INGESTION_ENDPOINT_NOT_ACCEPTING", "Webhook endpoint is not available");
+        }
+    }
+
+    private void validateDirectApiEligibility(LeadIngestionConfig config) {
+        if (config.getTransportType() != LeadIngestionTransportType.API) {
+            throw new BusinessException("INGESTION_ENDPOINT_NOT_ACCEPTING", "Direct API endpoint is not available");
+        }
+
+        if (!Boolean.TRUE.equals(config.getActive())) {
+            throw new BusinessException("INGESTION_ENDPOINT_NOT_ACCEPTING", "Direct API endpoint is not available");
         }
     }
 

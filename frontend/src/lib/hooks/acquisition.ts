@@ -151,3 +151,55 @@ export function useLeadIngestionEvent(configId: string, eventId?: string) {
     enabled: Boolean(configId && eventId),
   });
 }
+
+export function useReprocessLeadIngestionEvent(configId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (eventId: string) => acquisitionApi.reprocessEvent(configId, eventId),
+    onSuccess: (_data, eventId) => {
+      qc.invalidateQueries({ queryKey: acquisitionKeys.events(configId) });
+      qc.invalidateQueries({ queryKey: acquisitionKeys.eventDetail(configId, eventId) });
+    },
+  });
+}
+
+export function usePreviewImport(configId: string) {
+  return useMutation({
+    mutationFn: (file: File) => acquisitionApi.previewImport(configId, file),
+  });
+}
+
+export function useImportCsv(configId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => acquisitionApi.importCsv(configId, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: acquisitionKeys.events(configId) });
+    },
+  });
+}
+
+export function useTestPolling(configId: string) {
+  return useMutation({
+    mutationFn: () => acquisitionApi.testPolling(configId),
+  });
+}
+
+export function useTriggerPolling(configId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => acquisitionApi.triggerPolling(configId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: acquisitionKeys.events(configId) });
+    },
+  });
+}
+
+export function usePollingStatus(configId: string) {
+  return useQuery({
+    queryKey: [...acquisitionKeys.detail(configId), "pollingStatus"],
+    queryFn: () => acquisitionApi.getPollingStatus(configId),
+    enabled: Boolean(configId),
+    staleTime: 10000,
+  });
+}

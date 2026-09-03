@@ -76,6 +76,19 @@ export function WorkflowCanvas({
 
   return (
     <div className="h-full w-full">
+      <svg style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} aria-hidden="true">
+        <defs>
+          <marker id="wf-arrow" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--foreground) / 0.6)" />
+          </marker>
+          <marker id="wf-arrow-selected" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--primary))" />
+          </marker>
+          <marker id="wf-arrow-dimmed" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--muted-foreground))" />
+          </marker>
+        </defs>
+      </svg>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -98,14 +111,78 @@ export function WorkflowCanvas({
         nodesConnectable={!readOnly}
         elementsSelectable
         deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+        panOnDrag
+        panOnScroll={false}
+        zoomOnScroll
+        zoomOnPinch
+        zoomOnDoubleClick
+        selectNodesOnDrag={false}
         fitView
-        minZoom={0.2}
-        maxZoom={1.75}
+        fitViewOptions={{ padding: 0.2, maxZoom: 1, minZoom: 0.2 }}
+        minZoom={0.15}
+        maxZoom={2}
+        proOptions={{ hideAttribution: true }}
+        style={{ width: "100%", height: "100%" }}
       >
-        <Background gap={16} />
-        <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
+        <Background gap={16} size={1.2} color="hsl(var(--muted-foreground) / 0.12)" />
+        <Controls
+          showInteractive={false}
+          position="bottom-left"
+          style={{ display: "flex", gap: 4 }}
+          className="!m-2 !rounded-lg !border !bg-white !p-1 !shadow-sm [&>button]:!rounded-md [&>button]:!border-0"
+        />
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-right"
+          style={{ width: 140, height: 90 }}
+          className="!m-2 !rounded-lg !border !bg-white !shadow-sm !overflow-hidden [&>svg]:!w-full [&>svg]:!h-full"
+          maskColor="hsl(var(--muted) / 0.6)"
+          nodeStrokeWidth={2}
+        />
+        <CanvasControls />
       </ReactFlow>
+    </div>
+  );
+}
+
+function CanvasControls() {
+  const { zoomIn, zoomOut, fitView, getZoom, setViewport, getViewport } = useReactFlow();
+  const zoomPct = Math.round(getZoom() * 100);
+  return (
+    <div className="absolute bottom-2 left-14 z-10 flex items-center gap-1 rounded-lg border bg-white p-1 shadow-sm">
+      <button
+        type="button"
+        aria-label="Zoom out"
+        className="rounded px-2 py-1 text-sm hover:bg-muted"
+        onClick={() => zoomOut({ duration: 200 })}
+      >
+        −
+      </button>
+      <span className="min-w-[3.5rem] text-center text-xs tabular-nums">{zoomPct}%</span>
+      <button
+        type="button"
+        aria-label="Zoom in"
+        className="rounded px-2 py-1 text-sm hover:bg-muted"
+        onClick={() => zoomIn({ duration: 200 })}
+      >
+        +
+      </button>
+      <div className="mx-1 h-4 w-px bg-border" />
+      <button type="button" className="rounded px-2 py-1 text-xs hover:bg-muted" onClick={() => fitView({ padding: 0.2, duration: 200 })}>
+        Fit
+      </button>
+      <button
+        type="button"
+        className="rounded px-2 py-1 text-xs hover:bg-muted"
+        onClick={() => {
+          const vp = getViewport();
+          setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 200 });
+          void vp;
+        }}
+      >
+        Reset
+      </button>
     </div>
   );
 }

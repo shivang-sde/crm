@@ -5,5 +5,6 @@ public enum LeadIngestionEventStatus {
     PROCESSING,
     PROCESSED,
     REJECTED,
+    DUPLICATE,
     FAILED
 }

@@ -33,15 +33,19 @@ function WorkflowEdgeComponent({
   const isExecuted = Boolean(d?.executed);
   const isDimmed = Boolean(d?.dimmed);
 
+  // ponytail: SVG marker defined in WorkflowCanvas (#wf-arrow), arrow via url()
+  const markerId = selected || isExecuted ? "url(#wf-arrow-selected)" : isDimmed ? "url(#wf-arrow-dimmed)" : "url(#wf-arrow)";
   return (
     <>
       <BaseEdge
         path={edgePath}
+        markerEnd={markerId}
         style={{
-          stroke: selected ? "hsl(var(--primary))" : isExecuted ? "hsl(var(--primary))" : isDimmed ? "hsl(var(--muted-foreground))" : undefined,
-          strokeWidth: selected || isExecuted ? 2.5 : isDimmed ? 1 : undefined,
-          opacity: isDimmed ? 0.35 : undefined,
+          stroke: selected ? "hsl(var(--primary))" : isExecuted ? "hsl(var(--primary))" : isDimmed ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground) / 0.55)",
+          strokeWidth: selected || isExecuted ? 2.6 : 1.9,
+          opacity: isDimmed ? 0.35 : 1,
         }}
+        interactionWidth={18}
       />
       {label && (
         <EdgeLabelRenderer>
@@ -51,10 +55,20 @@ function WorkflowEdgeComponent({
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
               pointerEvents: "all",
             }}
-            className={`nodrag nopan rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none shadow-sm ${isExecuted ? "bg-primary text-primary-foreground border-primary" : isDimmed ? "bg-white opacity-50" : "bg-white"}`}
+            className={`nodrag nopan rounded-full border px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm ${
+              label === "TRUE"
+                ? "bg-emerald-600 text-white border-emerald-600"
+                : label === "FALSE"
+                  ? "bg-rose-600 text-white border-rose-600"
+                  : isExecuted
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : isDimmed
+                      ? "bg-white opacity-50"
+                      : "bg-white"
+            }`}
             aria-label={`Edge: ${label}${isExecuted ? " executed" : isDimmed ? " skipped" : ""}`}
           >
-            {label} {isExecuted ? "✓" : ""}
+            {label} {isExecuted ? "✓" : label === "TRUE" ? "→" : label === "FALSE" ? "→" : ""}
           </div>
         </EdgeLabelRenderer>
       )}

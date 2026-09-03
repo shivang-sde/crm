@@ -11,7 +11,8 @@ import {
   Package,
   Boxes,
   Webhook,
-  Workflow
+  Workflow,
+  FileText
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -79,6 +80,7 @@ const ROUTE_PERMISSIONS: { segment: string; anyOf: PermissionAlternative[] }[] =
   { segment: "offerings", anyOf: [["offering", "read"]] },
   { segment: "entitlements", anyOf: [["entitlement", "read"]] },
   { segment: "acquisition", anyOf: [["acquisition", "read"]] },
+  // { segment: "forms", anyOf: [["acquisition", "read"]] },
   { segment: "workflows", anyOf: [["workflow", "read"]] },
   { segment: "contacts", anyOf: [["contact", "read"]] },
   { segment: "accounts", anyOf: [["account", "read"]] },
@@ -302,6 +304,8 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
 
   const canViewAcquisition = hasGrant(permissions, "acquisition:read");
 
+  // const canViewForms = hasGrant(permissions, "acquisition:read");
+
   const canViewWorkflows = hasGrant(permissions, "workflow:read");
 
   return [
@@ -311,6 +315,7 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
     ...(canViewOfferings ? [{ name: "Offerings", href: "/offerings", icon: Boxes, show: true }] : []),
     ...(canViewEntitlements ? [{ name: "Entitlements", href: "/entitlements", icon: Shield, show: true }] : []),
     ...(canViewAcquisition ? [{ name: "Acquisition", href: "/acquisition", icon: Webhook, show: true }] : []),
+    // ...(canViewForms ? [{ name: "Forms", href: "/forms", icon: FileText, show: true }] : []),
     ...(canViewWorkflows ? [{ name: "Workflows", href: "/workflows", icon: Workflow, show: true }] : []),
     ...(canViewContacts ? [{ name: "Contacts", href: "/contacts", icon: Users, show: true }] : []),
     ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),

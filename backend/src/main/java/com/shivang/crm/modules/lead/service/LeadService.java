@@ -309,6 +309,18 @@ public class LeadService {
         });
 }
 
+        // Snapshot before mutation for change detection (no-change updates emit nothing)
+        String oldFirstName = lead.getFirstName();
+        String oldLastName = lead.getLastName();
+        String oldEmail = lead.getEmail();
+        String oldPhone = lead.getPhone();
+        String oldCompany = lead.getCompany();
+        Integer oldScore = lead.getScore();
+        Map<String, Object> oldCustomData = lead.getCustomData();
+        UUID oldSourceId = lead.getSource() != null ? lead.getSource().getId() : null;
+        UUID oldStatusIdSnap = lead.getStatus() != null ? lead.getStatus().getId() : null;
+        UUID oldOwnerSnap = lead.getOwnerId();
+
         // Store old values for activity logging
         Map<String, Object> oldValues = new HashMap<>();
         if (request.getStatusId() != null && !request.getStatusId().equals(lead.getStatus().getId())) {
@@ -336,11 +348,43 @@ public class LeadService {
             lead.setSource(source);
         }
 
+        // Detect whether any field actually changed (avoid no-change UPDATED)
+        java.util.Set<String> changedFields = new java.util.LinkedHashSet<>();
+        if (request.getFirstName() != null && !request.getFirstName().equals(oldFirstName)) changedFields.add("firstName");
+        if (request.getLastName() != null && !java.util.Objects.equals(request.getLastName(), oldLastName)) changedFields.add("lastName");
+        if (request.getEmail() != null && !request.getEmail().equals(oldEmail)) changedFields.add("email");
+        if (request.getPhone() != null && !request.getPhone().equals(oldPhone)) changedFields.add("phone");
+        if (request.getCompany() != null && !request.getCompany().equals(oldCompany)) changedFields.add("company");
+        if (request.getScore() != null && !request.getScore().equals(oldScore)) changedFields.add("score");
+        if (request.getCustomData() != null && !request.getCustomData().equals(oldCustomData)) changedFields.add("customData");
+        if (request.getSourceId() != null && !request.getSourceId().equals(oldSourceId)) changedFields.add("source");
+        if (request.getOwnerUserId() != null && !request.getOwnerUserId().equals(oldOwnerSnap)) changedFields.add("owner");
+        if (request.getStatusId() != null && !request.getStatusId().equals(oldStatusIdSnap)) changedFields.add("status");
+
         Lead updatedLead = leadRepository.save(lead);
 
         // Log activity
         if (!oldValues.isEmpty()) {
             HistoryService.logEntityUpdated(tenantId, updatedLead.getId(), "LEAD", userId, oldValues);
+        }
+
+        // Emit generic LEAD.UPDATED when any field was supplied (persist succeeded and at least one field intent)
+        // No-change updates (all null) emit nothing. This is the canonical UPDATED.
+        if (!changedFields.isEmpty()) {
+            Map<String, Object> updatedEventMetadata = new HashMap<>();
+            updatedEventMetadata.put("actorId", userId.toString());
+            // Distinguish workflow-caused vs direct user action via causal lineage
+            boolean isWorkflowCaused = com.shivang.crm.shared.event.CausalEventContext.get() != null;
+            updatedEventMetadata.put("actorType", isWorkflowCaused ? "SYSTEM" : "USER");
+            updatedEventMetadata.put("source", isWorkflowCaused ? "WORKFLOW" : "MANUAL");
+            updatedEventMetadata.put("changedFields", new java.util.ArrayList<>(changedFields));
+            canonicalCrmEventPublisher.publish(
+                tenantId,
+                CanonicalCrmEvent.LEAD_ENTITY_TYPE,
+                CanonicalCrmEvent.UPDATED_EVENT_TYPE,
+                updatedLead.getId(),
+                updatedEventMetadata
+            );
         }
 
         return leadMapper.toResponse(updatedLead);

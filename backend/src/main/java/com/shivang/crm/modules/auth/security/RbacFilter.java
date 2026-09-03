@@ -260,6 +260,8 @@ public class RbacFilter extends OncePerRequestFilter {
             case "meetings", "meeting" -> "meeting";
             case "reports", "report" -> "report";
             case "workflows", "workflow" -> "workflow";
+            case "forms", "form" -> "acquisition";
+            case "acquisition" -> "acquisition";
             // Tenant-scoped configuration endpoints belong to their parent CRM
             // module and are governed by that module's existing permissions.
             case "lead-statuses", "lead-sources", "lead-custom-fields" -> "lead";

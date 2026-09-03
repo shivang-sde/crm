@@ -133,6 +133,14 @@ export const workflowApi = {
     return unwrapResponse(response);
   },
 
+  updateVersion: async (versionId: string, data: WorkflowVersionCreateRequest) => {
+    const response = await api.put<ApiResponse<string>>(
+      `/workflows/versions/${versionId}`,
+      data
+    );
+    return unwrapResponse(response);
+  },
+
   createNode: async (versionId: string, data: WorkflowNodeRequest) => {
     const response = await api.post<ApiResponse<string>>(
       `/workflows/versions/${versionId}/nodes`,

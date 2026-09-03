@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.shivang.crm.modules.acquisition.event.LeadIngestionEventStatus;
+import com.shivang.crm.modules.acquisition.event.LeadIngestionFailureStage;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
@@ -43,6 +44,12 @@ public class LeadIngestionEventDetailResponse {
 
     @JsonProperty("errorMessage")
     private String errorMessage;
+
+    @JsonProperty("failureStage")
+    private LeadIngestionFailureStage failureStage;
+
+    @JsonProperty("attemptCount")
+    private Integer attemptCount;
 
     @JsonProperty("receivedAt")
     private Instant receivedAt;

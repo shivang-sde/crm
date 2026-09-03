@@ -40,7 +40,7 @@ export const workflowKeys = {
 export function useWorkflows(params: { page?: number; size?: number } = {}) {
   return useQuery({
     queryKey: workflowKeys.list(params),
-    queryFn: () => workflowApi.listWorkflows(params),
+    queryFn: () => workflowApi.listWorkflows(params)
   });
 }
 
@@ -386,6 +386,17 @@ export function useCreateWorkflowVersion(workflowId: string) {
       qc.invalidateQueries({ queryKey: workflowKeys.versions(workflowId) });
       qc.invalidateQueries({ queryKey: workflowKeys.lists() });
       qc.invalidateQueries({ queryKey: workflowKeys.detail(workflowId) });
+    },
+  });
+}
+
+export function useUpdateWorkflowVersion(versionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: WorkflowVersionCreateRequest) => workflowApi.updateVersion(versionId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: workflowKeys.version(versionId) });
+      qc.invalidateQueries({ queryKey: workflowKeys.graph(versionId) });
     },
   });
 }

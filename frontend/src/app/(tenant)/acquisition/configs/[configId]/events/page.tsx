@@ -20,6 +20,7 @@ import { acquisitionKeys, useLeadIngestionEvents } from "@/lib/hooks/acquisition
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import {
   LeadIngestionEventStatus,
+  LeadIngestionFailureStage,
   leadIngestionEventStatuses,
 } from "@/types/acquisition";
 
@@ -28,7 +29,16 @@ const statusLabels: Record<LeadIngestionEventStatus, string> = {
   PROCESSING: "Processing",
   PROCESSED: "Processed",
   REJECTED: "Rejected",
+  DUPLICATE: "Duplicate",
   FAILED: "Failed",
+};
+
+const stageLabels: Record<LeadIngestionFailureStage, string> = {
+  MAPPING: "Mapping",
+  VALIDATION: "Validation",
+  DEDUPLICATION: "Dedup",
+  LEAD_CREATION: "Lead Creation",
+  UNKNOWN: "Unknown",
 };
 
 const PAGE_SIZE = 20;
@@ -79,16 +89,18 @@ export default function AcquisitionEventsPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <Link
-            href="/acquisition"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" /> Back to Acquisition
-          </Link>
+          <div className="mb-2 flex items-center gap-1 text-sm text-muted-foreground">
+            <Link href="/acquisition" className="hover:text-foreground">
+              Acquisition
+            </Link>
+            <span>·</span>
+            <Link href={`/acquisition/configs/${configId}`} className="hover:text-foreground inline-flex items-center gap-1">
+              <ArrowLeft className="h-3 w-3" /> Source
+            </Link>
+          </div>
           <h1 className="text-2xl font-semibold">Ingestion Events</h1>
           <p className="text-sm text-muted-foreground">
-            Inbound lead data received by this configuration and how it was
-            processed.
+            Operational visibility: which source, when, what happened, where it failed, which lead, can it be reprocessed. Derived from event API.
           </p>
         </div>
 
@@ -159,9 +171,19 @@ export default function AcquisitionEventsPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <EventStatusBadge status={event.status} />
-                      <span className="truncate text-sm font-medium">
-                        {event.externalEventId ?? event.id}
-                      </span>
+                        {event.failureStage && (
+                          <Badge variant="outline" className="text-xs">
+                            {stageLabels[event.failureStage] ?? event.failureStage}
+                          </Badge>
+                        )}
+                        {event.attemptCount != null && event.attemptCount > 1 && (
+                          <Badge variant="outline" className="text-xs">
+                            #{event.attemptCount}
+                          </Badge>
+                        )}
+                        <span className="truncate text-sm font-medium">
+                          {event.externalEventId ?? event.id}
+                        </span>
                       </div>
                       <p className="mt-1 truncate text-xs text-muted-foreground">
                         Received{" "}
@@ -176,7 +198,10 @@ export default function AcquisitionEventsPage() {
                         {event.leadId ? `Lead ${event.leadId}` : "No lead"}
                       </p>
                       {event.errorCode && (
-                        <p className="truncate text-xs text-red-500">{event.errorCode}</p>
+                        <p className="truncate text-xs text-red-500">
+                          {event.errorCode}
+                          {event.failureStage ? ` · ${stageLabels[event.failureStage] ?? event.failureStage}` : ""}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -220,9 +245,11 @@ function EventStatusBadge({ status }: { status: LeadIngestionEventStatus }) {
   const variant =
     status === "PROCESSED"
       ? "default"
-      : status === "REJECTED" || status === "FAILED"
-        ? "destructive"
-        : "secondary";
+      : status === "DUPLICATE"
+        ? "secondary"
+        : status === "REJECTED" || status === "FAILED"
+          ? "destructive"
+          : "secondary";
 
   return <Badge variant={variant}>{statusLabels[status] ?? status}</Badge>;
 }

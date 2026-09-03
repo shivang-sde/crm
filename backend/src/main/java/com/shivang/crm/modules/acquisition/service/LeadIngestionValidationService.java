@@ -86,6 +86,8 @@ public class LeadIngestionValidationService {
             customData.putAll(normalizedCustom);
         }
 
+        validateRequiredCustomFields(tenantId, errors, customData);
+
         return ValidatedLeadIngestionData.builder()
             .firstName(firstName)
             .lastName(lastName)
@@ -472,7 +474,11 @@ public class LeadIngestionValidationService {
         for (LeadCustomField field : requiredFields) {
             Object value = customData == null ? null : customData.get(field.getFieldKey());
             if (value == null || isBlankValue(value)) {
-                errors.add(validationError(field.getFieldKey(), "CUSTOM_FIELD_REQUIRED", "Custom field '" + field.getFieldLabel() + "' is required"));
+                boolean alreadyReported = errors.stream()
+                    .anyMatch(e -> field.getFieldKey().equals(e.getField()) && "CUSTOM_FIELD_REQUIRED".equals(e.getCode()));
+                if (!alreadyReported) {
+                    errors.add(validationError(field.getFieldKey(), "CUSTOM_FIELD_REQUIRED", "Custom field '" + field.getFieldLabel() + "' is required"));
+                }
             }
         }
     }

@@ -60,6 +60,25 @@ public class WaitNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExecu
     }
 
     private Instant parseResumeAt(Map<String, Object> configuration) {
+        // Business-friendly duration: if waitType == DURATION, compute resumeAt as now + duration (amount/unit)
+        if (configuration != null && "DURATION".equalsIgnoreCase(String.valueOf(configuration.get("waitType")))) {
+            Object amountObj = configuration.get("amount");
+            Object unitObj = configuration.get("unit");
+            if (amountObj == null || unitObj == null) {
+                throw new WorkflowRuntimeException("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT duration requires amount and unit");
+            }
+            long amount;
+            try { amount = Long.parseLong(String.valueOf(amountObj).trim()); } catch (Exception ex) { throw new WorkflowRuntimeException("WORKFLOW_WAIT_RESUME_AT_INVALID", "Invalid wait amount"); }
+            if (amount <= 0) throw new WorkflowRuntimeException("WORKFLOW_WAIT_RESUME_AT_INVALID", "Wait amount must be positive");
+            String unit = String.valueOf(unitObj).trim().toUpperCase();
+            java.time.Duration duration = switch (unit) {
+                case "MINUTES", "MINUTE", "M" -> java.time.Duration.ofMinutes(amount);
+                case "HOURS", "HOUR", "H" -> java.time.Duration.ofHours(amount);
+                case "DAYS", "DAY", "D" -> java.time.Duration.ofDays(amount);
+                default -> throw new WorkflowRuntimeException("WORKFLOW_WAIT_RESUME_AT_INVALID", "Unsupported wait unit: " + unit);
+            };
+            return Instant.now().plus(duration);
+        }
         Object rawResumeAt = configuration == null ? null : configuration.get("resumeAt");
         if (rawResumeAt == null || String.valueOf(rawResumeAt).isBlank()) {
             throw new WorkflowRuntimeException(

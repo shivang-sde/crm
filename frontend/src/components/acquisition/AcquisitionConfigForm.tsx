@@ -34,6 +34,15 @@ const transportLabels: Record<LeadIngestionTransportType, string> = {
   IMPORT: "Import",
 };
 
+const transportAvailability: Record<LeadIngestionTransportType, { available: boolean; note: string }> = {
+  WEBHOOK: { available: true, note: "Available — custom webhook" },
+  IMPORT: { available: true, note: "Available — CSV import" },
+  FORM: { available: true, note: "Available — public form" },
+  API: { available: true, note: "Available — direct API" },
+  POLLING: { available: true, note: "Available — API polling" },
+  CONNECTOR: { available: false, note: "Coming soon" },
+};
+
 interface AcquisitionConfigFormProps {
   initialValues?: Partial<LeadIngestionConfigResponse>;
   onSubmit: (values: LeadIngestionConfigCreateRequest) => void;
@@ -67,7 +76,15 @@ export function AcquisitionConfigForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValues]);
 
+  const selectedTransport = form.watch("transportType") as LeadIngestionTransportType;
+  const selectedAvailable = transportAvailability[selectedTransport]?.available ?? false;
+
   const handleSubmit = (values: AcquisitionConfigFormOutput) => {
+    const avail = transportAvailability[values.transportType as LeadIngestionTransportType]?.available;
+    if (!avail) {
+      form.setError("transportType", { message: "This transport is not yet available — only Webhook can be created." });
+      return;
+    }
     const payload: LeadIngestionConfigCreateRequest = {
       name: values.name.trim(),
       transportType: values.transportType,
@@ -97,7 +114,7 @@ export function AcquisitionConfigForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Transport</Label>
+        <Label>How leads arrive — Transport</Label>
 
         <Select
           value={form.watch("transportType")}
@@ -113,13 +130,31 @@ export function AcquisitionConfigForm({
           </SelectTrigger>
 
           <SelectContent>
-            {Object.entries(transportLabels).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
+            {Object.entries(transportLabels).map(([value, label]) => {
+              const avail = transportAvailability[value as LeadIngestionTransportType]?.available;
+              return (
+                <SelectItem key={value} value={value} disabled={!avail}>
+                  <span className="flex items-center gap-2">
+                    {label}
+                    {!avail && <span className="text-[10px] text-muted-foreground">(Coming soon)</span>}
+                    {avail && <span className="text-[10px] text-green-600">✓ Available</span>}
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
+
+        {!selectedAvailable && (
+          <p className="text-xs text-amber-600 flex items-center gap-1">
+            This transport is not yet available — only Webhook can be created and activated. Others are shown for roadmap clarity.
+          </p>
+        )}
+        {selectedAvailable && (
+          <p className="text-xs text-muted-foreground">
+            Webhook: external system POSTs JSON to a unique public endpoint. Different sources can have different payload shapes — map them to the same CRM lead.
+          </p>
+        )}
 
         {form.formState.errors.transportType && (
           <p className="text-sm text-red-500">
@@ -145,6 +180,7 @@ export function AcquisitionConfigForm({
         <Switch
           id="active"
           checked={form.watch("active")}
+          disabled={!selectedAvailable}
           onCheckedChange={(value) =>
             form.setValue("active", value, {
               shouldDirty: true,
@@ -152,8 +188,15 @@ export function AcquisitionConfigForm({
           }
         />
 
-        <Label htmlFor="active">Active</Label>
+        <Label htmlFor="active" className={!selectedAvailable ? "text-muted-foreground" : ""}>
+          Active { !selectedAvailable && "(disabled for Coming soon transports)"}
+        </Label>
       </div>
+      {!initialValues && selectedAvailable && (
+        <p className="text-xs text-muted-foreground">
+          Next: discover a sample payload → map fields → test preview → activate.
+        </p>
+      )}
 
       <div className="flex justify-end">
         <Button type="submit" disabled={isSubmitting}>

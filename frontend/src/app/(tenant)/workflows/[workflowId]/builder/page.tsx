@@ -47,6 +47,7 @@ import {
 import {
   workflowKeys,
   useActivateWorkflowVersion,
+  useUpdateWorkflowVersion,
   useValidateWorkflowVersion,
   useWorkflow,
   useWorkflowGraph,
@@ -86,9 +87,68 @@ const NODE_DEFAULTS: Record<
   CONDITION: { name: "Condition", configuration: { logic: "AND", conditions: [] } },
   ACTION: { name: "No Op", configuration: { actionType: "NO_OP", message: "" } },
   END: { name: "End", configuration: {} },
-  WAIT: { name: "Wait", configuration: { resumeAt: "" } },
+  WAIT: { name: "Wait", configuration: { waitType: "DURATION", amount: 5, unit: "MINUTES" } },
   BRANCH: { name: "Branch", configuration: { logic: "AND", conditions: [] } },
 };
+
+function computeDisconnectedIds(nodes: BuilderNode[], edges: BuilderEdge[]): Set<string> {
+  if (nodes.length === 0) return new Set();
+  const outgoing = new Map<string, Set<string>>();
+  const incoming = new Map<string, Set<string>>();
+  for (const e of edges) {
+    if (!outgoing.has(e.source)) outgoing.set(e.source, new Set());
+    outgoing.get(e.source)!.add(e.target);
+    if (!incoming.has(e.target)) incoming.set(e.target, new Set());
+    incoming.get(e.target)!.add(e.source);
+  }
+  const trigger = nodes.find((n) => n.data.nodeType === "TRIGGER");
+  const reachable = new Set<string>();
+  if (trigger) {
+    const q: string[] = [trigger.id];
+    reachable.add(trigger.id);
+    let h = 0;
+    while (h < q.length) {
+      const cur = q[h++];
+      for (const nxt of outgoing.get(cur) ?? []) if (!reachable.has(nxt)) { reachable.add(nxt); q.push(nxt); }
+    }
+  }
+  const ends = nodes.filter((n) => n.data.nodeType === "END").map((n) => n.id);
+  const canReachEnd = new Set<string>();
+  if (ends.length > 0) {
+    const q = [...ends];
+    for (const e of ends) canReachEnd.add(e);
+    let h = 0;
+    while (h < q.length) {
+      const cur = q[h++];
+      for (const prev of incoming.get(cur) ?? []) if (!canReachEnd.has(prev)) { canReachEnd.add(prev); q.push(prev); }
+    }
+  }
+  const ids = new Set<string>();
+  for (const n of nodes) {
+    if (n.data.nodeType === "TRIGGER") {
+      if (!outgoing.has(n.id) && nodes.length > 1) ids.add(n.id); // trigger should have outgoing if graph >1
+      continue;
+    }
+    if (!reachable.has(n.id)) { ids.add(n.id); continue; }
+    if (ends.length > 0 && !canReachEnd.has(n.id)) { ids.add(n.id); continue; }
+    if (!incoming.has(n.id)) { ids.add(n.id); continue; }
+  }
+  return ids;
+}
+
+function findFreePosition(candidate: { x: number; y: number }, nodes: BuilderNode[]): { x: number; y: number } {
+  const COLLIDE_X = 260;
+  const COLLIDE_Y = 120;
+  let pos = { ...candidate };
+  let attempts = 0;
+  while (attempts < 12) {
+    const collision = nodes.some((n) => Math.abs(n.position.x - pos.x) < COLLIDE_X && Math.abs(n.position.y - pos.y) < COLLIDE_Y);
+    if (!collision) break;
+    pos = { x: pos.x + 40, y: pos.y + 30 };
+    attempts++;
+  }
+  return pos;
+}
 
 function BuilderInner() {
   const params = useParams<{ workflowId: string }>();
@@ -108,6 +168,7 @@ function BuilderInner() {
   const versionsQuery = useWorkflowVersions(workflowId);
   const validate = useValidateWorkflowVersion(versionId);
   const activate = useActivateWorkflowVersion(workflowId);
+  const updateVersion = useUpdateWorkflowVersion(versionId);
 
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<BuilderNode>([]);
   const [edges, setEdges, onEdgesChangeBase] = useEdgesState<BuilderEdge>([]);
@@ -128,6 +189,17 @@ function BuilderInner() {
 
   const snapshotRef = useRef<GraphSnapshot>({ nodes: new Map(), edges: new Map() });
   const { plan, isDirty, saving, save, executeSave } = useWorkflowSave(versionId, nodes, edges, snapshotRef);
+  const nodesRef = useRef<BuilderNode[]>([]);
+  const edgesRef = useRef<BuilderEdge[]>([]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+  // Dev assertion: every edge source/target must exist as node.id (never nodeKey/client mix)
+  useEffect(() => {
+    for (const e of edges) {
+      if (!nodes.some((n) => n.id === e.source)) console.error("edge source not found", e);
+      if (!nodes.some((n) => n.id === e.target)) console.error("edge target not found", e);
+    }
+  }, [nodes, edges]);
 
   const version = graphQuery.data?.version;
   const activeVersion = versionsQuery.data?.data.find((v) => v.status === "ACTIVE");
@@ -137,14 +209,45 @@ function BuilderInner() {
   useEffect(() => {
     if (!graphQuery.data) return;
     const converted = toFlowGraph(graphQuery.data.nodes, graphQuery.data.edges);
-    setNodes(converted.nodes);
-    setEdges(converted.edges);
+    let flowNodes = converted.nodes;
+    const flowEdges = converted.edges;
+    // Business UX: version trigger IS the workflow entry trigger.
+    // If backend graph has no TRIGGER node (new draft), synthesize one client-side
+    // derived from version triggerEntityType/triggerEventType so builder never
+    // appears empty and user never needs to add a Trigger manually.
+    const hasTrigger = flowNodes.some((n) => n.data.nodeType === "TRIGGER");
+    const versionTrigger = graphQuery.data.version;
+    if (!hasTrigger && versionTrigger) {
+      const entityType = versionTrigger.triggerEntityType ?? "";
+      const eventType = versionTrigger.triggerEventType ?? "";
+      const existingKeys = flowNodes.map((n) => n.data.nodeKey);
+      const nodeKey = generateNodeKey("TRIGGER", existingKeys);
+      const pos = { x: 400, y: 60 };
+      const synth: BuilderNode = {
+        id: newClientNodeId(),
+        type: "trigger",
+        position: pos,
+        data: {
+          nodeKey,
+          nodeType: "TRIGGER",
+          name: "Trigger",
+          configuration: {
+            entityType,
+            eventType,
+            position: { x: Math.round(pos.x), y: Math.round(pos.y) },
+          },
+        },
+      };
+      flowNodes = [synth, ...flowNodes];
+    }
+    setNodes(flowNodes);
+    setEdges(flowEdges);
     snapshotRef.current = buildGraphSnapshot(
       graphQuery.data.nodes,
       graphQuery.data.edges
     );
     setTimeout(() => {
-      const focusNode = focusNodeId ? converted.nodes.find((n) => n.id === focusNodeId) : null;
+      const focusNode = focusNodeId ? flowNodes.find((n) => n.id === focusNodeId) : null;
       if (focusNode) {
         setNodes((current) =>
           current.map((n) =>
@@ -220,6 +323,14 @@ function BuilderInner() {
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
       onNodesChangeBase(changes as NodeChange<BuilderNode>[]);
+      // Safe deletion: remove edges that were attached to deleted nodes — never auto-invent A→C
+      const removedIds = changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
+      if (removedIds.length > 0) {
+        setEdges((cur) => cur.filter((e) => !removedIds.includes(e.source) && !removedIds.includes(e.target)));
+        setSelectedNodeId((prev) => (prev && removedIds.includes(prev) ? null : prev));
+        // Clear armed handle if its node was deleted
+        if (armedHandle && removedIds.includes(armedHandle.nodeId)) setArmedHandle(null);
+      }
 
       if (readOnly) return;
 
@@ -253,17 +364,26 @@ function BuilderInner() {
         return updated ? newNodes : currentNodes;
       });
     },
-    [onNodesChangeBase, readOnly]
+    [onNodesChangeBase, readOnly, armedHandle]
   );
 
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (readOnly) return;
-      const sourceNode = nodes.find((n) => n.id === connection.source);
+      const curNodes = nodesRef.current;
+      const sourceNode = curNodes.find((n) => n.id === connection.source);
       const sourceIsCondition = sourceNode?.data.nodeType === "CONDITION";
       const sourceIsBranch = sourceNode?.data.nodeType === "BRANCH";
+      const sourceIsLinear = sourceNode?.data.nodeType === "TRIGGER" || sourceNode?.data.nodeType === "WAIT" || sourceNode?.data.nodeType === "ACTION";
 
       setEdges((currentEdges) => {
+        // Replace existing edge on same source/handle (Problem 2/3) — do not leave both
+        let filtered = currentEdges as BuilderEdge[];
+        if (sourceIsCondition || sourceIsBranch) {
+          filtered = filtered.filter((e) => !(e.source === connection.source && e.sourceHandle === connection.sourceHandle));
+        } else if (sourceIsLinear) {
+          filtered = filtered.filter((e) => e.source !== connection.source);
+        }
         // BRANCH edges carry their outcome in edgeKey, derived from the
         // TRUE/FALSE source handle the connection starts from.
         const branchEdgeKey = sourceIsBranch
@@ -286,22 +406,25 @@ function BuilderInner() {
               : {},
           },
         };
-        return addEdge(newEdge as unknown as Edge, currentEdges) as BuilderEdge[];
+        const next = addEdge(newEdge as unknown as Edge, filtered) as BuilderEdge[];
+        if (filtered.length !== (currentEdges as BuilderEdge[]).length) toast.info("Replaced previous connection");
+        return next;
       });
       setArmedHandle(null);
       setInsertionOpen(false);
     },
-    [nodes, readOnly, setEdges]
+    [readOnly]
   );
 
   const handleReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       if (readOnly) return;
+      const curNodes = nodesRef.current;
       const newSource = newConnection.source ?? oldEdge.source;
       const newTarget = newConnection.target ?? oldEdge.target;
       const newSourceHandle = newConnection.sourceHandle ?? (oldEdge as unknown as BuilderEdge).sourceHandle ?? null;
       const newTargetHandle = newConnection.targetHandle ?? (oldEdge as unknown as BuilderEdge).targetHandle ?? null;
-      const sourceNode = nodes.find((n) => n.id === newSource);
+      const sourceNode = curNodes.find((n) => n.id === newSource);
       const isBranch = sourceNode?.data.nodeType === "BRANCH";
       const isCondition = sourceNode?.data.nodeType === "CONDITION";
       setEdges((current) =>
@@ -329,9 +452,172 @@ function BuilderInner() {
     [nodes, readOnly, setEdges]
   );
 
+  const hasTriggerNode = nodes.some((n) => n.data.nodeType === "TRIGGER");
+
+  const disconnectedIds = useMemo(() => computeDisconnectedIds(nodes, edges), [nodes, edges]);
+  const displayNodes: BuilderNode[] = useMemo(
+    () =>
+      nodes.map((n) => ({
+        ...n,
+        data: { ...n.data, isDisconnected: disconnectedIds.has(n.id) } as BuilderNode["data"] & { isDisconnected?: boolean },
+      })),
+    [nodes, disconnectedIds]
+  );
+
+  // ponytail: removed aggressive auto-END (Problem 8/9) — END is now manual or via Save/Validate helper, not on every edit
+
+  const handleAddNextStep = useCallback(
+    (nodeType: WorkflowNodeType, sourceNodeId?: string, sourceHandle?: string | null) => {
+      if (readOnly) return;
+      const curNodes = nodesRef.current;
+      const curEdges = edgesRef.current;
+      const curHasTrigger = curNodes.some((n) => n.data.nodeType === "TRIGGER");
+      if (nodeType === "TRIGGER" && curHasTrigger) {
+        toast.error("Trigger is already configured — edit the WHEN card instead.");
+        return;
+      }
+      const sourceId = sourceNodeId ?? curNodes.find((n) => n.data.nodeType === "TRIGGER")?.id ?? curNodes[0]?.id;
+      if (!sourceId) {
+        // fallback to unconnected placement
+        let position = { x: 400, y: 160 };
+        try {
+          const viewportCenter = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+          if (viewportCenter && Number.isFinite(viewportCenter.x)) position = viewportCenter;
+        } catch {}
+        position = findFreePosition(position, curNodes);
+        const existingKeys = curNodes.map((n) => n.data.nodeKey);
+        const defaults = NODE_DEFAULTS[nodeType] ?? { name: nodeType, configuration: {} };
+        const newNode: BuilderNode = {
+          id: newClientNodeId(),
+          type: nodeType.toLowerCase(),
+          position,
+          data: {
+            nodeKey: generateNodeKey(nodeType, existingKeys),
+            nodeType,
+            name: defaults.name,
+            configuration: { ...defaults.configuration, position: { x: Math.round(position.x), y: Math.round(position.y) } },
+          },
+        };
+        setNodes((current) => [...current, newNode]);
+        setSelectedNodeId(newNode.id);
+        setSelectedEdgeId(null);
+        setInspectorOpen(true);
+        return;
+      }
+      const sourceNode = curNodes.find((n) => n.id === sourceId);
+      if (!sourceNode) {
+        toast.error("Source not found — refresh and try again");
+        return;
+      }
+      // Determine handle: linear nodes use "out", condition/branch need explicit; default to "out" or "true"
+      const isCondition = sourceNode.data.nodeType === "CONDITION";
+      const isBranch = sourceNode.data.nodeType === "BRANCH";
+      const handleToUse = sourceHandle ?? (isCondition || isBranch ? "true" : "out");
+      // Check for existing edge on this source/handle that would block — allow replacement (Problem 7)
+      const existingEdge = isCondition || isBranch
+        ? curEdges.find((e) => e.source === sourceId && e.sourceHandle === handleToUse)
+        : curEdges.find((e) => e.source === sourceId);
+      const edgesForValidation = existingEdge ? curEdges.filter((e) => e.id !== existingEdge.id) : curEdges;
+      // Validate connection would succeed before creating (against filtered edges so replacement is allowed)
+      const fakeTargetId = "check";
+      const conn: Connection = { source: sourceId, target: fakeTargetId, sourceHandle: handleToUse, targetHandle: "in" } as Connection;
+      const fakeNodes = [...curNodes, { id: fakeTargetId, data: { nodeType } } as unknown as (typeof curNodes)[number]];
+      const { valid, reason } = getConnectionReason(conn, fakeNodes as unknown as Array<{ id: string; data?: { nodeType?: string } }>, edgesForValidation as Edge[], readOnly);
+      if (!valid) {
+        toast.error(reason ?? "Cannot connect there.");
+        return;
+      }
+      // ponytail: deterministic offset + collision avoidance; full layout via Layout button
+      let position = { x: sourceNode.position.x, y: sourceNode.position.y + 170 };
+      // Branch: spread TRUE/FALSE with sufficient horizontal separation
+      if (handleToUse === "false") position = { x: sourceNode.position.x + 200, y: position.y };
+      if (handleToUse === "true" && (isCondition || isBranch)) position = { x: sourceNode.position.x - 200, y: position.y };
+      // Linear: avoid overlap
+      position = findFreePosition(position, curNodes);
+      try {
+        // Keep within viewport roughly
+      } catch {}
+      const existingKeys = curNodes.map((n) => n.data.nodeKey);
+      const defaults = NODE_DEFAULTS[nodeType] ?? { name: nodeType, configuration: {} };
+      const newNode: BuilderNode = {
+        id: newClientNodeId(),
+        type: nodeType.toLowerCase(),
+        position,
+        data: {
+          nodeKey: generateNodeKey(nodeType, existingKeys),
+          nodeType,
+          name: defaults.name,
+          configuration: { ...defaults.configuration, position: { x: Math.round(position.x), y: Math.round(position.y) } },
+        },
+      };
+      const branchEdgeKey = isBranch ? (handleToUse === "false" ? "FALSE" : "TRUE") : null;
+      const newEdge: BuilderEdge = {
+        id: newClientNodeId(),
+        type: "workflow",
+        source: sourceId,
+        target: newNode.id,
+        sourceHandle: handleToUse,
+        targetHandle: "in",
+        data: {
+          edgeKey: branchEdgeKey,
+          configuration: isCondition ? { outcome: handleToUse === "false" ? "FALSE" : "TRUE" } : {},
+        },
+      };
+      setNodes((cur) => [...cur, newNode]);
+      setEdges((cur) => {
+        let filtered: BuilderEdge[] = cur;
+        if (existingEdge) filtered = cur.filter((e) => e.id !== existingEdge.id);
+        return addEdge(newEdge as unknown as Edge, filtered) as BuilderEdge[];
+      });
+      if (existingEdge) toast.info(`Replaced ${existingEdge.sourceHandle ?? "out"} → ${newNode.data.name}`);
+      setSelectedNodeId(newNode.id);
+      setSelectedEdgeId(null);
+      setInspectorOpen(true);
+      toast.success(`${nodeType} added and connected`);
+    },
+    [readOnly, screenToFlowPosition]
+  );
+
   const handleAddNode = useCallback(
     (nodeType: WorkflowNodeType) => {
       if (readOnly) return;
+      const curNodes = nodesRef.current;
+      const curEdges = edgesRef.current;
+      const curHasTrigger = curNodes.some((n) => n.data.nodeType === "TRIGGER");
+      if (nodeType === "TRIGGER" && curHasTrigger) {
+        toast.error("Trigger is already configured — edit the WHEN card instead.");
+        return;
+      }
+      // Business UX: if only trigger exists, auto-connect next step to it
+      // ponytail: one helper (handleAddNextStep) covers positioning + edge, keep handleAddNode thin
+      const onlyTrigger = curHasTrigger && curNodes.length === 1 && curEdges.length === 0 && nodeType !== "TRIGGER";
+      if (onlyTrigger) {
+        const triggerId = curNodes.find((n) => n.data.nodeType === "TRIGGER")?.id;
+        if (triggerId) {
+          handleAddNextStep(nodeType, triggerId, "out");
+          setPaletteOpen(false);
+          return;
+        }
+      }
+      // If a node is selected and has a free outgoing handle, auto-connect there
+      if (selectedNodeId) {
+        const sel = curNodes.find((n) => n.id === selectedNodeId);
+        if (sel && sel.data.nodeType !== "END") {
+          const selIsCondition = sel.data.nodeType === "CONDITION";
+          const selIsBranch = sel.data.nodeType === "BRANCH";
+          const handleCandidates = selIsCondition || selIsBranch ? ["true", "false"] : ["out"];
+          for (const h of handleCandidates) {
+            const conn: Connection = { source: sel.id, target: "check", sourceHandle: h, targetHandle: "in" } as Connection;
+            const fakeNodes = [...curNodes, { id: "check", data: { nodeType } } as unknown as (typeof curNodes)[number]];
+            const { valid } = getConnectionReason(conn, fakeNodes as unknown as Array<{ id: string; data?: { nodeType?: string } }>, curEdges as Edge[], readOnly);
+            if (valid) {
+              handleAddNextStep(nodeType, sel.id, h);
+              setPaletteOpen(false);
+              return;
+            }
+          }
+        }
+      }
       // Place near viewport center for keyboard/sheet creation.
       let position = { x: 400, y: 160 };
       try {
@@ -341,7 +627,8 @@ function BuilderInner() {
       } catch {
         // fallback to default
       }
-      const existingKeys = nodes.map((n) => n.data.nodeKey);
+      position = findFreePosition(position, curNodes);
+      const existingKeys = curNodes.map((n) => n.data.nodeKey);
       const defaults = NODE_DEFAULTS[nodeType] ?? { name: nodeType, configuration: {} };
       const newNode: BuilderNode = {
         id: newClientNodeId(),
@@ -363,19 +650,21 @@ function BuilderInner() {
       setPaletteOpen(false);
       setInspectorOpen(true);
     },
-    [nodes, readOnly, screenToFlowPosition, setNodes]
+    [readOnly, selectedNodeId, handleAddNextStep, screenToFlowPosition]
   );
 
   const handleArmSource = useCallback(
     (handle: { nodeId: string; handleId: string | null; handleType: "source" | "target" }) => {
       if (readOnly) return;
+      const curNodes = nodesRef.current;
+      const curEdges = edgesRef.current;
       if (handle.handleType === "source") {
         if (armedHandle?.nodeId === handle.nodeId && armedHandle?.handleId === handle.handleId) {
           setArmedHandle(null);
           toast.info("Connection cancelled");
         } else {
           setArmedHandle(handle);
-          const node = nodes.find((n) => n.id === handle.nodeId);
+          const node = curNodes.find((n) => n.id === handle.nodeId);
           const label = node ? `${node.data.name} ${handle.handleId ?? ""}`.trim() : handle.handleId ?? "";
           toast(`Source armed: ${label} — focus a target input and press Enter to connect. Press Escape to cancel.`);
         }
@@ -391,13 +680,13 @@ function BuilderInner() {
           sourceHandle: armedHandle.handleId,
           targetHandle: handle.handleId,
         };
-        const { valid, reason } = getConnectionReason(conn, nodes as unknown as Array<{ id: string; data?: { nodeType?: string } }>, edges as Edge[], readOnly);
+        const { valid, reason } = getConnectionReason(conn, curNodes as unknown as Array<{ id: string; data?: { nodeType?: string } }>, curEdges as Edge[], readOnly);
         if (!valid) {
           toast.error(reason ?? "Invalid connection.");
           return;
         }
         // reuse edge creation semantics
-        const sourceNode = nodes.find((n) => n.id === conn.source);
+        const sourceNode = curNodes.find((n) => n.id === conn.source);
         const isBranch = sourceNode?.data.nodeType === "BRANCH";
         const isCondition = sourceNode?.data.nodeType === "CONDITION";
         const branchEdgeKey = isBranch ? (conn.sourceHandle === "false" ? "FALSE" : "TRUE") : null;
@@ -419,7 +708,7 @@ function BuilderInner() {
         setInsertionOpen(false);
       }
     },
-    [armedHandle, nodes, edges, readOnly, setEdges]
+    [armedHandle, readOnly]
   );
 
   const handleClearArm = useCallback(() => {
@@ -438,11 +727,22 @@ function BuilderInner() {
 
   const handleInsertionSelect = useCallback(
     (nodeType: WorkflowNodeType) => {
-      if (!armedHandle || armedHandle.handleType !== "source") {
-        toast.error("Arm a source handle first.");
+      const curNodes = nodesRef.current;
+      const curEdges = edgesRef.current;
+      const curHasTrigger = curNodes.some((n) => n.data.nodeType === "TRIGGER");
+      if (nodeType === "TRIGGER" && curHasTrigger) {
+        toast.error("Trigger is already configured.");
         return;
       }
-      // Check if insertion of this nodeType as target is valid
+      // If no armed handle, fallback to Add Next Step behavior (trigger → new node)
+      if (!armedHandle || armedHandle.handleType !== "source") {
+        handleAddNextStep(nodeType);
+        setInsertionOpen(false);
+        return;
+      }
+      // Check if insertion of this nodeType as target is valid — allow replacement of existing edge on same handle
+      const existingEdge = curEdges.find((e) => e.source === armedHandle.nodeId && e.sourceHandle === armedHandle.handleId);
+      const edgesForValidation = existingEdge ? curEdges.filter((e) => e.id !== existingEdge.id) : curEdges;
       const fakeTargetId = "insert-check";
       const conn: Connection = {
         source: armedHandle.nodeId,
@@ -451,23 +751,24 @@ function BuilderInner() {
         targetHandle: "in",
       };
       // Simulate target node type check via helper: create fake nodes array with target
-      const fakeNodes = [...nodes, { id: fakeTargetId, data: { nodeType } } as unknown as (typeof nodes)[number]];
-      const { valid, reason } = getConnectionReason(conn, fakeNodes as unknown as Array<{ id: string; data?: { nodeType?: string } }>, edges as Edge[], readOnly);
+      const fakeNodes = [...curNodes, { id: fakeTargetId, data: { nodeType } } as unknown as (typeof curNodes)[number]];
+      const { valid, reason } = getConnectionReason(conn, fakeNodes as unknown as Array<{ id: string; data?: { nodeType?: string } }>, edgesForValidation as Edge[], readOnly);
       if (!valid) {
         toast.error(reason ?? "Cannot create that node here.");
         return;
       }
-      const sourceNode = nodes.find((n) => n.id === armedHandle.nodeId);
+      const sourceNode = curNodes.find((n) => n.id === armedHandle.nodeId);
       let position = { x: 400, y: 160 };
       if (sourceNode) {
         position = { x: sourceNode.position.x + 260, y: sourceNode.position.y + 100 };
+        position = findFreePosition(position, curNodes);
       } else {
         try {
           const c = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
           if (c && Number.isFinite(c.x)) position = c;
         } catch {}
       }
-      const existingKeys = nodes.map((n) => n.data.nodeKey);
+      const existingKeys = curNodes.map((n) => n.data.nodeKey);
       const defaults = NODE_DEFAULTS[nodeType] ?? { name: nodeType, configuration: {} };
       const newNode: BuilderNode = {
         id: newClientNodeId(),
@@ -499,7 +800,12 @@ function BuilderInner() {
         },
       };
       setNodes((cur) => [...cur, newNode]);
-      setEdges((cur) => addEdge(newEdge as unknown as Edge, cur) as BuilderEdge[]);
+      setEdges((cur) => {
+        let filtered: BuilderEdge[] = cur;
+        if (existingEdge) filtered = cur.filter((e) => e.id !== existingEdge.id);
+        return addEdge(newEdge as unknown as Edge, filtered) as BuilderEdge[];
+      });
+      if (existingEdge) toast.info(`Replaced ${existingEdge.sourceHandle ?? "out"} → ${newNode.data.name}`);
       setSelectedNodeId(newNode.id);
       setSelectedEdgeId(null);
       setInsertionOpen(false);
@@ -507,7 +813,7 @@ function BuilderInner() {
       setInspectorOpen(true);
       toast.success(`${nodeType} created and connected`);
     },
-    [armedHandle, nodes, edges, readOnly, screenToFlowPosition, setNodes, setEdges]
+    [armedHandle, readOnly, handleAddNextStep, screenToFlowPosition]
   );
 
   useEffect(() => {
@@ -531,6 +837,10 @@ function BuilderInner() {
       const rawType = event.dataTransfer.getData("application/workflow-node-type");
       if (!rawType) return;
       const nodeType = rawType as WorkflowNodeType;
+      if (nodeType === "TRIGGER" && hasTriggerNode) {
+        toast.error("Trigger is already configured — edit the WHEN card instead.");
+        return;
+      }
 
       const position = screenToFlowPosition({
         x: event.clientX,
@@ -557,7 +867,7 @@ function BuilderInner() {
 
       setNodes((currentNodes) => [...currentNodes, newNode]);
     },
-    [nodes, readOnly, screenToFlowPosition, setNodes]
+    [nodes, readOnly, hasTriggerNode, screenToFlowPosition, setNodes]
   );
 
   const handleSelectionChanged = useCallback(
@@ -607,8 +917,30 @@ function BuilderInner() {
     setSelectedEdgeId(null);
   };
 
+  const syncTriggerIfNeeded = useCallback(async (): Promise<boolean> => {
+    const triggerNode = nodes.find((n) => n.data.nodeType === "TRIGGER");
+    if (!triggerNode || !version || version.status !== "DRAFT") return true;
+    const cfgEntity = String((triggerNode.data.configuration.entityType as string) ?? "").trim().toUpperCase();
+    const cfgEvent = String((triggerNode.data.configuration.eventType as string) ?? "").trim().toUpperCase();
+    const verEntity = String(version.triggerEntityType ?? "").trim().toUpperCase();
+    const verEvent = String(version.triggerEventType ?? "").trim().toUpperCase();
+    if (cfgEntity && cfgEvent && (cfgEntity !== verEntity || cfgEvent !== verEvent)) {
+      try {
+        await updateVersion.mutateAsync({ triggerEntityType: cfgEntity, triggerEventType: cfgEvent });
+        await queryClient.invalidateQueries({ queryKey: workflowKeys.version(versionId) });
+        await queryClient.invalidateQueries({ queryKey: workflowKeys.graph(versionId) });
+        await queryClient.invalidateQueries({ queryKey: workflowKeys.versions(workflowId) });
+      } catch {
+        toast.error("Failed to sync trigger — version not updated");
+        return false;
+      }
+    }
+    return true;
+  }, [nodes, version, versionId, workflowId, updateVersion, queryClient]);
+
   const handleSave = async () => {
     if (readOnly) return;
+    if (!(await syncTriggerIfNeeded())) return;
     const success = await save();
     if (!success) {
       toast.error("Failed to save workflow — your changes are preserved.");
@@ -758,6 +1090,7 @@ function BuilderInner() {
   };
 
   const handleStayAndSave = async () => {
+    if (!(await syncTriggerIfNeeded())) return;
     const success = await executeSave();
     if (success) {
       toast.success("Workflow saved");
@@ -958,7 +1291,7 @@ function BuilderInner() {
                 <SheetTitle>Add node</SheetTitle>
               </SheetHeader>
               <div className="mt-4">
-                <WorkflowNodePalette disabled={readOnly} onAdd={handleAddNode} />
+                <WorkflowNodePalette disabled={readOnly} onAdd={handleAddNode} hasTrigger={hasTriggerNode} />
               </div>
             </SheetContent>
           </Sheet>
@@ -983,6 +1316,7 @@ function BuilderInner() {
                     nodeKeys={nodes.map((n) => n.data.nodeKey)}
                     nodes={nodes}
                     edges={edges}
+                    isDisconnected={selectedNode ? disconnectedIds.has(selectedNode.id) : false}
                     onChange={handleNodeConfigurationChange}
                   />
                 ) : (
@@ -1013,21 +1347,35 @@ function BuilderInner() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[200px_1fr_280px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[240px_1fr_320px]">
         <Card className="hidden overflow-auto p-3 lg:block">
-          <WorkflowNodePalette disabled={readOnly} onAdd={handleAddNode} />
+          <WorkflowNodePalette disabled={readOnly} onAdd={handleAddNode} hasTrigger={hasTriggerNode} />
         </Card>
 
-        <Card className="relative min-h-[420px] overflow-hidden">
-          {nodes.length === 0 && !graphQuery.isLoading && (
+        <Card className="relative min-h-[480px] overflow-hidden">
+          {hasTriggerNode && edges.length === 0 && nodes.length === 1 && !readOnly && !graphQuery.isLoading && (
+            <div className="pointer-events-auto absolute left-1/2 top-[46%] z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-3 rounded-xl border bg-white/95 px-6 py-5 text-center shadow-sm backdrop-blur">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <span className="h-px w-6 bg-border" /> WHEN → IF → THEN <span className="h-px w-6 bg-border" />
+              </div>
+              <p className="max-w-[280px] text-sm font-medium">Add your first step</p>
+              <p className="max-w-[280px] text-xs text-muted-foreground">The workflow runs when {(() => { const t = nodes.find(n=>n.data.nodeType==="TRIGGER"); const e = t?.data.configuration.entityType as string; const ev = t?.data.configuration.eventType as string; const fmt = (s:string)=> s? s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():""; return `${fmt(e||"")} ${fmt(ev||"")}`.trim() || "the trigger fires";})()}.</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => handleAddNextStep("CONDITION")}>+ Add Condition</Button>
+                <Button size="sm" variant="outline" onClick={() => handleAddNextStep("ACTION")}>+ Add Action</Button>
+                <Button size="sm" onClick={() => setInsertionOpen(true)}>+ Add next step</Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Manual edge creation still works for advanced flows.</p>
+            </div>
+          )}
+          {nodes.length === 0 && !hasTriggerNode && !graphQuery.isLoading && (
             <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center text-center text-muted-foreground">
-              <p className="font-medium">Start building your workflow</p>
-              <p className="text-xs">Drag a Trigger onto the canvas to get started.</p>
+              <p className="font-medium">Loading workflow…</p>
             </div>
           )}
           <ConnectionArmProvider value={{ armed: armedHandle, arm: handleArmSource, clear: handleClearArm, activateTarget: handleActivateTarget, readOnly }}>
             <WorkflowCanvas
-              nodes={nodes}
+              nodes={displayNodes}
               edges={edges}
               readOnly={readOnly}
               onNodesChange={handleNodesChange}
@@ -1061,6 +1409,38 @@ function BuilderInner() {
               </Button>
             </div>
           )}
+          {selectedNode && !readOnly && !armedHandle && (() => {
+            const sel = selectedNode;
+            if (sel.data.nodeType === "END") return null;
+            const selIsCondition = sel.data.nodeType === "CONDITION";
+            const selIsBranch = sel.data.nodeType === "BRANCH";
+            const hasTrue = selIsCondition || selIsBranch ? edges.some((e) => e.source === sel.id && (e.sourceHandle === "true" || (e.data as unknown as { edgeKey?: string })?.edgeKey === "TRUE")) : false;
+            const hasFalse = selIsCondition || selIsBranch ? edges.some((e) => e.source === sel.id && (e.sourceHandle === "false" || (e.data as unknown as { edgeKey?: string })?.edgeKey === "FALSE")) : false;
+            const hasFreeHandle = (() => {
+              if (sel.data.nodeType === "TRIGGER" || sel.data.nodeType === "WAIT" || sel.data.nodeType === "ACTION") {
+                return !edges.some((e) => e.source === sel.id);
+              }
+              if (selIsCondition || selIsBranch) {
+                return !hasTrue || !hasFalse;
+              }
+              return false;
+            })();
+            if (!hasFreeHandle) return null;
+            // Don't duplicate initial overlay when only trigger + no edges
+            if (hasTriggerNode && edges.length === 0 && nodes.length === 1) return null;
+            return (
+              <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-white px-3 py-1.5 text-xs shadow-md">
+                <span className="hidden text-muted-foreground sm:inline">Add next step after {sel.data.name}:</span>
+                <Button variant="outline" size="xs" onClick={() => setInsertionOpen(true)}>+ Add next step</Button>
+                {selIsCondition || selIsBranch ? (
+                  <>
+                    <Button variant="ghost" size="xs" disabled={hasTrue} title={hasTrue ? "TRUE already connected" : undefined} onClick={() => handleAddNextStep("ACTION", sel.id, "true")}>TRUE → Action</Button>
+                    <Button variant="ghost" size="xs" disabled={hasFalse} title={hasFalse ? "FALSE already connected" : undefined} onClick={() => handleAddNextStep("ACTION", sel.id, "false")}>FALSE → Action</Button>
+                  </>
+                ) : null}
+              </div>
+            );
+          })()}
         </Card>
 
         <Card className="hidden overflow-auto p-3 lg:block">
@@ -1073,6 +1453,7 @@ function BuilderInner() {
               nodeKeys={nodes.map((n) => n.data.nodeKey)}
               nodes={nodes}
               edges={edges}
+              isDisconnected={selectedNode ? disconnectedIds.has(selectedNode.id) : false}
               onChange={handleNodeConfigurationChange}
             />
           ) : (
@@ -1145,6 +1526,7 @@ function BuilderInner() {
           </DialogHeader>
           <div className="grid gap-2">
             {paletteItems.map((item) => {
+              const isDisabledTrigger = item.nodeType === "TRIGGER" && hasTriggerNode;
               if (!armedHandle) {
                 return (
                   <Button
@@ -1152,9 +1534,25 @@ function BuilderInner() {
                     variant="outline"
                     size="sm"
                     className="justify-start"
+                    disabled={isDisabledTrigger}
+                    title={isDisabledTrigger ? "Already configured" : undefined}
                     onClick={() => handleInsertionSelect(item.nodeType)}
                   >
-                    {item.label}
+                    <span className="flex-1 text-left">{item.label}{isDisabledTrigger ? " — Already configured" : ""}</span>
+                  </Button>
+                );
+              }
+              if (isDisabledTrigger) {
+                return (
+                  <Button
+                    key={item.nodeType}
+                    variant="outline"
+                    size="sm"
+                    className="justify-start"
+                    disabled
+                    title="Already configured"
+                  >
+                    <span className="flex-1 text-left">{item.label} — Already configured</span>
                   </Button>
                 );
               }

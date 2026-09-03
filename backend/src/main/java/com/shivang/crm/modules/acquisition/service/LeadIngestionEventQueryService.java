@@ -71,6 +71,8 @@ public class LeadIngestionEventQueryService {
             .externalEventId(event.getExternalEventId())
             .leadId(event.getLeadId())
             .errorCode(event.getErrorCode())
+            .failureStage(event.getFailureStage())
+            .attemptCount(event.getAttemptCount())
             .receivedAt(event.getReceivedAt())
             .processedAt(event.getProcessedAt())
             .build();
@@ -86,6 +88,8 @@ public class LeadIngestionEventQueryService {
             .leadId(event.getLeadId())
             .errorCode(event.getErrorCode())
             .errorMessage(event.getErrorMessage())
+            .failureStage(event.getFailureStage())
+            .attemptCount(event.getAttemptCount())
             .receivedAt(event.getReceivedAt())
             .processedAt(event.getProcessedAt())
             .rawPayload(event.getRawPayload())

@@ -124,9 +124,14 @@ export interface MappedLeadData {
 }
 
 export interface ValidatedLeadIngestionData {
-  standardFields?: Record<string, unknown> | null;
-  systemFields?: Record<string, unknown> | null;
-  customFields?: Record<string, unknown> | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  sourceValue?: unknown;
+  statusValue?: unknown;
+  customData?: Record<string, unknown> | null;
   errors?: LeadIngestionValidationError[] | null;
 }
 
@@ -143,6 +148,11 @@ export const acquisitionMappingSchema = z.object({
     .min(1, { message: "Target field is required" })
     .max(100, { message: "Target field cannot exceed 100 characters" }),
   transformType: z.enum(["NONE", "TRIM", "LOWERCASE", "UPPERCASE"]),
+  transformChain: z.array(z.enum(["TRIM", "LOWERCASE", "UPPERCASE"])).optional(),
+  transformPrefix: z.string().max(50).optional(),
+  transformSuffix: z.string().max(50).optional(),
+  regexPattern: z.string().max(200).optional(),
+  regexReplacement: z.string().max(200).optional(),
   defaultValue: z.string().max(255, { message: "Default value is too long" }).optional(),
   required: z.boolean(),
   active: z.boolean(),
@@ -152,11 +162,19 @@ export const acquisitionMappingSchema = z.object({
 export type AcquisitionMappingFormInput = z.input<typeof acquisitionMappingSchema>;
 export type AcquisitionMappingFormOutput = z.output<typeof acquisitionMappingSchema>;
 
+export type LeadIngestionFailureStage =
+  | "MAPPING"
+  | "VALIDATION"
+  | "DEDUPLICATION"
+  | "LEAD_CREATION"
+  | "UNKNOWN";
+
 export type LeadIngestionEventStatus =
   | "RECEIVED"
   | "PROCESSING"
   | "PROCESSED"
   | "REJECTED"
+  | "DUPLICATE"
   | "FAILED";
 
 export const leadIngestionEventStatuses: LeadIngestionEventStatus[] = [
@@ -164,6 +182,7 @@ export const leadIngestionEventStatuses: LeadIngestionEventStatus[] = [
   "PROCESSING",
   "PROCESSED",
   "REJECTED",
+  "DUPLICATE",
   "FAILED",
 ];
 
@@ -174,6 +193,8 @@ export interface LeadIngestionEventSummaryResponse {
   externalEventId: string | null;
   leadId: string | null;
   errorCode: string | null;
+  failureStage?: LeadIngestionFailureStage | null;
+  attemptCount?: number | null;
   receivedAt: string;
   processedAt: string | null;
 }
@@ -187,6 +208,8 @@ export interface LeadIngestionEventDetailResponse {
   leadId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  failureStage?: LeadIngestionFailureStage | null;
+  attemptCount?: number | null;
   receivedAt: string;
   processedAt: string | null;
   rawPayload?: Record<string, unknown> | null;
@@ -206,4 +229,49 @@ export interface LeadIngestionEventListMeta {
   size: number;
   total: number;
   totalPages: number;
+}
+
+export interface CsvColumnSample {
+  column: string;
+  sampleValue: string | null;
+  detectedType: string | null;
+}
+
+export interface CsvRowPreview {
+  rowNumber: number;
+  rawPayload?: Record<string, unknown> | null;
+  mapped?: MappedLeadData | null;
+  validated?: ValidatedLeadIngestionData | null;
+  status?: string | null;
+  failureStage?: string | null;
+}
+
+export interface CsvImportPreviewResponse {
+  columns: string[];
+  columnCount: number;
+  rowCount: number;
+  samples: CsvColumnSample[];
+  previewRows: CsvRowPreview[];
+}
+
+export interface CsvImportRowResult {
+  rowNumber: number;
+  status: string;
+  failureStage?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  leadId?: string | null;
+  eventId?: string | null;
+  rawPayload?: Record<string, unknown> | null;
+}
+
+export interface CsvImportResponse {
+  ingestionConfigId: string;
+  fileName?: string | null;
+  totalRows: number;
+  created: number;
+  duplicate: number;
+  rejected: number;
+  failed: number;
+  rows: CsvImportRowResult[];
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -53,17 +52,16 @@ export function WorkflowEdgeConfigPanel({
     typeof edge.data.configuration.outcome === "string"
       ? edge.data.configuration.outcome
       : "";
-  const sourceName = edge.source ? nodes.find((n) => n.id === edge.source)?.data.name ?? edge.source.slice(0, 8) : "—";
-  const targetName = edge.target ? nodes.find((n) => n.id === edge.target)?.data.name ?? edge.target.slice(0, 8) : "—";
-  const sourceKey = edge.source ? nodes.find((n) => n.id === edge.source)?.data.nodeKey ?? "" : "";
-  const targetKey = edge.target ? nodes.find((n) => n.id === edge.target)?.data.nodeKey ?? "" : "";
+  const sourceName = edge.source ? nodes.find((n) => n.id === edge.source)?.data.name ?? "—" : "—";
+  const targetName = edge.target ? nodes.find((n) => n.id === edge.target)?.data.name ?? "—" : "—";
+  const branchKey = typeof edge.data.edgeKey === "string" ? edge.data.edgeKey.trim().toUpperCase() : "";
   const outputLabel =
     outcome === "TRUE" || outcome === "FALSE"
       ? outcome
-      : edge.data.edgeKey === "TRUE" || edge.data.edgeKey === "FALSE"
-        ? edge.data.edgeKey
+      : branchKey === "TRUE" || branchKey === "FALSE"
+        ? branchKey
         : "NEXT";
-  const typeLabel = isConditionEdge ? "CONDITION" : isBranchEdge ? "BRANCH" : "Sequential";
+  const typeLabel = isConditionEdge ? "IF" : isBranchEdge ? "Branch" : "Then";
 
   return (
     <div className="space-y-4">
@@ -73,34 +71,20 @@ export function WorkflowEdgeConfigPanel({
       <div className="rounded-md border bg-muted/40 p-3 text-xs leading-5">
         <div className="flex justify-between gap-2">
           <span className="font-medium text-muted-foreground">From</span>
-          <span className="truncate font-medium text-foreground" title={sourceKey}>{sourceName}</span>
+          <span className="truncate font-medium text-foreground">{sourceName}</span>
         </div>
-        {sourceKey && <p className="truncate font-mono text-[11px] text-muted-foreground">{sourceKey}</p>}
         <div className="mt-1 flex justify-between gap-2">
           <span className="font-medium text-muted-foreground">Output</span>
-          <span className="rounded bg-white px-1.5 py-0.5 text-[11px] font-semibold border">{outputLabel}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold border ${outputLabel === "TRUE" ? "bg-emerald-600 text-white border-emerald-600" : outputLabel === "FALSE" ? "bg-rose-600 text-white border-rose-600" : "bg-white"}`}>{outputLabel}</span>
         </div>
         <div className="mt-1 flex justify-between gap-2">
           <span className="font-medium text-muted-foreground">To</span>
-          <span className="truncate font-medium text-foreground" title={targetKey}>{targetName}</span>
+          <span className="truncate font-medium text-foreground">{targetName}</span>
         </div>
-        {targetKey && <p className="truncate font-mono text-[11px] text-muted-foreground">{targetKey}</p>}
         <div className="mt-1 flex justify-between gap-2">
-          <span className="font-medium text-muted-foreground">Type</span>
+          <span className="font-medium text-muted-foreground">Path</span>
           <span className="text-foreground">{typeLabel}</span>
         </div>
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="edge-key">Edge key</Label>
-        <Input
-          id="edge-key"
-          value={edge.data.edgeKey ?? ""}
-          disabled={readOnly}
-          onChange={(event) =>
-            onChange({ edgeKey: event.target.value, configuration: edge.data.configuration })
-          }
-        />
       </div>
 
       {isConditionEdge && (
@@ -130,7 +114,32 @@ export function WorkflowEdgeConfigPanel({
         </div>
       )}
 
-      {!isConditionEdge && (
+      {isBranchEdge && (
+        <div className="space-y-1">
+          <Label>Branch path</Label>
+          <Select
+            value={branchKey}
+            disabled={readOnly}
+            onValueChange={(value) =>
+              onChange({
+                edgeKey: value,
+                configuration: edge.data.configuration,
+              })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select branch" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TRUE">TRUE</SelectItem>
+              <SelectItem value="FALSE">FALSE</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Branch routes TRUE or FALSE.</p>
+        </div>
+      )}
+
+      {!isConditionEdge && !isBranchEdge && (
         <p className="text-xs text-muted-foreground">
           This connection has no additional configuration.
         </p>

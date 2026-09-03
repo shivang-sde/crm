@@ -26,20 +26,22 @@ function PlatformReportsPage() {
   const selectedTenant = tenants.find((t) => t.id === selectedTenantId);
 
   return (
-    <OperationalReports
-      tenantId={selectedTenantId ?? undefined}
-      tenantName={selectedTenant?.name || selectedTenant?.slug}
-      actions={
-        <TenantSelector
-          tenants={tenants}
-          selectedTenantId={selectedTenantId}
-          onSelect={setSelectedTenantId}
-          placeholder={userRole === "RESELLER" ? "All My Tenants" : "All Tenants"}
-          isLoading={isLoading}
-          isError={isError}
-          onRetry={refetch}
-        />
-      }
-    />
+    // <OperationalReports
+    //   tenantId={selectedTenantId ?? undefined}
+    //   tenantName={selectedTenant?.name || selectedTenant?.slug}
+    //   actions={
+    //     <TenantSelector
+    //       tenants={tenants}
+    //       selectedTenantId={selectedTenantId}
+    //       onSelect={setSelectedTenantId}
+    //       placeholder={userRole === "RESELLER" ? "All My Tenants" : "All Tenants"}
+    //       isLoading={isLoading}
+    //       isError={isError}
+    //       onRetry={refetch}
+    //     />
+    //   }
+    // />
+
+    <div>Reports are currently in development.</div>
   );
 }

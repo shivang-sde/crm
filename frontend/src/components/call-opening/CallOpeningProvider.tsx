@@ -12,7 +12,12 @@ import { toast } from "sonner";
 const GLOBAL_SEARCH_ROUTE = "/search";
 const SEARCH_ROUTE_AVAILABLE = false;
 
-export function CallOpeningProvider() {
+// 1. Declare properties type signature to accept layout injection nodes
+export interface CallOpeningProviderProps {
+  children: React.ReactNode;
+}
+
+export function CallOpeningProvider({ children }: CallOpeningProviderProps) {
   const router = useRouter();
   const processedEventIdsRef = React.useRef<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = React.useState<CallOpeningEvent | null>(null);
@@ -221,9 +226,7 @@ export function CallOpeningProvider() {
       return;
     }
 
-    // If we have an active callId, open the unknown-caller workflow dialog.
     if (visibleInstruction.callId) {
-      // Navigate to the active call page and request the unknown-caller dialog open.
       router.push(`/calls/active/${visibleInstruction.callId}?openUnknown=1`);
       return;
     }
@@ -245,6 +248,9 @@ export function CallOpeningProvider() {
 
   return (
     <>
+      {/* Render children layout tree nodes here */}
+      {children}
+      
       <CallOpeningModal
         open={isModalOpen}
         instruction={visibleInstruction}
@@ -259,36 +265,6 @@ export function CallOpeningProvider() {
         onDismiss={handleDismiss}
         onSearchCRM={handleSearchCRM}
       />
-      {/* Unknown caller workflow is available on the active call page */}
-      {visibleInstruction && activeEvent && activeEvent.instruction.actionType === "OPEN_PAGE" && isToastOpen ? (
-        <div className="fixed bottom-6 right-6 z-50 w-full max-w-sm rounded-2xl border bg-popover p-4 shadow-xl shadow-black/10">
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <p className="text-sm font-semibold">{getCallLabel(activeEvent.instruction)}</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {activeEvent.instruction.entityType ? `${activeEvent.instruction.entityType} ${activeEvent.instruction.entityId ?? ""}` : "Call details available."}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={handleOpenPage}
-                className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-              >
-                Open details
-              </button>
-              <button
-                type="button"
-                onClick={handleDismiss}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }
-

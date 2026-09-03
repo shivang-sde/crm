@@ -65,6 +65,7 @@ public class LeadIngestionMappingService {
         String normalizedTargetField = normalizeTargetField(request.getTargetField());
         validateTarget(tenantId, request.getTargetType(), normalizedTargetField);
         ensureNoDuplicateTarget(tenantId, configId, request.getTargetType(), normalizedTargetField, null);
+        validateTransformConfig(request.getTransformType(), request.getTransformConfig());
         Integer displayOrder = request.getDisplayOrder();
         if (displayOrder == null) {
             displayOrder = 0;
@@ -96,6 +97,7 @@ public class LeadIngestionMappingService {
         String normalizedTargetField = normalizeTargetField(request.getTargetField());
         validateTarget(tenantId, request.getTargetType(), normalizedTargetField);
         ensureNoDuplicateTarget(tenantId, configId, request.getTargetType(), normalizedTargetField, mappingId);
+        validateTransformConfig(request.getTransformType(), request.getTransformConfig());
         Integer displayOrder = request.getDisplayOrder();
         if (displayOrder == null) {
             displayOrder = 0;
@@ -158,7 +160,79 @@ public class LeadIngestionMappingService {
             Object rawValue = extractedNode == null || extractedNode.isNull()
                 ? null
                 : objectMapper.convertValue(extractedNode, Object.class);
-            Object value = applyTransform(rawValue, mapping.getTransformType());
+            Object value;
+            try {
+                value = applyTransform(rawValue, mapping.getTransformType(), mapping.getTransformConfig());
+            } catch (BusinessException ex) {
+                errors.add("Transform failed for target " + mapping.getTargetType() + ":" + mapping.getTargetField()
+                    + " from sourcePath=" + mapping.getSourcePath() + " — " + ex.getMessage());
+                continue;
+            }
+
+            if ((value == null || (value instanceof String str && str.isBlank())) && mapping.getDefaultValue() != null) {
+                value = mapping.getDefaultValue();
+            }
+
+            if (mapping.getRequired() && (value == null || (value instanceof String str && str.isBlank()))) {
+                errors.add("Required mapped value missing for target " + mapping.getTargetType() + ":" + mapping.getTargetField()
+                    + " from sourcePath=" + mapping.getSourcePath());
+                continue;
+            }
+
+            if (value == null) {
+                continue;
+            }
+
+            if (mapping.getTargetType() == LeadIngestionTargetType.STANDARD_FIELD) {
+                standardFields.put(mapping.getTargetField(), value);
+                continue;
+            }
+
+            if (mapping.getTargetType() == LeadIngestionTargetType.SYSTEM_FIELD) {
+                systemFields.put(mapping.getTargetField(), value);
+                continue;
+            }
+
+            customFields.put(mapping.getTargetField(), value);
+        }
+
+        return MappedLeadData.builder()
+            .standardFields(standardFields)
+            .systemFields(systemFields)
+            .customFields(customFields)
+            .errors(errors)
+            .build();
+    }
+
+    @Transactional(readOnly = true)
+    public MappedLeadData previewFromPayload(UUID tenantId, UUID configId, Map<String, Object> rawPayload) {
+        ensureConfig(configId, tenantId);
+
+        List<LeadIngestionFieldMapping> mappings = leadIngestionFieldMappingRepository
+            .findByTenantIdAndIngestionConfigIdAndDeletedFalseOrderByDisplayOrderAscCreatedAtAsc(tenantId, configId)
+            .stream()
+            .filter(mapping -> Boolean.TRUE.equals(mapping.getActive()))
+            .toList();
+
+        Map<String, Object> standardFields = new LinkedHashMap<>();
+        Map<String, Object> systemFields = new LinkedHashMap<>();
+        Map<String, Object> customFields = new LinkedHashMap<>();
+        List<String> errors = new ArrayList<>();
+        JsonNode payloadNode = objectMapper.valueToTree(rawPayload == null ? Map.of() : rawPayload);
+
+        for (LeadIngestionFieldMapping mapping : mappings) {
+            JsonNode extractedNode = jsonPathValueExtractor.extractNode(payloadNode, mapping.getSourcePath());
+            Object rawValue = extractedNode == null || extractedNode.isNull()
+                ? null
+                : objectMapper.convertValue(extractedNode, Object.class);
+            Object value;
+            try {
+                value = applyTransform(rawValue, mapping.getTransformType(), mapping.getTransformConfig());
+            } catch (BusinessException ex) {
+                errors.add("Transform failed for target " + mapping.getTargetType() + ":" + mapping.getTargetField()
+                    + " from sourcePath=" + mapping.getSourcePath() + " — " + ex.getMessage());
+                continue;
+            }
 
             if ((value == null || (value instanceof String str && str.isBlank())) && mapping.getDefaultValue() != null) {
                 value = mapping.getDefaultValue();
@@ -284,15 +358,146 @@ public class LeadIngestionMappingService {
         }
     }
 
-    private Object applyTransform(Object value, LeadIngestionTransformType transformType) {
+    private void validateTransformConfig(LeadIngestionTransformType transformType, Map<String, Object> transformConfig) {
+        if (transformConfig == null || transformConfig.isEmpty()) {
+            return;
+        }
+        if (transformConfig.size() > 20) {
+            throw new BusinessException("VALIDATION_ERROR", "Transform config is too large");
+        }
+        Object chainObj = transformConfig.get("chain");
+        if (chainObj != null) {
+            if (!(chainObj instanceof List<?> chain)) {
+                throw new BusinessException("VALIDATION_ERROR", "Transform chain must be an array");
+            }
+            if (chain.size() > 10) {
+                throw new BusinessException("VALIDATION_ERROR", "Transform chain too long");
+            }
+            for (Object item : chain) {
+                if (!(item instanceof String s) || s.isBlank()) {
+                    throw new BusinessException("VALIDATION_ERROR", "Invalid transform in chain");
+                }
+                try {
+                    LeadIngestionTransformType.valueOf(s.trim().toUpperCase(Locale.ROOT));
+                } catch (IllegalArgumentException ex) {
+                    throw new BusinessException("VALIDATION_ERROR", "Invalid transform in chain: " + s);
+                }
+            }
+        }
+        Object prefixObj = transformConfig.get("prefix");
+        if (prefixObj != null && !(prefixObj instanceof String)) {
+            throw new BusinessException("VALIDATION_ERROR", "Transform prefix must be a string");
+        }
+        Object suffixObj = transformConfig.get("suffix");
+        if (suffixObj != null && !(suffixObj instanceof String)) {
+            throw new BusinessException("VALIDATION_ERROR", "Transform suffix must be a string");
+        }
+        Object regexObj = transformConfig.get("regex");
+        if (regexObj != null) {
+            if (!(regexObj instanceof Map<?,?> regexMap)) {
+                throw new BusinessException("VALIDATION_ERROR", "Transform regex must be an object");
+            }
+            Object patternObj = regexMap.get("pattern");
+            if (patternObj instanceof String pattern && !pattern.isBlank()) {
+                try {
+                    java.util.regex.Pattern.compile(pattern);
+                } catch (Exception ex) {
+                    throw new BusinessException("VALIDATION_ERROR", "Invalid regex pattern: " + pattern);
+                }
+            }
+        }
+        if (transformConfig.containsKey("pattern")) {
+            Object patternObj = transformConfig.get("pattern");
+            if (patternObj instanceof String pattern && !pattern.isBlank()) {
+                try {
+                    java.util.regex.Pattern.compile(pattern);
+                } catch (Exception ex) {
+                    throw new BusinessException("VALIDATION_ERROR", "Invalid regex pattern: " + pattern);
+                }
+            }
+        }
+    }
+
+    private Object applyTransform(Object value, LeadIngestionTransformType transformType, Map<String, Object> transformConfig) {
+        Object current = value;
+        // Primary transformType
+        current = applySingleTransform(current, transformType);
+
+        if (transformConfig == null || transformConfig.isEmpty()) {
+            return current;
+        }
+
+        // Chain: transformConfig.chain = ["TRIM","LOWERCASE",...]
+        Object chainObj = transformConfig.get("chain");
+        if (chainObj instanceof List<?> chain) {
+            for (Object item : chain) {
+                if (item instanceof String s) {
+                    LeadIngestionTransformType t;
+                    try {
+                        t = LeadIngestionTransformType.valueOf(s.trim().toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException ex) {
+                        throw new BusinessException("VALIDATION_ERROR", "Invalid transform in chain: " + s);
+                    }
+                    current = applySingleTransform(current, t);
+                }
+            }
+        }
+
+        // Prefix / suffix (string-only, applied after chain)
+        if (current instanceof String str) {
+            Object prefixObj = transformConfig.get("prefix");
+            if (prefixObj instanceof String prefix && !prefix.isEmpty()) {
+                str = prefix + str;
+            }
+            Object suffixObj = transformConfig.get("suffix");
+            if (suffixObj instanceof String suffix && !suffix.isEmpty()) {
+                str = str + suffix;
+            }
+            current = str;
+        }
+
+        // Regex replace: transformConfig.regex = { "pattern": "...", "replacement": "..." }
+        Object regexObj = transformConfig.get("regex");
+        if (regexObj instanceof Map<?,?> regexMap) {
+            Object patternObj = regexMap.get("pattern");
+            Object replacementObj = regexMap.get("replacement");
+            if (patternObj instanceof String pattern && pattern != null) {
+                String replacement = replacementObj instanceof String r ? r : "";
+                if (current instanceof String str) {
+                    try {
+                        str = str.replaceAll(pattern, replacement);
+                    } catch (Exception ex) {
+                        throw new BusinessException("VALIDATION_ERROR", "Invalid regex pattern: " + pattern + " — " + ex.getMessage());
+                    }
+                    current = str;
+                }
+            }
+        }
+        // Also support top-level pattern/replacement for convenience
+        if (transformConfig.containsKey("pattern") && current instanceof String str) {
+            Object patternObj = transformConfig.get("pattern");
+            Object replacementObj = transformConfig.get("replacement");
+            if (patternObj instanceof String pattern) {
+                String replacement = replacementObj instanceof String r ? r : "";
+                try {
+                    str = str.replaceAll(pattern, replacement);
+                    current = str;
+                } catch (Exception ex) {
+                    throw new BusinessException("VALIDATION_ERROR", "Invalid regex pattern: " + pattern + " — " + ex.getMessage());
+                }
+            }
+        }
+
+        return current;
+    }
+
+    private Object applySingleTransform(Object value, LeadIngestionTransformType transformType) {
         if (value == null || transformType == null || transformType == LeadIngestionTransformType.NONE) {
             return value;
         }
-
         if (!(value instanceof String strValue)) {
             return value;
         }
-
         return switch (transformType) {
             case TRIM -> strValue.trim();
             case LOWERCASE -> strValue.toLowerCase(Locale.ROOT);

@@ -63,6 +63,14 @@ public class LeadIngestionEvent extends BaseEntity {
     @Default
     private LeadIngestionEventStatus status = LeadIngestionEventStatus.RECEIVED;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "failure_stage", length = 30)
+    private LeadIngestionFailureStage failureStage;
+
+    @Column(name = "attempt_count", nullable = false)
+    @Default
+    private Integer attemptCount = 1;
+
     @Column(name = "lead_id")
     private UUID leadId;
 

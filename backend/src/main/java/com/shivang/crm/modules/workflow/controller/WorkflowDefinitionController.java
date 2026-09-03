@@ -33,6 +33,7 @@ import com.shivang.crm.modules.workflow.dto.WorkflowGraphValidationError;
 import com.shivang.crm.modules.workflow.dto.WorkflowNodeExecutionResponse;
 import com.shivang.crm.modules.workflow.dto.WorkflowNodeRequest;
 import com.shivang.crm.modules.workflow.dto.WorkflowVersionCreateRequest;
+import com.shivang.crm.modules.workflow.dto.WorkflowVersionUpdateRequest;
 import com.shivang.crm.modules.workflow.entity.Workflow;
 import com.shivang.crm.modules.workflow.entity.WorkflowExecution;
 import com.shivang.crm.modules.workflow.entity.WorkflowVersion;
@@ -143,6 +144,13 @@ public class WorkflowDefinitionController {
     @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<UUID>> createVersion(@PathVariable UUID workflowId, @Valid @RequestBody WorkflowVersionCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(workflowDefinitionService.createDraftVersion(tenant(), workflowId, request)));
+    }
+
+    @PutMapping("/versions/{versionId}")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
+    public ResponseEntity<ApiResponse<String>> updateVersion(@PathVariable UUID versionId, @Valid @RequestBody WorkflowVersionUpdateRequest request) {
+        workflowDefinitionService.updateDraftVersionTrigger(tenant(), versionId, request);
+        return ResponseEntity.ok(ApiResponse.success("Workflow version updated"));
     }
 
     @PostMapping("/versions/{versionId}/nodes")

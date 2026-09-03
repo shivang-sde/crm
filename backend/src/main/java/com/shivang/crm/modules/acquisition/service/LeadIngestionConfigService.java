@@ -26,6 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 public class LeadIngestionConfigService {
 
     private static final String INBOUND_PATH_PREFIX = "/api/v1/public/acquisition/";
+    private static final String FORM_INBOUND_PATH_PREFIX = "/api/v1/public/forms/";
+    private static final String DIRECT_INBOUND_PATH_PREFIX = "/api/v1/public/direct/";
     private static final String PUBLIC_KEY_PREFIX = "acq_";
     private static final int RANDOM_BYTES_LENGTH = 18;
     private static final int MAX_KEY_GENERATION_ATTEMPTS = 10;
@@ -46,7 +48,7 @@ public class LeadIngestionConfigService {
             .settings(request.getSettings())
             .build();
 
-        ensureWebhookPublicKey(entity);
+        ensurePublicKey(entity);
 
         LeadIngestionConfig saved = leadIngestionConfigRepository.save(entity);
         return toResponse(saved);
@@ -89,14 +91,7 @@ public class LeadIngestionConfigService {
             config.setSettings(request.getSettings());
         }
 
-        if (previousTransportType != LeadIngestionTransportType.WEBHOOK
-            && config.getTransportType() == LeadIngestionTransportType.WEBHOOK
-            && (config.getPublicKey() == null || config.getPublicKey().isBlank())) {
-            config.setPublicKey(generateUniquePublicKey());
-        }
-
-        if (previousTransportType == LeadIngestionTransportType.WEBHOOK
-            && config.getTransportType() == LeadIngestionTransportType.WEBHOOK
+        if (isPublicTransport(config.getTransportType())
             && (config.getPublicKey() == null || config.getPublicKey().isBlank())) {
             config.setPublicKey(generateUniquePublicKey());
         }
@@ -126,11 +121,17 @@ public class LeadIngestionConfigService {
         }
     }
 
-    private void ensureWebhookPublicKey(LeadIngestionConfig config) {
-        if (config.getTransportType() == LeadIngestionTransportType.WEBHOOK
+    private void ensurePublicKey(LeadIngestionConfig config) {
+        if (isPublicTransport(config.getTransportType())
             && (config.getPublicKey() == null || config.getPublicKey().isBlank())) {
             config.setPublicKey(generateUniquePublicKey());
         }
+    }
+
+    private boolean isPublicTransport(LeadIngestionTransportType type) {
+        return type == LeadIngestionTransportType.WEBHOOK
+            || type == LeadIngestionTransportType.FORM
+            || type == LeadIngestionTransportType.API;
     }
 
     private String generateUniquePublicKey() {
@@ -152,7 +153,13 @@ public class LeadIngestionConfigService {
     private LeadIngestionConfigResponse toResponse(LeadIngestionConfig config) {
         String inboundPath = null;
         if (config.getPublicKey() != null && !config.getPublicKey().isBlank()) {
-            inboundPath = INBOUND_PATH_PREFIX + config.getPublicKey();
+            if (config.getTransportType() == LeadIngestionTransportType.FORM) {
+                inboundPath = FORM_INBOUND_PATH_PREFIX + config.getPublicKey();
+            } else if (config.getTransportType() == LeadIngestionTransportType.API) {
+                inboundPath = DIRECT_INBOUND_PATH_PREFIX + config.getPublicKey();
+            } else {
+                inboundPath = INBOUND_PATH_PREFIX + config.getPublicKey();
+            }
         }
 
         return LeadIngestionConfigResponse.builder()

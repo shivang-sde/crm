@@ -24,7 +24,7 @@ type WorkflowValueOption = { value: string; label: string };
 export interface ConditionRule {
   field: string;
   operator: string;
-  value: string;
+  value: string | string[];
 }
 
 const OPERATORS = [
@@ -43,6 +43,35 @@ const OPERATORS = [
 ] as const;
 
 const NULL_OPERATORS = new Set(["IS_NULL", "IS_NOT_NULL"]);
+
+// Heuristic type-aware operators — backend has no field type metadata, so we infer from name/options
+function operatorsForField(field: string, hasControlledOptions: boolean): string[] {
+  if (hasControlledOptions) return ["EQUALS", "NOT_EQUALS", "IS_NULL", "IS_NOT_NULL", "IN", "NOT_IN"];
+  const lower = field.toLowerCase();
+  if (lower.includes("score") || lower.includes("amount") || lower.includes("revenue") || lower.includes("count") || lower.includes("probability") || lower.endsWith(".score") || lower.endsWith(".amount")) {
+    return ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "IS_NULL", "IS_NOT_NULL", "IN", "NOT_IN"];
+  }
+  if (lower.includes("isconverted") || lower.includes("iswon") || lower.includes("islost") || lower.includes("isclosed") || lower.includes("isactive") || lower.includes("isprimary") || lower.includes("isconverted")) {
+    return ["EQUALS", "NOT_EQUALS", "IS_NULL", "IS_NOT_NULL"];
+  }
+  if (lower.includes("date") || lower.includes("createdat") || lower.includes("updatedat") || lower.includes("duedate") || lower.includes("closeddate") || lower.includes("expectedclose") || lower.includes("starttime") || lower.includes("endtime") || lower.includes("remindat") || lower.includes("completedat")) {
+    return ["EQUALS", "NOT_EQUALS", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "IS_NULL", "IS_NOT_NULL", "IN", "NOT_IN"];
+  }
+  // text default
+  return ["EQUALS", "NOT_EQUALS", "CONTAINS", "NOT_CONTAINS", "IS_NULL", "IS_NOT_NULL", "IN", "NOT_IN"];
+}
+
+function isListOperator(op: string): boolean {
+  return op === "IN" || op === "NOT_IN";
+}
+function valueToDisplay(value: unknown): string {
+  if (Array.isArray(value)) return (value as unknown[]).map(String).join(", ");
+  return String(value ?? "");
+}
+function displayToValue(display: string, operator: string): string | string[] {
+  if (isListOperator(operator)) return display.split(",").map((s) => s.trim()).filter(Boolean);
+  return display;
+}
 
 interface ConditionRulesEditorProps {
   logic: "AND" | "OR";
@@ -132,6 +161,7 @@ export function ConditionRulesEditor({
 
 {rules.map((rule, index) => {
         const options = resolveValueOptions?.(rule.field) ?? null;
+        const allowedOps = operatorsForField(rule.field, !!options);
         return (
           <div key={index} className="space-y-2 rounded-md border p-3">
             {fieldOptions && fieldOptions.length > 0 ? (
@@ -193,7 +223,7 @@ export function ConditionRulesEditor({
               />
             )}
 <Select
-              value={rule.operator}
+              value={allowedOps.includes(rule.operator) ? rule.operator : allowedOps[0] ?? rule.operator}
               disabled={readOnly}
               onValueChange={(value) => updateRule(index, { operator: value })}
             >
@@ -201,16 +231,16 @@ export function ConditionRulesEditor({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {OPERATORS.map((operator) => (
+                {allowedOps.map((operator) => (
                   <SelectItem key={operator} value={operator}>
                     {operator}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {options && options.length > 0 ? (
+            {options && options.length > 0 && !isListOperator(rule.operator) ? (
               <Select
-                value={options.some((option) => option.value === rule.value) ? rule.value : ""}
+                value={options.some((option) => option.value === String(rule.value)) ? String(rule.value) : ""}
                 disabled={readOnly || NULL_OPERATORS.has(rule.operator)}
                 onValueChange={(value) => updateRule(index, { value })}
               >
@@ -229,10 +259,10 @@ export function ConditionRulesEditor({
               <div className="flex gap-2">
                 <Input
                   aria-label={`Condition ${index + 1} value`}
-                  placeholder={rule.operator === "IN" || rule.operator === "NOT_IN" ? "Value — comma separated" : "Value"}
-                  defaultValue={rule.value}
+                  placeholder={isListOperator(rule.operator) ? "Value — comma separated" : "Value"}
+                  defaultValue={valueToDisplay(rule.value)}
                   disabled={readOnly || NULL_OPERATORS.has(rule.operator)}
-                  onBlur={(event) => updateRule(index, { value: event.target.value })}
+                  onBlur={(event) => updateRule(index, { value: displayToValue(event.target.value, rule.operator) })}
                   className="flex-1"
                 />
                 {!readOnly && !NULL_OPERATORS.has(rule.operator) && (
@@ -242,8 +272,14 @@ export function ConditionRulesEditor({
                     nodes={nodes}
                     edges={edges}
                     onSelect={(insertion) => {
-                      const nextVal = rule.value ? `${rule.value} ${insertion}` : insertion;
-                      updateRule(index, { value: nextVal });
+                      if (isListOperator(rule.operator)) {
+                        const current = Array.isArray(rule.value) ? (rule.value as unknown[]).map(String) : valueToDisplay(rule.value).split(",").map((s) => s.trim()).filter(Boolean);
+                        const nextVal = [...current, insertion];
+                        updateRule(index, { value: nextVal });
+                      } else {
+                        const nextVal = rule.value ? `${valueToDisplay(rule.value)} ${insertion}` : insertion;
+                        updateRule(index, { value: nextVal });
+                      }
                     }}
                   />
                 )}

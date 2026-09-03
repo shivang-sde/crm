@@ -178,6 +178,29 @@ public class WorkflowDefinitionService {
         }
     }
 
+    public void updateDraftVersionTrigger(UUID tenantId, UUID versionId, com.shivang.crm.modules.workflow.dto.WorkflowVersionUpdateRequest request) {
+        WorkflowVersion version = requireDraftVersion(tenantId, versionId);
+        String entityType = request.getTriggerEntityType() == null ? "" : request.getTriggerEntityType().trim().toUpperCase();
+        String eventType = request.getTriggerEventType() == null ? "" : request.getTriggerEventType().trim().toUpperCase();
+        if (entityType.isBlank() || eventType.isBlank()) {
+            throw new BusinessException("WORKFLOW_TRIGGER_REQUIRED", "Trigger entityType and eventType are required");
+        }
+        version.setTriggerEntityType(entityType);
+        version.setTriggerEventType(eventType);
+        workflowVersionRepository.save(version);
+        // Also keep TRIGGER node in sync if it exists — single trigger invariant
+        workflowNodeRepository.findByTenantIdAndWorkflowVersionIdAndDeletedFalse(tenantId, versionId).stream()
+            .filter(n -> n.getNodeType() == com.shivang.crm.modules.workflow.entity.WorkflowNodeType.TRIGGER)
+            .findFirst()
+            .ifPresent(trigger -> {
+                java.util.Map<String, Object> cfg = trigger.getConfiguration() == null ? new java.util.HashMap<>() : new java.util.HashMap<>(trigger.getConfiguration());
+                cfg.put("entityType", entityType);
+                cfg.put("eventType", eventType);
+                trigger.setConfiguration(cfg);
+                workflowNodeRepository.save(trigger);
+            });
+    }
+
     public UUID addNode(UUID tenantId, UUID versionId, WorkflowNodeRequest request) {
         WorkflowVersion version = requireDraftVersion(tenantId, versionId);
         if (workflowNodeRepository.findByTenantIdAndWorkflowVersionIdAndNodeKeyAndDeletedFalse(tenantId, versionId, request.getNodeKey()).isPresent()) {

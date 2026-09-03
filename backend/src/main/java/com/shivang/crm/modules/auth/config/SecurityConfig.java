@@ -71,6 +71,9 @@ public class SecurityConfig {
                         // Allow preflight requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/public/acquisition/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/public/direct/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/forms/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/public/forms/**").permitAll()
 
                         // Public endpoints
                         .requestMatchers(

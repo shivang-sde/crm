@@ -9,7 +9,6 @@ import { authApi } from "@/lib/api/auth";
 import { roleApi } from "@/lib/api/roles";
 import { useAuthStore } from "@/lib/store/authStore";
 import { getNavigationItems } from "@/lib/constants/navigation";
-import { RouteGuard } from "@/components/shared/RouteGuard";
 import { Footer } from "./Footer";
 import { Header, type BreadcrumbItem } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -28,6 +27,7 @@ function formatBreadcrumbLabel(segment: string) {
 export default function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
 
   const user = useAuthStore((state) => state.user);
   const accessToken = useAuthStore((state) => state.accessToken);
@@ -39,10 +39,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const permissions = useAuthStore((state) => state.permissions);
   const hydrated = useAuthStore((state) => state.hydrated);
 
-  const queryClient = useQueryClient();
-
+  // Layout View Controls
   const [bootstrapComplete, setBootstrapComplete] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = React.useState(false);
 
   React.useEffect(() => {
     if (!hydrated || bootstrapComplete) {
@@ -69,26 +69,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
       } catch {
         console.error("Failed to load permissions");
 
-        // Fallback: Set default permissions based on role name
         if (userRole === "RESELLER") {
           const defaultPerms = new Map<string, string>();
-          // Tenant permissions
           defaultPerms.set("tenant:read", "ALL");
           defaultPerms.set("tenant:write", "ALL");
           defaultPerms.set("tenant:delete", "ALL");
-          // User permissions
           defaultPerms.set("user:read", "ALL");
           defaultPerms.set("user:write", "ALL");
           defaultPerms.set("user:delete", "ALL");
-          // Report permissions
           defaultPerms.set("report:read", "ALL");
           defaultPerms.set("report:export", "ALL");
 
           setPermissions(defaultPerms);
-        } else if (userRole === "SUPERADMIN") {
-          // SUPERADMIN should have all permissions, but since we can't load,
-          // we'll set a flag or handle differently
-          console.warn("SUPERADMIN permissions failed to load");
         }
       }
     };
@@ -146,68 +138,73 @@ export default function AppLayout({ children }: AppLayoutProps) {
     },
   });
 
-  const navigationItems = React.useMemo(
-    () => getNavigationItems(userRole, permissions),
-    [userRole, permissions]
-  );
-
-  const breadcrumbs: BreadcrumbItem[] = React.useMemo(() => {
-    const pathSegments = pathname?.split("/").filter(Boolean) ?? [];
-    return pathSegments.map((segment, index) => ({
-      label: formatBreadcrumbLabel(segment),
-      href: `/${pathSegments.slice(0, index + 1).join("/")}`,
-    }));
+  const breadcrumbs = React.useMemo<BreadcrumbItem[]>(() => {
+    const segments = pathname.split("/").filter(Boolean);
+    return segments.map((segment, index) => {
+      const url = `/${segments.slice(0, index + 1).join("/")}`;
+      return {
+        label: formatBreadcrumbLabel(segment),
+        href: url,
+      };
+    });
   }, [pathname]);
 
-  const userName = `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim();
-  const roleLabel = user?.roleName ?? userRole?.toLowerCase().replace(/_/g, " ");
+  // FIX: Properly passes parameters to match your defined signature types cleanly
+  const navigationItems = React.useMemo(() => {
+    return getNavigationItems(userRole, permissions || undefined);
+  }, [userRole, permissions]);
+
+  const fallbackUserName = React.useMemo(() => {
+    if (!user) return "User";
+    const record = user as any;
+    return record.name || record.firstName || record.username || record.email || "Active User";
+  }, [user]);
 
   if (!hydrated || !bootstrapComplete) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 gap-2">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <p className="text-sm font-medium text-slate-500">Loading Workspace...</p>
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
-
   return (
-  <div className="h-screen overflow-hidden bg-gray-100">
-    <div className="relative flex h-full overflow-hidden">
-      <Sidebar
-        tenantName={tenant?.name}
-        roleLabel={roleLabel ?? undefined}
-        navigationItems={navigationItems}
-        activePathname={pathname ?? "/"}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
-
-      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-        <Header
-          userName={userName}
-          roleName={roleLabel ?? undefined}
+    <CallOpeningProvider>
+      <div className="flex min-h-screen w-full bg-slate-50/50">
+        <Sidebar
+          tenantName={tenant?.name}
+          roleLabel={userRole || undefined}
+          navigationItems={navigationItems}
+          activePathname={pathname}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          isCollapsed={desktopCollapsed}
+          setIsCollapsed={(collapsed) => setDesktopCollapsed(collapsed)}
+          user={user ? { name: fallbackUserName, email: user.email || "" } : null}
           onLogout={() => logoutMutation.mutate()}
-          logoutPending={logoutMutation.isPending}
-          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-          breadcrumbs={breadcrumbs}
+          isLoggingOut={logoutMutation.isPending}
         />
 
-        {/* Only main content scrolls */}
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
-          <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6">
-            <RouteGuard>{children}</RouteGuard>
-          </div>
-        </main>
+        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+          <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center border-b border-slate-200 bg-white shadow-sm">
+            <Header 
+              userName={fallbackUserName}
+              roleName={userRole || undefined}
+              onLogout={() => logoutMutation.mutate()}
+              logoutPending={logoutMutation.isPending}
+              onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+              breadcrumbs={breadcrumbs}
+            />
+          </header>
 
-        <CallOpeningProvider />
+          <main className="flex-1 p-2 md:p-4 lg:p-6 max-w-8xl w-full mx-auto">
+            {children}
+          </main>
 
-        <Footer />
+          <Footer />
+        </div>
       </div>
-    </div>
-  </div>
-);
+    </CallOpeningProvider>
+  );
 }

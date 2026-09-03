@@ -59,11 +59,12 @@ export function deserializeActionConfiguration(
 }
 
 const CONDITION_LOGIC_KEY = "logic";
+// Current IF/ELSE: binary TRUE/FALSE routing. Future ROUTE/CASE multi-case would require separate engine (audit FE/BE-WF-AUDIT-18).
 
 export function serializeConditionConfiguration(
   existing: Record<string, unknown> | undefined,
   logic: "AND" | "OR",
-  conditions: Array<{ field: string; operator: string; value?: string }>
+  conditions: Array<{ field: string; operator: string; value?: string | string[] }>
 ): Record<string, unknown> {
   return {
     ...(existing ?? {}),
@@ -71,25 +72,29 @@ export function serializeConditionConfiguration(
     conditions: conditions.map((condition) => ({
       field: condition.field.trim(),
       operator: condition.operator,
-      value: condition.value ?? "",
+      value: Array.isArray(condition.value) ? condition.value : (condition.value ?? ""),
     })),
   };
 }
 
 export function deserializeConditionConfiguration(
   configuration: Record<string, unknown> | undefined
-): { logic: "AND" | "OR"; conditions: Array<{ field: string; operator: string; value: string }> } {
+): { logic: "AND" | "OR"; conditions: Array<{ field: string; operator: string; value: string | string[] }> } {
   const rawConditions = Array.isArray(configuration?.conditions)
     ? (configuration.conditions as Array<Record<string, unknown>>)
     : [];
 
   return {
     logic: configuration?.[CONDITION_LOGIC_KEY] === "OR" ? "OR" : "AND",
-    conditions: rawConditions.map((condition) => ({
-      field: typeof condition.field === "string" ? condition.field : "",
-      operator: typeof condition.operator === "string" ? condition.operator : "EQUALS",
-      value: condition.value == null ? "" : String(condition.value),
-    })),
+    conditions: rawConditions.map((condition) => {
+      const field = typeof condition.field === "string" ? condition.field : "";
+      const operator = typeof condition.operator === "string" ? condition.operator : "EQUALS";
+      let value: string | string[] = "";
+      if (Array.isArray(condition.value)) value = (condition.value as unknown[]).map(String);
+      else if (condition.value == null) value = "";
+      else value = String(condition.value);
+      return { field, operator, value };
+    }),
   };
 }
 
@@ -109,16 +114,55 @@ export function serializeWaitConfiguration(
 ): Record<string, unknown> {
   return {
     ...(existing ?? {}),
+    waitType: "UNTIL",
     resumeAt: resumeAtIsoUtc,
   };
 }
 
+export function serializeWaitDuration(
+  existing: Record<string, unknown> | undefined,
+  amount: number,
+  unit: string
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(existing ?? {}) };
+  next.waitType = "DURATION";
+  next.amount = amount;
+  next.unit = unit;
+  delete (next as Record<string, unknown>).resumeAt;
+  return next;
+}
+
+export function serializeWaitUntil(
+  existing: Record<string, unknown> | undefined,
+  resumeAtIsoUtc: string
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(existing ?? {}) };
+  next.waitType = "UNTIL";
+  next.resumeAt = resumeAtIsoUtc;
+  delete (next as Record<string, unknown>).amount;
+  delete (next as Record<string, unknown>).unit;
+  return next;
+}
+
 export function deserializeWaitConfiguration(
   configuration: Record<string, unknown> | undefined
-): { resumeAt: string } {
+): { waitType: "DURATION" | "UNTIL"; amount: number; unit: string; resumeAt: string } {
+  const rawType = typeof configuration?.waitType === "string" ? String(configuration.waitType).toUpperCase() : null;
+  const hasAmount = configuration?.amount != null;
+  const waitType: "DURATION" | "UNTIL" = rawType === "DURATION" || (rawType == null && hasAmount) ? "DURATION" : "UNTIL";
+  if (waitType === "DURATION") {
+    return {
+      waitType: "DURATION",
+      amount: Number(configuration?.amount ?? 5) || 5,
+      unit: typeof configuration?.unit === "string" ? String(configuration.unit) : "MINUTES",
+      resumeAt: typeof configuration?.resumeAt === "string" ? configuration.resumeAt : "",
+    };
+  }
   return {
-    resumeAt:
-      typeof configuration?.resumeAt === "string" ? configuration.resumeAt : "",
+    waitType: "UNTIL",
+    amount: 5,
+    unit: "MINUTES",
+    resumeAt: typeof configuration?.resumeAt === "string" ? configuration.resumeAt : "",
   };
 }
 
@@ -295,11 +339,19 @@ export function isNodeConfigured(data: BuilderNodeData): {
       break;
     }
     case "WAIT": {
-      const resumeAt = typeof cfg.resumeAt === "string" ? cfg.resumeAt.trim() : "";
-      if (!resumeAt) issues.push("Resume time required");
-      else {
-        const d = new Date(resumeAt);
-        if (Number.isNaN(d.getTime())) issues.push("Resume time must be ISO-8601 UTC");
+      const waitType = typeof cfg.waitType === "string" ? String(cfg.waitType).toUpperCase() : cfg.amount != null ? "DURATION" : "UNTIL";
+      if (waitType === "DURATION") {
+        const amount = Number(cfg.amount);
+        const unit = typeof cfg.unit === "string" ? String(cfg.unit).trim().toUpperCase() : "";
+        if (!Number.isFinite(amount) || amount <= 0) issues.push("Wait amount must be positive");
+        if (!["MINUTES", "MINUTE", "M", "HOURS", "HOUR", "H", "DAYS", "DAY", "D"].includes(unit)) issues.push("Wait unit must be Minutes/Hours/Days");
+      } else {
+        const resumeAt = typeof cfg.resumeAt === "string" ? cfg.resumeAt.trim() : "";
+        if (!resumeAt) issues.push("Resume time required");
+        else {
+          const d = new Date(resumeAt);
+          if (Number.isNaN(d.getTime())) issues.push("Resume time must be ISO-8601 UTC");
+        }
       }
       break;
     }

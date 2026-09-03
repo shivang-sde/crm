@@ -32,6 +32,8 @@ import {
   localInputValueToIso,
   serializeConditionConfiguration,
   serializeWaitConfiguration,
+  serializeWaitDuration,
+  serializeWaitUntil,
 } from "./utils/node-config";
 import { findEntityMetadata } from "./utils/field-options";
 import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipReferenceData, useWorkflowHttpConnections } from "@/lib/hooks/workflow";
@@ -52,6 +54,7 @@ interface WorkflowNodeConfigPanelProps {
   nodeKeys?: string[];
   nodes?: BuilderNode[];
   edges?: BuilderEdge[];
+  isDisconnected?: boolean;
   onChange: (configuration: Record<string, unknown>, name?: string) => void;
 }
 
@@ -63,6 +66,7 @@ export function WorkflowNodeConfigPanel({
   nodeKeys = [],
   nodes,
   edges,
+  isDisconnected = false,
   onChange,
 }: WorkflowNodeConfigPanelProps) {
   const metadataQuery = useWorkflowMetadata();
@@ -85,26 +89,22 @@ export function WorkflowNodeConfigPanel({
   );
 
   const panelGuidance = isNodeConfigured(node.data);
+  const typeLabel = node.data.nodeType === "TRIGGER" ? "WHEN" : node.data.nodeType === "CONDITION" || node.data.nodeType === "BRANCH" ? "IF / ELSE" : node.data.nodeType === "ACTION" ? "THEN" : node.data.nodeType;
   return (
     <div className="space-y-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {node.data.nodeType} configuration
+        {typeLabel} configuration
       </p>
-      <div className="rounded-md border bg-muted/40 px-3 py-2">
-        <div className="flex justify-between gap-2 text-xs">
-          <span className="text-muted-foreground">Node type</span>
-          <span className="font-medium">{node.data.nodeType}</span>
-        </div>
-        <div className="mt-1 flex justify-between gap-2 text-xs">
-          <span className="text-muted-foreground">Node key</span>
-          <span className="font-mono text-[11px] text-muted-foreground break-all" title={node.data.nodeKey}>{node.data.nodeKey}</span>
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">Programmatic identifier. Referenced as <span className="font-mono">nodeOutputs.{node.data.nodeKey}</span>.</p>
-      </div>
       {!panelGuidance.configured && !readOnly && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800" role="status">
           ⚠ Configuration required — {panelGuidance.issues[0] ?? "complete required fields"}
         </p>
+      )}
+      {isDisconnected && !readOnly && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-medium text-amber-800">⚠ This step is not connected to the workflow.</p>
+          <p className="text-[11px] text-amber-700">Connect it from a previous step using the handle or + Add next step, or delete it.</p>
+        </div>
       )}
 
       <div className="space-y-1">
@@ -206,8 +206,9 @@ function TriggerConfig({
 
   return (
     <>
+      <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">WHEN THIS HAPPENS</p>
       <div className="space-y-1">
-        <Label>When this happens</Label>
+        <Label>Module</Label>
         <Select
           value={entityType}
           disabled={readOnly || metadataQuery.isLoading}
@@ -216,7 +217,7 @@ function TriggerConfig({
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Entity" />
+            <SelectValue placeholder="Module" />
           </SelectTrigger>
           <SelectContent>
             {(metadataQuery.data?.entities ?? []).map((entity) => (
@@ -337,30 +338,40 @@ function ContextAwareConditionConfig({
     fieldOptions.find((option) => option.field === field)?.valueOptions ?? null;
 
   return (
-    <ConditionRulesEditor
-      logic={deserialized.logic}
-      rules={deserialized.conditions.map(({ field, operator, value }) => ({
-        field,
-        operator,
-        value,
-      }))}
-      readOnly={readOnly}
-      fieldOptions={fieldOptions}
-      resolveValueOptions={resolveValueOptions}
-      triggerEntityType={entityType}
-      currentNodeId={currentNodeId}
-      nodes={nodes}
-      edges={edges}
-      onChange={(logic, rules) =>
-        onConfigurationChange(
-          serializeConditionConfiguration(
-            configuration,
-            logic,
-            rules.map(({ field, operator, value }) => ({ field, operator, value }))
+    <div className="space-y-3">
+      <div className="rounded-md border bg-violet-50 p-2 text-xs dark:bg-violet-950/20">
+        <p className="font-medium text-violet-900 dark:text-violet-100">IF / ELSE evaluates your conditions and chooses one of two paths: TRUE or FALSE.</p>
+        <p className="text-[11px] text-muted-foreground">Use IF / ELSE when the workflow needs to make a yes/no decision. This is intentionally different from a future multi-case router.</p>
+      </div>
+      <ConditionRulesEditor
+        logic={deserialized.logic}
+        rules={deserialized.conditions.map(({ field, operator, value }) => ({
+          field,
+          operator,
+          value,
+        }))}
+        readOnly={readOnly}
+        fieldOptions={fieldOptions}
+        resolveValueOptions={resolveValueOptions}
+        triggerEntityType={entityType}
+        currentNodeId={currentNodeId}
+        nodes={nodes}
+        edges={edges}
+        onChange={(logic, rules) =>
+          onConfigurationChange(
+            serializeConditionConfiguration(
+              configuration,
+              logic,
+              rules.map(({ field, operator, value }) => ({ field, operator, value }))
+            )
           )
-        )
-      }
-    />
+        }
+      />
+      <div className="rounded-md border bg-muted/40 p-2 text-xs">
+        <p><span className="font-medium">TRUE path</span> — The workflow continues here when the conditions match.</p>
+        <p className="mt-1"><span className="font-medium">FALSE path</span> — The workflow continues here when the conditions do not match.</p>
+      </div>
+    </div>
   );
 }
 
@@ -399,74 +410,73 @@ function WaitConfig({
   onChange: (configuration: Record<string, unknown>) => void;
 }) {
   const stored = deserializeWaitConfiguration(configuration);
-  const localValue = isoToLocalInputValue(stored.resumeAt);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const localUntil = isoToLocalInputValue(stored.resumeAt);
+  const isDuration = stored.waitType === "DURATION";
 
-  const setRelative = (offsetMs: number) => {
+  const setDuration = (amount: number, unit: string) => {
     if (readOnly) return;
-    const iso = new Date(Date.now() + offsetMs).toISOString();
-    onChange(serializeWaitConfiguration(configuration, iso));
+    onChange(serializeWaitDuration(configuration, amount, unit));
+  };
+  const setUntil = (localValue: string) => {
+    if (readOnly) return;
+    onChange(serializeWaitUntil(configuration, localInputValueToIso(localValue)));
   };
 
   return (
-    <div className="space-y-1">
-      <Label htmlFor="wait-resume-at">Resume at (local time)</Label>
-      <Input
-        id="wait-resume-at"
-        type="datetime-local"
-        value={localValue}
-        disabled={readOnly}
-        onChange={(event) =>
-          onChange(
-            serializeWaitConfiguration(
-              configuration,
-              localInputValueToIso(event.target.value)
-            )
-          )
-        }
-      />
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={readOnly}
-          onClick={() => setRelative(60 * 60 * 1000)}
-          aria-label="Add 1 hour to resume time"
-        >
-          +1 hour
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={readOnly}
-          onClick={() => setRelative(24 * 60 * 60 * 1000)}
-          aria-label="Add 1 day to resume time"
-        >
-          +1 day
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={readOnly}
-          onClick={() => setRelative(2 * 24 * 60 * 60 * 1000)}
-          aria-label="Add 2 days to resume time"
-        >
-          +2 days
-        </Button>
+    <div className="space-y-4">
+      <div>
+        <Label className="text-sm font-medium">Wait for</Label>
+        <p className="text-[11px] text-muted-foreground">Timer starts when workflow reaches this step.</p>
       </div>
-      {!localValue && (
-        <p className="text-xs text-red-500">A resume time is required.</p>
-      )}
-      {stored.resumeAt && (
-        <p className="text-xs text-muted-foreground">
-          Stored as UTC: {stored.resumeAt}
-        </p>
-      )}
-      <p className="text-xs text-muted-foreground">
-        The workflow pauses here until this moment, then continues.
-      </p>
+      <div className="flex flex-col gap-2">
+        <label className={`flex items-start gap-2 rounded-lg border p-3 cursor-pointer ${isDuration ? "border-primary bg-primary/5" : "hover:border-primary/40"}`}>
+          <input type="radio" checked={isDuration} disabled={readOnly} onChange={() => setDuration(stored.amount || 5, stored.unit || "MINUTES")} className="mt-1" />
+          <div className="flex-1">
+            <span className="text-sm font-medium">A duration</span>
+            <div className="mt-2 flex items-center gap-2">
+              <Input type="number" min={1} value={stored.amount} disabled={readOnly || !isDuration} onChange={(e) => setDuration(Number(e.target.value) || 1, stored.unit)} className="w-20" />
+              <Select value={stored.unit} disabled={readOnly || !isDuration} onValueChange={(v) => setDuration(stored.amount, v)}>
+                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MINUTES">Minutes</SelectItem>
+                  <SelectItem value="HOURS">Hours</SelectItem>
+                  <SelectItem value="DAYS">Days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[
+                [5, "MINUTES", "5m"],
+                [15, "MINUTES", "15m"],
+                [30, "MINUTES", "30m"],
+                [1, "HOURS", "1h"],
+                [1, "DAYS", "1d"],
+              ].map(([a, u, label]) => (
+                <Button key={label as string} type="button" variant="outline" size="sm" disabled={readOnly} onClick={() => setDuration(a as number, u as string)} className={stored.amount === a && stored.unit === u && isDuration ? "border-primary" : ""}>{label as string}</Button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">Resumes {stored.amount} {String(stored.unit).toLowerCase()} after reaching this step. If time already passed, continues immediately.</p>
+          </div>
+        </label>
+        <label className={`flex items-start gap-2 rounded-lg border p-3 cursor-pointer ${!isDuration ? "border-primary bg-primary/5" : "hover:border-primary/40"}`}>
+          <input type="radio" checked={!isDuration} disabled={readOnly} onChange={() => setUntil(localUntil || isoToLocalInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()))} className="mt-1" />
+          <div className="flex-1">
+            <span className="text-sm font-medium">Until a specific time</span>
+            <div className="mt-2">
+              <Input type="datetime-local" value={localUntil} disabled={readOnly || isDuration} onChange={(e) => setUntil(e.target.value)} />
+            </div>
+            {localUntil && !isDuration && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Pauses until {new Date(localUntil).toLocaleString()} · {timezone}. If time already passed, continues immediately.
+              </p>
+            )}
+            <p className="mt-1 text-[11px] text-muted-foreground">Workflow pauses here until the selected date and time.</p>
+          </div>
+        </label>
+      </div>
+      {!isDuration && !localUntil && <p className="text-xs text-red-500">A resume time is required.</p>}
+      {isDuration && (!stored.amount || stored.amount <= 0) && <p className="text-xs text-red-500">Amount must be positive.</p>}
     </div>
   );
 }
@@ -588,6 +598,9 @@ function ActionConfig({
           readOnly={readOnly}
           triggerEntityType={entityType}
           targetEntityType={targetEntityType}
+          currentNodeId={currentNodeId}
+          nodes={nodes}
+          edges={edges}
           onChange={setConfig}
         />
       )}
@@ -607,12 +620,12 @@ function ActionConfig({
             fallback={entityType ? { value: entityType, label: entityType } : null}
             onValueChange={(value) => setConfig({ entityType: value })}
           />
-          <ConfigText
-            label="Entity ID"
+          <TargetRecordField
+            label="Record"
             value={stringValue(config.entityId)}
             readOnly={readOnly}
+            triggerEntityType={entityType}
             onChange={(entityId) => setConfig({ entityId })}
-            placeholder="{{entity.id}}"
           />
           <ConfigSelect
             label="Owner"
@@ -655,6 +668,27 @@ function ActionConfig({
             onValueChange={(priority) => setConfig({ priority })}
           />
           <ConfigSelect
+            label="Related entity (optional)"
+            value={stringValue(config.entityType)}
+            readOnly={readOnly}
+            rawOptions={[
+              { value: "", label: "None" },
+              { value: "LEAD", label: "Lead" },
+              { value: "CONTACT", label: "Contact" },
+              { value: "ACCOUNT", label: "Account" },
+              { value: "DEAL", label: "Deal" },
+            ]}
+            fallback={config.entityType ? { value: stringValue(config.entityType), label: stringValue(config.entityType) } : null}
+            onValueChange={(entityType) => setConfig({ entityType: entityType || undefined })}
+          />
+          <TargetRecordField
+            label="Record"
+            value={stringValue(config.entityId)}
+            readOnly={readOnly}
+            triggerEntityType={entityType}
+            onChange={(entityId) => setConfig({ entityId })}
+          />
+          <ConfigSelect
             label="Owner (assignee)"
             value={stringValue(config.ownerId)}
             readOnly={readOnly}
@@ -680,15 +714,11 @@ function ActionConfig({
             fallback={null}
             onValueChange={(value) => setConfig({ entityType: value })}
           />
-          <PickerField
-            label="Entity ID"
+          <TargetRecordField
+            label="Record"
             value={stringValue(config.entityId)}
-            placeholder="{{entity.id}}"
             readOnly={readOnly}
             triggerEntityType={entityType}
-            currentNodeId={currentNodeId}
-            nodes={nodes}
-            edges={edges}
             onChange={(entityId) => setConfig({ entityId })}
           />
           <PickerField
@@ -1061,12 +1091,18 @@ function UpdateEntityFieldGroup({
   readOnly,
   triggerEntityType,
   targetEntityType,
+  currentNodeId,
+  nodes,
+  edges,
   onChange,
 }: {
   config: Record<string, unknown>;
   readOnly: boolean;
   triggerEntityType: string;
   targetEntityType: string;
+  currentNodeId?: string;
+  nodes?: BuilderNode[];
+  edges?: BuilderEdge[];
   onChange: (patch: Record<string, unknown>) => void;
 }) {
   const metadata = useWorkflowMetadata().data;
@@ -1131,12 +1167,12 @@ function UpdateEntityFieldGroup({
         fallback={triggerEntityType ? { value: triggerEntityType, label: triggerEntityType } : null}
         onValueChange={(value) => onChange({ entityType: value })}
       />
-      <ConfigText
-        label="Entity ID *"
+      <TargetRecordField
+        label="Record *"
         value={stringValue(config.entityId)}
         readOnly={readOnly}
+        triggerEntityType={triggerEntityType}
         onChange={(entityId) => onChange({ entityId })}
-        placeholder="{{entity.id}}"
       />
       <div className="space-y-1">
         <Label>Field *</Label>
@@ -1225,6 +1261,62 @@ function objectToLines(value: unknown): string {
   return Object.entries(value as Record<string, unknown>)
     .map(([key, item]) => `${key}: ${String(item)}`)
     .join("\n");
+}
+
+function TargetRecordField({
+  label,
+  value,
+  readOnly,
+  triggerEntityType,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  readOnly?: boolean;
+  triggerEntityType: string;
+  onChange: (v: string) => void;
+}) {
+  const metadata = useWorkflowMetadata().data;
+  const entityMeta = findEntityMetadata(metadata, triggerEntityType);
+  const triggerLabel = metadata?.entities.find((e) => e.entityType === triggerEntityType)?.label ?? triggerEntityType ?? "Record";
+  const options = useMemo(() => {
+    const opts: Array<{ value: string; label: string; group: string }> = [];
+    opts.push({ value: "{{entity.id}}", label: `Current ${triggerLabel}`, group: "Current Record" });
+    for (const rel of (entityMeta?.relationships ?? []) as Array<{ key: string; label: string; relatedEntityType: string | null }>) {
+      if (!rel.relatedEntityType) continue;
+      const relLabel = rel.label || rel.key;
+      opts.push({ value: `{{entity.${rel.key}.id}}`, label: `Related ${relLabel}`, group: "Related Records" });
+    }
+    opts.push({ value: "__custom__", label: "Specific record…", group: "Other" });
+    return opts;
+  }, [triggerEntityType, entityMeta, metadata, triggerLabel]);
+  const isCustom = !!value && !options.some((o) => o.value === value);
+  const selectValue = isCustom ? "__custom__" : options.some((o) => o.value === value) ? value : "";
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Select value={selectValue} disabled={readOnly} onValueChange={(v) => {
+        if (v === "__custom__") onChange("");
+        else onChange(v);
+      }}>
+        <SelectTrigger><SelectValue placeholder="Select record" /></SelectTrigger>
+        <SelectContent>
+          {Array.from(new Set(options.map((o) => o.group))).map((group) => (
+            <SelectGroup key={group}>
+              <SelectLabel>{group}</SelectLabel>
+              {options.filter((o) => o.group === group).map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      {(selectValue === "__custom__" || isCustom) && (
+        <Input value={isCustom ? value : ""} placeholder="Enter ID or {{entity.id}}" disabled={readOnly} onChange={(e) => onChange(e.target.value)} />
+      )}
+      <p className="text-[11px] text-muted-foreground">Current {triggerLabel} — The record that triggered this workflow.</p>
+    </div>
+  );
 }
 
 interface ConfigSelectProps {

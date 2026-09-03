@@ -43,18 +43,7 @@ export function getConnectionReason(
   );
   if (duplicate) return { valid: false, reason: "Duplicate connection." };
 
-  if (
-    (sourceType === "TRIGGER" || sourceType === "WAIT" || sourceType === "ACTION") &&
-    edges.some((e) => e.source === connection.source)
-  ) {
-    return { valid: false, reason: "Linear node already has an outgoing connection." };
-  }
-  if (
-    (sourceType === "CONDITION" || sourceType === "BRANCH") &&
-    (connection as Connection).sourceHandle &&
-    edges.some((e) => e.source === connection.source && ((e as Edge).sourceHandle ?? null) === (connection as Connection).sourceHandle)
-  ) {
-    return { valid: false, reason: "Branch handle already has a connection." };
-  }
+  // ponytail: allow replacement — linear/branch already has outgoing is handled by replacing old edge in handleConnect/handleAddNextStep (Problem 2/3)
+  // Previously blocked with "Linear node already has an outgoing connection." / "Branch handle already has a connection."
   return { valid: true, reason: null };
 }

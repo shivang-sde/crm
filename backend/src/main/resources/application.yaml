@@ -12,7 +12,7 @@ spring:
 
   # ── PostgreSQL ──
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/crm}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/crm?sslmode=disable}
     username: ${POSTGRES_USER:postgres}
     password: ${POSTGRES_PASSWORD:crm_password}
     driver-class-name: org.postgresql.Driver
@@ -20,6 +20,11 @@ spring:
       # Keep your existing timezone setup
       data-source-properties:
         timezone: UTC
+        sslmode: disable
+        ssl: false
+
+      maximum-pool-size: 5
+      minimum-idle: 2
 
       # 1. Reduce connection lifetime to 10 minutes (600000 ms)
       # This ensures connections refresh before firewalls/DBs kill them during app stutters
@@ -30,11 +35,14 @@ spring:
       keepalive-time: 30000
 
       # 3. Prevent the app from hanging forever if the database fails to respond
-      connection-timeout: 30000
+      connection-timeout: 45000
 
       # 4. Optional debug tool: alerts you if a thread holds a connection for too long
       # Logs an error if a business logic thread retains a connection over 5 seconds
       leak-detection-threshold: 60000
+
+      # 5. 
+      initialization-fail-timeout: 0
 
   # ── JPA / Hibernate ──
   jpa:
@@ -84,8 +92,8 @@ app:
     allow-credentials: true
   reminders:
     enabled: true
-    poll-delay-ms: 5000
-    batch-size: 100
+    poll-delay-ms: 30000
+    batch-size: 20
     max-attempts: 3
     processing-timeout-seconds: 300
   entitlements:
@@ -97,16 +105,16 @@ app:
     enabled: true
     generation-delay-ms: 60000
     generation-window-days: 30
-    batch-size: 100
+    batch-size: 20
   outbox:
-    poll-delay-ms: ${OUTBOX_POLL_DELAY_MS:5000}
-    batch-size: ${OUTBOX_BATCH_SIZE:100}
+    poll-delay-ms: ${OUTBOX_POLL_DELAY_MS:30000}
+    batch-size: ${OUTBOX_BATCH_SIZE:20}
     stale-after-seconds: ${OUTBOX_STALE_AFTER_SECONDS:300}
     confirm-timeout-ms: ${OUTBOX_CONFIRM_TIMEOUT_MS:5000}
     max-retry-delay-seconds: ${OUTBOX_MAX_RETRY_DELAY_SECONDS:300}
   workflow-runtime:
-    poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:5000}
-    batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:25}
+    poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:45000}
+    batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:10}
     max-chain-depth: ${WORKFLOW_MAX_CHAIN_DEPTH:5}
     retry:
       enabled: ${WORKFLOW_NODE_RETRY_ENABLED:false}
@@ -114,18 +122,29 @@ app:
       initial-delay-seconds: ${WORKFLOW_NODE_RETRY_INITIAL_DELAY_SECONDS:5}
       max-delay-seconds: ${WORKFLOW_NODE_RETRY_MAX_DELAY_SECONDS:300}
       jitter: ${WORKFLOW_NODE_RETRY_JITTER:true}
-      batch-size: ${WORKFLOW_NODE_RETRY_BATCH_SIZE:25}
-      poll-delay-ms: ${WORKFLOW_NODE_RETRY_POLL_DELAY_MS:5000}
+      batch-size: ${WORKFLOW_NODE_RETRY_BATCH_SIZE:15}
+      poll-delay-ms: ${WORKFLOW_NODE_RETRY_POLL_DELAY_MS:45000}
     execution-recovery:
       enabled: ${WORKFLOW_EXECUTION_RECOVERY_ENABLED:true}
       stale-after-seconds: ${WORKFLOW_EXECUTION_RECOVERY_STALE_AFTER_SECONDS:300}
       batch-size: ${WORKFLOW_EXECUTION_RECOVERY_BATCH_SIZE:100}
       fixed-delay-ms: ${WORKFLOW_EXECUTION_RECOVERY_FIXED_DELAY_MS:60000}
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
   outbound-http:
     connect-timeout-ms: ${OUTBOUND_HTTP_CONNECT_TIMEOUT_MS:5000}
     read-timeout-ms: ${OUTBOUND_HTTP_READ_TIMEOUT_MS:10000}
     max-request-bytes: ${OUTBOUND_HTTP_MAX_REQUEST_BYTES:1048576}
     max-response-bytes: ${OUTBOUND_HTTP_MAX_RESPONSE_BYTES:1048576}
+
+  import:
+    csv:
+      max-file-size-bytes: 10485760
+      max-rows: 5000
+      max-columns: 50
 
 # ── JWT Configuration ──
 jwt:
@@ -151,7 +170,7 @@ management:
 # ── Logging ──
 logging:
   level:
-    com.shivang.crm: DEBUG
-    org.springframework.security: DEBUG
+    com.shivang.crm: INFO
+    org.springframework.security: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"

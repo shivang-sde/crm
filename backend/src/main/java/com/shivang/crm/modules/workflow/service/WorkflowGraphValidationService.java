@@ -122,19 +122,40 @@ public class WorkflowGraphValidationService {
             }
 
             Map<String, Object> configuration = wait.getConfiguration();
-            Object rawResumeAt = configuration == null ? null : configuration.get("resumeAt");
-            if (rawResumeAt == null || String.valueOf(rawResumeAt).isBlank()) {
-                errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT nodes require a resumeAt timestamp", wait));
-            } else {
-                try {
-                    Instant resumeAt = Instant.parse(String.valueOf(rawResumeAt).trim());
-                    if (!resumeAt.isAfter(Instant.now())) {
-                        errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_PAST",
-                            "WAIT resumeAt must be in the future", wait));
+            Object waitType = configuration == null ? null : configuration.get("waitType");
+            boolean isDuration = "DURATION".equalsIgnoreCase(String.valueOf(waitType));
+            if (isDuration) {
+                Object amountObj = configuration.get("amount");
+                Object unitObj = configuration.get("unit");
+                if (amountObj == null || unitObj == null || String.valueOf(amountObj).isBlank() || String.valueOf(unitObj).isBlank()) {
+                    errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT duration requires amount and unit", wait));
+                } else {
+                    try {
+                        long amount = Long.parseLong(String.valueOf(amountObj).trim());
+                        if (amount <= 0) errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_INVALID", "Wait amount must be positive", wait));
+                        String unit = String.valueOf(unitObj).trim().toUpperCase();
+                        if (!java.util.Set.of("MINUTES","MINUTE","M","HOURS","HOUR","H","DAYS","DAY","D").contains(unit)) {
+                            errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_INVALID", "Unsupported wait unit: " + unit, wait));
+                        }
+                    } catch (NumberFormatException ex) {
+                        errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_INVALID", "Invalid wait amount", wait));
                     }
-                } catch (DateTimeParseException parseEx) {
-                    errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_INVALID",
-                        "WAIT resumeAt must be an ISO-8601 UTC timestamp, e.g. 2026-08-30T10:30:00Z", wait));
+                }
+            } else {
+                Object rawResumeAt = configuration == null ? null : configuration.get("resumeAt");
+                if (rawResumeAt == null || String.valueOf(rawResumeAt).isBlank()) {
+                    errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_REQUIRED", "WAIT nodes require a resumeAt timestamp", wait));
+                } else {
+                    try {
+                        Instant resumeAt = Instant.parse(String.valueOf(rawResumeAt).trim());
+                        if (!resumeAt.isAfter(Instant.now())) {
+                            errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_PAST",
+                                "WAIT resumeAt must be in the future", wait));
+                        }
+                    } catch (DateTimeParseException parseEx) {
+                        errors.add(errorForNode("WORKFLOW_WAIT_RESUME_AT_INVALID",
+                            "WAIT resumeAt must be an ISO-8601 UTC timestamp, e.g. 2026-08-30T10:30:00Z", wait));
+                    }
                 }
             }
         }

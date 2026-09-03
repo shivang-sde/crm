@@ -15,6 +15,8 @@ import {
   LeadIngestionEventSummaryResponse,
   MappedLeadData,
   ValidatedLeadIngestionData,
+  CsvImportPreviewResponse,
+  CsvImportResponse,
 } from "@/types/acquisition";
 
 export const acquisitionApi = {
@@ -122,6 +124,54 @@ export const acquisitionApi = {
   validatePreview: async (configId: string, eventId: string) => {
     const response = await api.post<ApiResponse<ValidatedLeadIngestionData>>(
       `/acquisition/configs/${configId}/events/${eventId}/validate-preview`
+    );
+    return unwrapResponse(response);
+  },
+
+  previewImport: async (configId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post<ApiResponse<CsvImportPreviewResponse>>(
+      `/acquisition/configs/${configId}/import/preview`,
+      formData
+    );
+    return unwrapResponse(response);
+  },
+
+  importCsv: async (configId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post<ApiResponse<CsvImportResponse>>(
+      `/acquisition/configs/${configId}/import`,
+      formData
+    );
+    return unwrapResponse(response);
+  },
+
+  testPolling: async (configId: string) => {
+    const response = await api.post<ApiResponse<Record<string, unknown>>>(
+      `/acquisition/configs/${configId}/polling/test`
+    );
+    return unwrapResponse(response);
+  },
+
+  triggerPolling: async (configId: string) => {
+    const response = await api.post<ApiResponse<Record<string, unknown>>>(
+      `/acquisition/configs/${configId}/polling/trigger`
+    );
+    return unwrapResponse(response);
+  },
+
+  getPollingStatus: async (configId: string) => {
+    const response = await api.get<ApiResponse<Record<string, unknown>>>(
+      `/acquisition/configs/${configId}/polling/status`
+    );
+    return unwrapResponse(response);
+  },
+
+  reprocessEvent: async (configId: string, eventId: string) => {
+    const response = await api.post<ApiResponse<LeadIngestionEventDetailResponse>>(
+      `/acquisition/configs/${configId}/events/${eventId}/reprocess`
     );
     return unwrapResponse(response);
   },

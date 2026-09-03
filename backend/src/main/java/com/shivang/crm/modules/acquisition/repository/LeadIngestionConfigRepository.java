@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import com.shivang.crm.modules.acquisition.config.LeadIngestionConfig;
+import com.shivang.crm.modules.acquisition.config.LeadIngestionTransportType;
 
 @Repository
 public interface LeadIngestionConfigRepository extends JpaRepository<LeadIngestionConfig, UUID> {
@@ -19,4 +20,6 @@ public interface LeadIngestionConfigRepository extends JpaRepository<LeadIngesti
     List<LeadIngestionConfig> findByTenantIdAndDeletedFalseOrderByCreatedAtDesc(UUID tenantId);
 
     boolean existsByPublicKey(String publicKey);
+
+    List<LeadIngestionConfig> findByTransportTypeAndActiveTrueAndDeletedFalse(LeadIngestionTransportType transportType);
 }
