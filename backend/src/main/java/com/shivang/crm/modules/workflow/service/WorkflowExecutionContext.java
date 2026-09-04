@@ -20,6 +20,8 @@ public class WorkflowExecutionContext {
     private final Map<String, Map<String, Object>> nodeOutputs = new HashMap<>();
     private UUID workflowNodeExecutionId;
     private final WorkflowEntityContextProviderRegistry entityContextProviderRegistry;
+    // Execution-only credential map for {{credential.*}} templating — never persisted, cleared after node
+    private volatile Map<String, Object> credentialContext = Map.of();
 
     public WorkflowExecutionContext(
         WorkflowExecution execution,
@@ -73,5 +75,17 @@ public class WorkflowExecutionContext {
 
     public void setWorkflowNodeExecutionId(UUID workflowNodeExecutionId) {
         this.workflowNodeExecutionId = workflowNodeExecutionId;
+    }
+
+    public Map<String, Object> getCredentialContext() {
+        return credentialContext;
+    }
+
+    public void setCredentialContext(Map<String, Object> credentialContext) {
+        this.credentialContext = credentialContext == null ? Map.of() : Map.copyOf(credentialContext);
+    }
+
+    public void clearCredentialContext() {
+        this.credentialContext = Map.of();
     }
 }

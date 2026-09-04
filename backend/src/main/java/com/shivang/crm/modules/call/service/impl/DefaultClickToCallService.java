@@ -62,6 +62,13 @@ public class DefaultClickToCallService implements ClickToCallService {
 
     public ClickToCallResponse clickToCall(UUID tenantId, UUID actorId, ClickToCallRequest request) {
 
+        // ── Provider must be explicit — no fallback (FE/BE-WF-28) ──
+        String providerKey = request.getProviderKey();
+        if (providerKey == null || providerKey.isBlank()) {
+            throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_REQUIRED", "Click to Call requires a configured calling provider");
+        }
+        providerKey = providerKey.trim();
+
         // ── Step 1: Resolve and normalize phone ──
         String phone = resolveAndNormalizePhone(request, tenantId);
 
@@ -85,7 +92,7 @@ public class DefaultClickToCallService implements ClickToCallService {
             ConnectorExecutionRequest execRequest = new ConnectorExecutionRequest();
             execRequest.setTenantId(tenantId);
             execRequest.setUserId(actorId);
-            execRequest.setProviderKey("sellspark_voice");
+            execRequest.setProviderKey(providerKey);
             execRequest.setActionKey("CLICK_TO_CALL");
             execRequest.setEntityType(request.getEntityType());
             execRequest.setEntityId(request.getEntityId());
@@ -129,10 +136,10 @@ public class DefaultClickToCallService implements ClickToCallService {
         }
 
         // ── Step 5: Save CallProviderLink (own transaction) ──
-        saveProviderLink(tenantId, actorId, callId, result);
+        saveProviderLink(tenantId, actorId, callId, result, providerKey);
 
         // ── Step 6: Log activity ──
-        logCallInitiatedActivity(tenantId, actorId, callId, phone, request, result);
+        logCallInitiatedActivity(tenantId, actorId, callId, phone, request, result, providerKey);
 
         String message = providerMessage != null ? providerMessage : "Call scheduled successfully";
 
@@ -168,7 +175,7 @@ public class DefaultClickToCallService implements ClickToCallService {
     }
 
     @Transactional
-    protected void saveProviderLink(UUID tenantId, UUID actorId, UUID callId, ConnectorExecutionResult result) {
+    protected void saveProviderLink(UUID tenantId, UUID actorId, UUID callId, ConnectorExecutionResult result, String providerKey) {
         Call callEntity = callRepository.findById(callId)
             .orElseThrow(() -> new RuntimeException("Call entity not found after creation: " + callId));
 
@@ -178,7 +185,7 @@ public class DefaultClickToCallService implements ClickToCallService {
         }
 
         Map<String, Object> linkMetadata = new HashMap<>();
-        linkMetadata.put("providerKey", "sellspark_voice");
+        linkMetadata.put("providerKey", providerKey);
 
         CallProviderLink link = CallProviderLink.builder()
             .tenantId(tenantId)
@@ -217,10 +224,10 @@ public class DefaultClickToCallService implements ClickToCallService {
     }
 
     private void logCallInitiatedActivity(UUID tenantId, UUID actorId, UUID callId, String phone,
-                                          ClickToCallRequest request, ConnectorExecutionResult result) {
+                                          ClickToCallRequest request, ConnectorExecutionResult result, String providerKey) {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("crmCallId", callId);
-        metadata.put("providerKey", "sellspark_voice");
+        metadata.put("providerKey", providerKey);
         metadata.put("connectorExecutionId", result.getExecutionId());
         metadata.put("subType", "CALL_INITIATED");
 

@@ -26,20 +26,20 @@ import {
 } from "@/types/acquisition";
 
 const transportLabels: Record<LeadIngestionTransportType, string> = {
-  WEBHOOK: "Webhook",
-  API: "API",
-  FORM: "Form",
+  WEBHOOK: "Website / External System",
+  API: "External System (API)",
+  FORM: "Public Form",
   CONNECTOR: "Connector",
-  POLLING: "Polling",
-  IMPORT: "Import",
+  POLLING: "External System (Polling)",
+  IMPORT: "File Import",
 };
 
 const transportAvailability: Record<LeadIngestionTransportType, { available: boolean; note: string }> = {
-  WEBHOOK: { available: true, note: "Available — custom webhook" },
-  IMPORT: { available: true, note: "Available — CSV import" },
-  FORM: { available: true, note: "Available — public form" },
-  API: { available: true, note: "Available — direct API" },
-  POLLING: { available: true, note: "Available — API polling" },
+  WEBHOOK: { available: true, note: "Website, landing page, or any system that can POST leads" },
+  IMPORT: { available: true, note: "Upload a CSV file" },
+  FORM: { available: true, note: "Shareable public form" },
+  API: { available: true, note: "Direct API for developers" },
+  POLLING: { available: true, note: "Sync from an external API on a schedule" },
   CONNECTOR: { available: false, note: "Coming soon" },
 };
 
@@ -96,9 +96,10 @@ export function AcquisitionConfigForm({
   };
 
   return (
-    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="name">Name</Label>
+        <Label htmlFor="name">Lead Source Name</Label>
+        <p className="text-xs text-muted-foreground">e.g. Website Leads, Facebook Lead Ads, Partner</p>
 
         <Input
           id="name"
@@ -114,7 +115,8 @@ export function AcquisitionConfigForm({
       </div>
 
       <div className="space-y-2">
-        <Label>How leads arrive — Transport</Label>
+        <Label>How do leads arrive?</Label>
+        <p className="text-xs text-muted-foreground">Where will your leads come from?</p>
 
         <Select
           value={form.watch("transportType")}
@@ -164,19 +166,27 @@ export function AcquisitionConfigForm({
       </div>
 
       {initialValues?.publicKey && (
-        <div className="space-y-2">
-          <Label htmlFor="publicKey">Public key</Label>
-
-          <Input id="publicKey" value={initialValues.publicKey} readOnly disabled />
-
-          <p className="text-xs text-muted-foreground">
-            Generated automatically. Used by external systems to send leads to
-            this configuration.
-          </p>
-        </div>
+        <details className="rounded-md border bg-muted/20 p-3">
+          <summary className="cursor-pointer text-sm font-medium">Connection Details (Advanced)</summary>
+          <div className="mt-3 space-y-2">
+            <Label htmlFor="publicKey">Connection ID</Label>
+            <Input id="publicKey" value={initialValues.publicKey} readOnly disabled className="font-mono text-xs" />
+            <p className="text-xs text-muted-foreground">
+              Used by external systems to send leads. Share this only with your technical team.
+            </p>
+          </div>
+        </details>
       )}
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center justify-between rounded-lg border p-3">
+        <div>
+          <Label htmlFor="active" className={!selectedAvailable ? "text-muted-foreground" : ""}>
+            Status
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {form.watch("active") ? "Connected — receiving leads" : "Inactive — not receiving leads"}
+          </p>
+        </div>
         <Switch
           id="active"
           checked={form.watch("active")}
@@ -187,10 +197,6 @@ export function AcquisitionConfigForm({
             })
           }
         />
-
-        <Label htmlFor="active" className={!selectedAvailable ? "text-muted-foreground" : ""}>
-          Active { !selectedAvailable && "(disabled for Coming soon transports)"}
-        </Label>
       </div>
       {!initialValues && selectedAvailable && (
         <p className="text-xs text-muted-foreground">

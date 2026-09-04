@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/lib/hooks/usePermissions";
+import { SettingsLayout } from "@/components/settings/SettingsLayout";
 
 interface ProviderSummary {
   id: string;
@@ -126,16 +127,10 @@ export default function CallingSettingsPage() {
   const selectedProvider = providers.find((provider) => provider.providerKey === providerForm.providerKey) ?? null;
 
   const credentialFields = useMemo(() => {
-    if (selectedProvider?.providerKey === "sellspark_voice") {
-      return [
-        { key: "userId", label: "User ID / Agent ID", type: "text" as const },
-        { key: "password", label: "Password", type: "password" as const },
-      ];
-    }
-
+    // FE/BE-WF-28: provider-neutral — CALLING providers use userId/password
     return [
-      { key: "apiKey", label: "API Key", type: "password" as const },
-      { key: "token", label: "Token", type: "password" as const },
+      { key: "userId", label: "User ID / Agent ID", type: "text" as const },
+      { key: "password", label: "Password", type: "password" as const },
     ];
   }, [selectedProvider]);
 
@@ -293,7 +288,7 @@ export default function CallingSettingsPage() {
     setSavingCredentials(true);
     try {
       const credentialPayload = {
-        authType: selectedProvider?.providerKey === "sellspark_voice" ? "PROVIDER_SPECIFIC" : "PROVIDER_SPECIFIC",
+        authType: "PROVIDER_SPECIFIC",
         values: Object.fromEntries(credentialFields.map((field) => [field.key, credentialValues[field.key] ?? ""])),
       };
       await api.put(`/integrations/connector-instances/${selectedInstance.id}/credentials`, credentialPayload);
@@ -452,421 +447,431 @@ export default function CallingSettingsPage() {
   };
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading calling settings…</p>;
+    return (
+      <SettingsLayout>
+        <p className="text-sm text-muted-foreground">Loading calling settings…</p>
+      </SettingsLayout>
+    );
   }
 
   if (!canViewCallingSettings) {
-    return <p className="text-sm text-muted-foreground">You do not have permission to view calling settings.</p>;
+    return (
+      <SettingsLayout>
+        <p className="text-sm text-muted-foreground">You do not have permission to view calling settings.</p>
+      </SettingsLayout>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Calling admin settings</h1>
-        <p className="text-sm text-muted-foreground">Manage provider instances, credentials, webhook endpoints, trigger rules, and call layout defaults for this tenant.</p>
-      </div>
+    <SettingsLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Calling admin settings</h1>
+          <p className="text-sm text-muted-foreground">Manage provider instances, credentials, webhook endpoints, trigger rules, and call layout defaults for this tenant.</p>
+        </div>
 
-      <Tabs defaultValue="providers" className="w-full">
-        <TabsList>
-          <TabsTrigger value="providers">Calling Provider</TabsTrigger>
-          <TabsTrigger value="credentials">Credentials</TabsTrigger>
-          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
-          <TabsTrigger value="triggers">Call Opening Rules</TabsTrigger>
-          <TabsTrigger value="layout">Call Layout Defaults</TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="providers" className="w-full">
+          <TabsList>
+            <TabsTrigger value="providers">Calling Provider</TabsTrigger>
+            <TabsTrigger value="credentials">Credentials</TabsTrigger>
+            <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
+            <TabsTrigger value="triggers">Call Opening Rules</TabsTrigger>
+            <TabsTrigger value="layout">Call Layout Defaults</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="providers" className="space-y-4 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Provider instance</CardTitle>
-              <CardDescription>Create or update a connector instance for the selected calling provider.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => selectInstance(null)}>
-                  <Plus className="mr-2 h-4 w-4" /> New instance
-                </Button>
-                {instances.map((instance) => (
-                  <Button key={instance.id} type="button" variant={selectedInstance?.id === instance.id ? "default" : "outline"} onClick={() => selectInstance(instance.id)}>
-                    {instance.connectorName}
-                  </Button>
-                ))}
-              </div>
-
-              <form onSubmit={handleSaveInstance} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="provider">Calling provider</Label>
-                    <Select value={providerForm.providerKey} onValueChange={(value) => setProviderForm((previous) => ({ ...previous, providerKey: value }))}>
-                      <SelectTrigger id="provider">
-                        <SelectValue placeholder="Choose provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {providers.map((provider) => (
-                          <SelectItem key={provider.id} value={provider.providerKey}>
-                            {provider.displayName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Connector name</Label>
-                    <Input id="name" value={providerForm.name} onChange={(event) => setProviderForm((previous) => ({ ...previous, name: event.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="environment">Environment</Label>
-                    <Select value={providerForm.environment} onValueChange={(value) => setProviderForm((previous) => ({ ...previous, environment: value }))}>
-                      <SelectTrigger id="environment">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="SANDBOX">Sandbox</SelectItem>
-                        <SelectItem value="PRODUCTION">Production</SelectItem>
-                        <SelectItem value="DEVELOPMENT">Development</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="baseUrl">Base URL</Label>
-                    <Input id="baseUrl" value={providerForm.baseUrl} onChange={(event) => setProviderForm((previous) => ({ ...previous, baseUrl: event.target.value }))} />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <p className="font-medium">Active</p>
-                    <p className="text-sm text-muted-foreground">Enable or disable this connector instance.</p>
-                  </div>
-                  <Switch checked={providerForm.active} onCheckedChange={(value) => setProviderForm((previous) => ({ ...previous, active: value }))} />
-                </div>
-
+          <TabsContent value="providers" className="space-y-4 pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Provider instance</CardTitle>
+                <CardDescription>Create or update a connector instance for the selected calling provider.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={savingInstance || !canManageCallingSettings}>{savingInstance ? "Saving…" : selectedInstance ? "Update instance" : "Create instance"}</Button>
-                  {selectedInstance && (
-                    <Button type="button" variant="outline" onClick={() => handleToggleInstance(selectedInstance.id, !selectedInstance.active)} disabled={!canManageCallingSettings}>
-                      {selectedInstance.active ? "Deactivate" : "Activate"}
+                  <Button type="button" variant="outline" onClick={() => selectInstance(null)}>
+                    <Plus className="mr-2 h-4 w-4" /> New instance
+                  </Button>
+                  {instances.map((instance) => (
+                    <Button key={instance.id} type="button" variant={selectedInstance?.id === instance.id ? "default" : "outline"} onClick={() => selectInstance(instance.id)}>
+                      {instance.connectorName}
                     </Button>
-                  )}
+                  ))}
                 </div>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        <TabsContent value="credentials" className="space-y-4 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Credentials</CardTitle>
-              <CardDescription>Store connector credentials securely. Passwords are never displayed after saving.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {selectedInstance ? (
-                <form onSubmit={handleSaveCredentials} className="space-y-4">
-                  <div className="flex items-center justify-between">
+                <form onSubmit={handleSaveInstance} className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="provider">Calling provider</Label>
+                      <Select value={providerForm.providerKey} onValueChange={(value) => setProviderForm((previous) => ({ ...previous, providerKey: value }))}>
+                        <SelectTrigger id="provider">
+                          <SelectValue placeholder="Choose provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {providers.map((provider) => (
+                            <SelectItem key={provider.id} value={provider.providerKey}>
+                              {provider.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Connector name</Label>
+                      <Input id="name" value={providerForm.name} onChange={(event) => setProviderForm((previous) => ({ ...previous, name: event.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="environment">Environment</Label>
+                      <Select value={providerForm.environment} onValueChange={(value) => setProviderForm((previous) => ({ ...previous, environment: value }))}>
+                        <SelectTrigger id="environment">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SANDBOX">Sandbox</SelectItem>
+                          <SelectItem value="PRODUCTION">Production</SelectItem>
+                          <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="baseUrl">Base URL</Label>
+                      <Input id="baseUrl" value={providerForm.baseUrl} onChange={(event) => setProviderForm((previous) => ({ ...previous, baseUrl: event.target.value }))} />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-md border p-3">
                     <div>
-                      <p className="font-medium">{selectedInstance.connectorName}</p>
-                      <p className="text-sm text-muted-foreground">{credentialStatus[selectedInstance.id]?.configured ? "Configured" : "Not configured"}</p>
+                      <p className="font-medium">Active</p>
+                      <p className="text-sm text-muted-foreground">Enable or disable this connector instance.</p>
                     </div>
-                    <Badge variant={credentialStatus[selectedInstance.id]?.configured ? "default" : "secondary"}>
-                      {credentialStatus[selectedInstance.id]?.configured ? "Configured" : "Pending"}
-                    </Badge>
+                    <Switch checked={providerForm.active} onCheckedChange={(value) => setProviderForm((previous) => ({ ...previous, active: value }))} />
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {credentialFields.map((field) => (
-                      <div key={field.key} className="space-y-2">
-                        <Label htmlFor={field.key}>{field.label}</Label>
-                        <Input id={field.key} type={field.type} value={credentialValues[field.key] ?? ""} onChange={(event) => setCredentialValues((previous) => ({ ...previous, [field.key]: event.target.value }))} />
-                      </div>
-                    ))}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit" disabled={savingInstance || !canManageCallingSettings}>{savingInstance ? "Saving…" : selectedInstance ? "Update instance" : "Create instance"}</Button>
+                    {selectedInstance && (
+                      <Button type="button" variant="outline" onClick={() => handleToggleInstance(selectedInstance.id, !selectedInstance.active)} disabled={!canManageCallingSettings}>
+                        {selectedInstance.active ? "Deactivate" : "Activate"}
+                      </Button>
+                    )}
                   </div>
-
-                  <Button type="submit" disabled={savingCredentials || !canManageCallingSettings}>{savingCredentials ? "Saving…" : "Save credentials"}</Button>
                 </form>
-              ) : (
-                <p className="text-sm text-muted-foreground">Select a connector instance to configure credentials.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="webhooks" className="space-y-4 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Webhook configuration</CardTitle>
-              <CardDescription>Review webhook URLs, update verification settings, and rotate secrets without exposing them in normal API responses.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {selectedInstance ? (
-                <>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2 rounded-md border p-3">
-                      <Label>Call-connect webhook</Label>
-                      <div className="flex items-center gap-2">
-                        <Input value={webhookConfig[selectedInstance.id]?.callConnectUrl ?? ""} readOnly />
-                        <Button type="button" variant="outline" size="icon" onClick={() => void navigator.clipboard.writeText(webhookConfig[selectedInstance.id]?.callConnectUrl ?? "")}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
+          <TabsContent value="credentials" className="space-y-4 pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Credentials</CardTitle>
+                <CardDescription>Store connector credentials securely. Passwords are never displayed after saving.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {selectedInstance ? (
+                  <form onSubmit={handleSaveCredentials} className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{selectedInstance.connectorName}</p>
+                        <p className="text-sm text-muted-foreground">{credentialStatus[selectedInstance.id]?.configured ? "Configured" : "Not configured"}</p>
                       </div>
+                      <Badge variant={credentialStatus[selectedInstance.id]?.configured ? "default" : "secondary"}>
+                        {credentialStatus[selectedInstance.id]?.configured ? "Configured" : "Pending"}
+                      </Badge>
                     </div>
-                    <div className="space-y-2 rounded-md border p-3">
-                      <Label>CDR webhook</Label>
-                      <div className="flex items-center gap-2">
-                        <Input value={webhookConfig[selectedInstance.id]?.cdrUrl ?? ""} readOnly />
-                        <Button type="button" variant="outline" size="icon" onClick={() => void navigator.clipboard.writeText(webhookConfig[selectedInstance.id]?.cdrUrl ?? "")}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
 
-                  <form onSubmit={handleSaveWebhook} className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="webhookName">Webhook name</Label>
-                        <Input id="webhookName" value={webhookForm.webhookName} onChange={(event) => setWebhookForm((previous) => ({ ...previous, webhookName: event.target.value }))} />
+                      {credentialFields.map((field) => (
+                        <div key={field.key} className="space-y-2">
+                          <Label htmlFor={field.key}>{field.label}</Label>
+                          <Input id={field.key} type={field.type} value={credentialValues[field.key] ?? ""} onChange={(event) => setCredentialValues((previous) => ({ ...previous, [field.key]: event.target.value }))} />
+                        </div>
+                      ))}
+                    </div>
+
+                    <Button type="submit" disabled={savingCredentials || !canManageCallingSettings}>{savingCredentials ? "Saving…" : "Save credentials"}</Button>
+                  </form>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select a connector instance to configure credentials.</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="webhooks" className="space-y-4 pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Webhook configuration</CardTitle>
+                <CardDescription>Review webhook URLs, update verification settings, and rotate secrets without exposing them in normal API responses.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {selectedInstance ? (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2 rounded-md border p-3">
+                        <Label>Call-connect webhook</Label>
+                        <div className="flex items-center gap-2">
+                          <Input value={webhookConfig[selectedInstance.id]?.callConnectUrl ?? ""} readOnly />
+                          <Button type="button" variant="outline" size="icon" onClick={() => void navigator.clipboard.writeText(webhookConfig[selectedInstance.id]?.callConnectUrl ?? "")}>
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="targetUrl">Target URL</Label>
-                        <Input id="targetUrl" value={webhookForm.targetUrl} onChange={(event) => setWebhookForm((previous) => ({ ...previous, targetUrl: event.target.value }))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="verificationMode">Verification mode</Label>
-                        <Select value={webhookForm.verificationMode} onValueChange={(value) => setWebhookForm((previous) => ({ ...previous, verificationMode: value }))}>
-                          <SelectTrigger id="verificationMode">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="HMAC">HMAC</SelectItem>
-                            <SelectItem value="NONE">None</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="webhookActive">Active</Label>
-                        <div className="flex items-center gap-2 pt-2">
-                          <Switch id="webhookActive" checked={webhookForm.active} onCheckedChange={(value) => setWebhookForm((previous) => ({ ...previous, active: value }))} />
+                      <div className="space-y-2 rounded-md border p-3">
+                        <Label>CDR webhook</Label>
+                        <div className="flex items-center gap-2">
+                          <Input value={webhookConfig[selectedInstance.id]?.cdrUrl ?? ""} readOnly />
+                          <Button type="button" variant="outline" size="icon" onClick={() => void navigator.clipboard.writeText(webhookConfig[selectedInstance.id]?.cdrUrl ?? "")}>
+                            <Copy className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="submit" disabled={savingWebhook || !canManageCallingSettings}>{savingWebhook ? "Saving…" : "Save webhook config"}</Button>
-                      <Button type="button" variant="outline" onClick={handleRegenerateSecret} disabled={!canManageCallingSettings}>
-                        <RefreshCw className="mr-2 h-4 w-4" /> Regenerate secret
-                      </Button>
-                    </div>
-                  </form>
-
-                  {secretNotice ? (
-                    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{secretNotice}</div>
-                  ) : null}
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">Select a connector instance to manage webhooks.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="triggers" className="space-y-4 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Call-opening trigger rules</CardTitle>
-              <CardDescription>Create and maintain the rules used by the existing call-opening decision engine.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <form onSubmit={handleSaveTrigger} className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="ruleName">Rule name</Label>
-                  <Input id="ruleName" value={triggerForm.name} onChange={(event) => setTriggerForm((previous) => ({ ...previous, name: event.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ruleTriggerKey">Trigger key</Label>
-                  <Input id="ruleTriggerKey" value={triggerForm.triggerKey} onChange={(event) => setTriggerForm((previous) => ({ ...previous, triggerKey: event.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ruleDirection">Direction</Label>
-                  <Select value={triggerForm.direction} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, direction: value }))}>
-                    <SelectTrigger id="ruleDirection"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="INBOUND">Inbound</SelectItem>
-                      <SelectItem value="OUTBOUND">Outbound</SelectItem>
-                      <SelectItem value="BOTH">Both</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ruleResolve">Resolve strategy</Label>
-                  <Select
-                    value={triggerForm.resolveBy}
-                    onValueChange={(value) =>
-                      setTriggerForm((previous) => ({
-                        ...previous,
-                        resolveBy: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose resolve strategy" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="EXISTING_CALL_LINK">
-                        Existing call link
-                      </SelectItem>
-
-                      <SelectItem value="EXTERNAL_CALL_ID">
-                        External call ID
-                      </SelectItem>
-
-                      <SelectItem value="CALLER_NUMBER">
-                        Caller number
-                      </SelectItem>
-
-                      <SelectItem value="CALLEE_NUMBER">
-                        Callee number
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* <div className="space-y-2">
-                  <Label htmlFor="ruleEntity">Target entity type</Label>
-                  <Input id="ruleEntity" value={triggerForm.entityType} onChange={(event) => setTriggerForm((previous) => ({ ...previous, entityType: event.target.value }))} />
-                </div> */}
-                <div className="space-y-2">
-                  <Label htmlFor="ruleOpenAction">Open action</Label>
-                  <Select value={triggerForm.openAction} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, openAction: value }))}>
-                    <SelectTrigger id="ruleOpenAction"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="OPEN_PAGE">Open page</SelectItem>
-                      {/* <SelectItem value="OPEN_CALL_LAYOUT">Open call layout</SelectItem>
-                      <SelectItem value="OPEN_MODAL">Open modal</SelectItem>
-                      <SelectItem value="OPEN_SIDEBAR">Open sidebar</SelectItem> */}
-                      <SelectItem value="NO_ACTION">No action</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ruleDisplayMode">Display mode</Label>
-                  <Select value={triggerForm.displayMode} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, displayMode: value }))}>
-                    <SelectTrigger id="ruleDisplayMode"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PAGE">Page</SelectItem>
-                      {/* <SelectItem value="MODAL">Modal</SelectItem>
-                      <SelectItem value="SIDEBAR">Sidebar</SelectItem> */}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* <div className="space-y-2">
-                  <Label htmlFor="ruleRoute">Target route</Label>
-                  <Input id="ruleRoute" value={triggerForm.route} onChange={(event) => setTriggerForm((previous) => ({ ...previous, route: event.target.value }))} />
-                </div> */}
-                <div className="space-y-2">
-                  <Label htmlFor="rulePriority">Priority</Label>
-                  <Input id="rulePriority" type="number" value={triggerForm.priority} onChange={(event) => setTriggerForm((previous) => ({ ...previous, priority: Number(event.target.value) }))} />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <div className="flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <p className="font-medium">Active</p>
-                      <p className="text-sm text-muted-foreground">Enable or disable this rule.</p>
-                    </div>
-                    <Switch checked={triggerForm.active} onCheckedChange={(value) => setTriggerForm((previous) => ({ ...previous, active: value }))} />
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <Button type="submit" disabled={savingTrigger || !canManageCallingSettings}>{savingTrigger ? "Saving…" : editingTriggerId ? "Update rule" : "Create rule"}</Button>
-                  <Button type="button" variant="outline" onClick={resetTriggerForm} disabled={!canManageCallingSettings}>Reset</Button>
-                </div>
-              </form>
-
-              <div className="space-y-2">
-                {triggers.map((trigger) => (
-                  <div key={trigger.id} className="rounded-md border p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="font-medium">{trigger.name}</p>
-                        <p className="text-sm text-muted-foreground">{trigger.triggerKey} • {trigger.direction}</p>
+                    <form onSubmit={handleSaveWebhook} className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="webhookName">Webhook name</Label>
+                          <Input id="webhookName" value={webhookForm.webhookName} onChange={(event) => setWebhookForm((previous) => ({ ...previous, webhookName: event.target.value }))} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="targetUrl">Target URL</Label>
+                          <Input id="targetUrl" value={webhookForm.targetUrl} onChange={(event) => setWebhookForm((previous) => ({ ...previous, targetUrl: event.target.value }))} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="verificationMode">Verification mode</Label>
+                          <Select value={webhookForm.verificationMode} onValueChange={(value) => setWebhookForm((previous) => ({ ...previous, verificationMode: value }))}>
+                            <SelectTrigger id="verificationMode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="HMAC">HMAC</SelectItem>
+                              <SelectItem value="NONE">None</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="webhookActive">Active</Label>
+                          <div className="flex items-center gap-2 pt-2">
+                            <Switch id="webhookActive" checked={webhookForm.active} onCheckedChange={(value) => setWebhookForm((previous) => ({ ...previous, active: value }))} />
+                          </div>
+                        </div>
                       </div>
+
                       <div className="flex flex-wrap gap-2">
-                        <Switch checked={trigger.active} onCheckedChange={(value) => void handleToggleTrigger(trigger.id, value)} disabled={!canManageCallingSettings} />
-                        <Button type="button" variant="outline" onClick={() => {
-                          setEditingTriggerId(trigger.id);
-                          setTriggerForm({
-                            name: trigger.name,
-                            triggerKey: trigger.triggerKey,
-                            direction: trigger.direction,
-                            resolveBy: trigger.resolveBy,
-                            entityType: trigger.entityType ?? "",
-                            openAction: trigger.openAction,
-                            displayMode: trigger.displayMode,
-                            route: "",
-                            priority: trigger.priority,
-                            active: trigger.active,
-                          });
-                        }}>Edit</Button>
-                        <Button type="button" variant="outline" onClick={() => void handleDeleteTrigger(trigger.id)} disabled={!canManageCallingSettings}>Delete</Button>
+                        <Button type="submit" disabled={savingWebhook || !canManageCallingSettings}>{savingWebhook ? "Saving…" : "Save webhook config"}</Button>
+                        <Button type="button" variant="outline" onClick={handleRegenerateSecret} disabled={!canManageCallingSettings}>
+                          <RefreshCw className="mr-2 h-4 w-4" /> Regenerate secret
+                        </Button>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                    </form>
 
-        <TabsContent value="layout" className="space-y-4 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Call layout defaults</CardTitle>
-              <CardDescription>Adjust the shared layout defaults for opening call context.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSaveLayout} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
+                    {secretNotice ? (
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{secretNotice}</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select a connector instance to manage webhooks.</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="triggers" className="space-y-4 pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Call-opening trigger rules</CardTitle>
+                <CardDescription>Create and maintain the rules used by the existing call-opening decision engine.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <form onSubmit={handleSaveTrigger} className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="layoutDisplayMode">Default display mode</Label>
-                    <Select value={layoutConfig.displayMode} onValueChange={(value) => setLayoutConfig((previous) => ({ ...previous, displayMode: value }))}>
-                      <SelectTrigger id="layoutDisplayMode"><SelectValue /></SelectTrigger>
+                    <Label htmlFor="ruleName">Rule name</Label>
+                    <Input id="ruleName" value={triggerForm.name} onChange={(event) => setTriggerForm((previous) => ({ ...previous, name: event.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ruleTriggerKey">Trigger key</Label>
+                    <Input id="ruleTriggerKey" value={triggerForm.triggerKey} onChange={(event) => setTriggerForm((previous) => ({ ...previous, triggerKey: event.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ruleDirection">Direction</Label>
+                    <Select value={triggerForm.direction} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, direction: value }))}>
+                      <SelectTrigger id="ruleDirection"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="PAGE">Page</SelectItem>
-                        <SelectItem value="MODAL">Modal</SelectItem>
-                        <SelectItem value="SIDEBAR">Sidebar</SelectItem>
+                        <SelectItem value="INBOUND">Inbound</SelectItem>
+                        <SelectItem value="OUTBOUND">Outbound</SelectItem>
+                        <SelectItem value="BOTH">Both</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="layoutActive">Active</Label>
-                    <div className="flex items-center gap-2 pt-2">
-                      <Switch id="layoutActive" checked={layoutConfig.active} onCheckedChange={(value) => setLayoutConfig((previous) => ({ ...previous, active: value }))} />
+                    <Label htmlFor="ruleResolve">Resolve strategy</Label>
+                    <Select
+                      value={triggerForm.resolveBy}
+                      onValueChange={(value) =>
+                        setTriggerForm((previous) => ({
+                          ...previous,
+                          resolveBy: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose resolve strategy" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        <SelectItem value="EXISTING_CALL_LINK">
+                          Existing call link
+                        </SelectItem>
+
+                        <SelectItem value="EXTERNAL_CALL_ID">
+                          External call ID
+                        </SelectItem>
+
+                        <SelectItem value="CALLER_NUMBER">
+                          Caller number
+                        </SelectItem>
+
+                        <SelectItem value="CALLEE_NUMBER">
+                          Callee number
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* <div className="space-y-2">
+                    <Label htmlFor="ruleEntity">Target entity type</Label>
+                    <Input id="ruleEntity" value={triggerForm.entityType} onChange={(event) => setTriggerForm((previous) => ({ ...previous, entityType: event.target.value }))} />
+                  </div> */}
+                  <div className="space-y-2">
+                    <Label htmlFor="ruleOpenAction">Open action</Label>
+                    <Select value={triggerForm.openAction} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, openAction: value }))}>
+                      <SelectTrigger id="ruleOpenAction"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="OPEN_PAGE">Open page</SelectItem>
+                        {/* <SelectItem value="OPEN_CALL_LAYOUT">Open call layout</SelectItem>
+                        <SelectItem value="OPEN_MODAL">Open modal</SelectItem>
+                        <SelectItem value="OPEN_SIDEBAR">Open sidebar</SelectItem> */}
+                        <SelectItem value="NO_ACTION">No action</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ruleDisplayMode">Display mode</Label>
+                    <Select value={triggerForm.displayMode} onValueChange={(value) => setTriggerForm((previous) => ({ ...previous, displayMode: value }))}>
+                      <SelectTrigger id="ruleDisplayMode"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PAGE">Page</SelectItem>
+                        {/* <SelectItem value="MODAL">Modal</SelectItem>
+                        <SelectItem value="SIDEBAR">Sidebar</SelectItem> */}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* <div className="space-y-2">
+                    <Label htmlFor="ruleRoute">Target route</Label>
+                    <Input id="ruleRoute" value={triggerForm.route} onChange={(event) => setTriggerForm((previous) => ({ ...previous, route: event.target.value }))} />
+                  </div> */}
+                  <div className="space-y-2">
+                    <Label htmlFor="rulePriority">Priority</Label>
+                    <Input id="rulePriority" type="number" value={triggerForm.priority} onChange={(event) => setTriggerForm((previous) => ({ ...previous, priority: Number(event.target.value) }))} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="flex items-center justify-between rounded-md border p-3">
+                      <div>
+                        <p className="font-medium">Active</p>
+                        <p className="text-sm text-muted-foreground">Enable or disable this rule.</p>
+                      </div>
+                      <Switch checked={triggerForm.active} onCheckedChange={(value) => setTriggerForm((previous) => ({ ...previous, active: value }))} />
                     </div>
                   </div>
-                </div>
+                  <div className="flex flex-wrap gap-2 md:col-span-2">
+                    <Button type="submit" disabled={savingTrigger || !canManageCallingSettings}>{savingTrigger ? "Saving…" : editingTriggerId ? "Update rule" : "Create rule"}</Button>
+                    <Button type="button" variant="outline" onClick={resetTriggerForm} disabled={!canManageCallingSettings}>Reset</Button>
+                  </div>
+                </form>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  {[
-                    { key: "showEntityDetails", label: "Show entity details" },
-                    { key: "showCallHistory", label: "Show call history" },
-                    { key: "showNotes", label: "Show notes" },
-                    { key: "showDisposition", label: "Show disposition section" },
-                  ].map((field) => (
-                    <div key={field.key} className="flex items-center justify-between rounded-md border p-3">
-                      <div>
-                        <p className="font-medium">{field.label}</p>
+                <div className="space-y-2">
+                  {triggers.map((trigger) => (
+                    <div key={trigger.id} className="rounded-md border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{trigger.name}</p>
+                          <p className="text-sm text-muted-foreground">{trigger.triggerKey} • {trigger.direction}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Switch checked={trigger.active} onCheckedChange={(value) => void handleToggleTrigger(trigger.id, value)} disabled={!canManageCallingSettings} />
+                          <Button type="button" variant="outline" onClick={() => {
+                            setEditingTriggerId(trigger.id);
+                            setTriggerForm({
+                              name: trigger.name,
+                              triggerKey: trigger.triggerKey,
+                              direction: trigger.direction,
+                              resolveBy: trigger.resolveBy,
+                              entityType: trigger.entityType ?? "",
+                              openAction: trigger.openAction,
+                              displayMode: trigger.displayMode,
+                              route: "",
+                              priority: trigger.priority,
+                              active: trigger.active,
+                            });
+                          }}>Edit</Button>
+                          <Button type="button" variant="outline" onClick={() => void handleDeleteTrigger(trigger.id)} disabled={!canManageCallingSettings}>Delete</Button>
+                        </div>
                       </div>
-                      <Switch checked={layoutConfig[field.key as keyof LayoutConfig] as boolean} onCheckedChange={(value) => setLayoutConfig((previous) => ({ ...previous, [field.key]: value }))} />
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                <Button type="submit" disabled={savingLayout || !canManageCallingSettings}>{savingLayout ? "Saving…" : "Save layout defaults"}</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+          <TabsContent value="layout" className="space-y-4 pt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Call layout defaults</CardTitle>
+                <CardDescription>Adjust the shared layout defaults for opening call context.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveLayout} className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="layoutDisplayMode">Default display mode</Label>
+                      <Select value={layoutConfig.displayMode} onValueChange={(value) => setLayoutConfig((previous) => ({ ...previous, displayMode: value }))}>
+                        <SelectTrigger id="layoutDisplayMode"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PAGE">Page</SelectItem>
+                          <SelectItem value="MODAL">Modal</SelectItem>
+                          <SelectItem value="SIDEBAR">Sidebar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="layoutActive">Active</Label>
+                      <div className="flex items-center gap-2 pt-2">
+                        <Switch id="layoutActive" checked={layoutConfig.active} onCheckedChange={(value) => setLayoutConfig((previous) => ({ ...previous, active: value }))} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {[
+                      { key: "showEntityDetails", label: "Show entity details" },
+                      { key: "showCallHistory", label: "Show call history" },
+                      { key: "showNotes", label: "Show notes" },
+                      { key: "showDisposition", label: "Show disposition section" },
+                    ].map((field) => (
+                      <div key={field.key} className="flex items-center justify-between rounded-md border p-3">
+                        <div>
+                          <p className="font-medium">{field.label}</p>
+                        </div>
+                        <Switch checked={layoutConfig[field.key as keyof LayoutConfig] as boolean} onCheckedChange={(value) => setLayoutConfig((previous) => ({ ...previous, [field.key]: value }))} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button type="submit" disabled={savingLayout || !canManageCallingSettings}>{savingLayout ? "Saving…" : "Save layout defaults"}</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </SettingsLayout>
   );
 }

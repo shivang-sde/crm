@@ -2,6 +2,7 @@ import api from "./api";
 import { unwrapResponse } from "./api-utils";
 import type {
   CallOpeningEvent,
+  CallingProviderOption,
   ClickToCallRequest,
   ClickToCallResponse,
 } from "@/types/call-opening";
@@ -22,6 +23,13 @@ export const callOpeningApi = {
       request
     );
 
+    return unwrapResponse(response);
+  },
+
+  getCallingProviders: async (): Promise<CallingProviderOption[]> => {
+    const response = await api.get<ApiResponse<CallingProviderOption[]>>(
+      "/calling-providers"
+    );
     return unwrapResponse(response);
   },
 

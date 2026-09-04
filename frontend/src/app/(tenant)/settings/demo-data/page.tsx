@@ -23,16 +23,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { useDemoDataStatus, useInstallDemoData } from "@/lib/hooks/useDemoData";
+import { SettingsLayout } from "@/components/settings/SettingsLayout";
 
 export default function DemoDataSettingsPage() {
   const { hasPermission } = usePermissions();
-
 
   const { data: status, isLoading: isStatusLoading, isError: isStatusError, refetch: refetchStatus } = useDemoDataStatus();
   const installMutation = useInstallDemoData();
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-
 
   const handleInstallClick = () => {
     setIsConfirmOpen(true);
@@ -44,7 +43,6 @@ export default function DemoDataSettingsPage() {
         setIsConfirmOpen(false);
       },
       onError: () => {
-        // Error toast is handled in the hook
         setIsConfirmOpen(false);
       }
     });
@@ -115,13 +113,8 @@ export default function DemoDataSettingsPage() {
                   <h3 className="font-medium">Installation Summary</h3>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
                     {Object.entries(status.counts).map(([key, count]) => (
-                      <div
-                        key={key}
-                        className="flex flex-col rounded-md border p-4 text-sm"
-                      >
-                        <span className="text-muted-foreground">
-                          {getLabelForModule(key)}
-                        </span>
+                      <div key={key} className="flex flex-col rounded-md border p-4 text-sm">
+                        <span className="text-muted-foreground">{getLabelForModule(key)}</span>
                         <span className="text-2xl font-bold">{count}</span>
                       </div>
                     ))}
@@ -143,8 +136,7 @@ export default function DemoDataSettingsPage() {
               <Badge variant="outline">Not installed</Badge>
             </div>
             <CardDescription>
-              Load a realistic sample workspace so you can explore the CRM without
-              configuring everything manually.
+              Load a realistic sample workspace so you can explore the CRM without configuring everything manually.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -165,10 +157,7 @@ export default function DemoDataSettingsPage() {
               </ul>
             </div>
 
-            <Button
-              onClick={handleInstallClick}
-              disabled={installMutation.isPending}
-            >
+            <Button onClick={handleInstallClick} disabled={installMutation.isPending}>
               {installMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -185,48 +174,47 @@ export default function DemoDataSettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Demo Workspace</h1>
-        <p className="text-muted-foreground">
-          Populate this tenant with realistic sample CRM data for testing and product exploration.
-        </p>
+    <SettingsLayout>
+      <div className="mx-auto max-w-4xl space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Demo Workspace</h1>
+          <p className="text-muted-foreground">
+            Populate this tenant with realistic sample CRM data for testing and product exploration.
+          </p>
+        </div>
+
+        {renderContent()}
+
+        <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Load demo workspace?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will add realistic sample CRM records and any required demo configuration to the current tenant. Existing tenant data will not be deleted or overwritten.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={installMutation.isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  confirmInstallation();
+                }}
+                disabled={installMutation.isPending}
+              >
+                {installMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load Demo Data"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      {renderContent()}
-
-      <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Load demo workspace?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will add realistic sample CRM records and any required demo configuration
-              to the current tenant. Existing tenant data will not be deleted or overwritten.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={installMutation.isPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                confirmInstallation();
-              }}
-              disabled={installMutation.isPending}
-            >
-              {installMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                "Load Demo Data"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </SettingsLayout>
   );
 }

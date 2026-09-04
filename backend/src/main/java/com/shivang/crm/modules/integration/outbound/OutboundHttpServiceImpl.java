@@ -162,6 +162,34 @@ public class OutboundHttpServiceImpl implements OutboundHttpService {
             return Map.of();
         }
         if ("OAUTH2".equals(authType) || "CUSTOM".equals(authType)) throw new IllegalArgumentException("Outbound authentication type is not supported");
+        // User-aware credential resolution: try per-user credential for executionUserId, fallback to tenant credential
+        UUID executionUserId = request.executionUserId() != null ? request.executionUserId() : request.actorId();
+        if (executionUserId != null && connection.getId() != null) {
+            var userCreds = connectionCredentialRepository
+                    .findByTenantIdAndConnectionIdAndOwnerUserIdAndIsActiveTrueAndDeletedFalseOrderByCreatedAtDesc(
+                            request.tenantId(), connection.getId(), executionUserId);
+            if (!userCreds.isEmpty()) {
+                OutboundHttpConnectionCredential userCred = userCreds.get(0);
+                try {
+                    return objectMapper.readValue(encryptionService.decrypt(userCred.getEncryptedValue()), MAP_TYPE);
+                } catch (Exception ex) {
+                    throw new IllegalArgumentException("Outbound HTTP credential could not be resolved");
+                }
+            }
+            // Also try by connectionId + USER scope (in case ownerUserId is set but not via direct lookup)
+            var scopedUserCreds = connectionCredentialRepository
+                    .findByTenantIdAndConnectionIdAndCredentialScopeAndIsActiveTrueAndDeletedFalseOrderByCreatedAtDesc(
+                            request.tenantId(), connection.getId(), "USER");
+            for (var cred : scopedUserCreds) {
+                if (executionUserId.equals(cred.getOwnerUserId())) {
+                    try {
+                        return objectMapper.readValue(encryptionService.decrypt(cred.getEncryptedValue()), MAP_TYPE);
+                    } catch (Exception ex) {
+                        throw new IllegalArgumentException("Outbound HTTP credential could not be resolved");
+                    }
+                }
+            }
+        }
         if (connection.getCredentialId() == null) throw new IllegalArgumentException("Outbound authentication requires a credential");
         OutboundHttpConnectionCredential credential = connectionCredentialRepository
             .findByIdAndTenantIdAndIsActiveTrueAndDeletedFalse(connection.getCredentialId(), request.tenantId())

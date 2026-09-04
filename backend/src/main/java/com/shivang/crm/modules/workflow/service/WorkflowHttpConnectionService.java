@@ -43,6 +43,7 @@ public class WorkflowHttpConnectionService {
     private final CredentialEncryptionService encryptionService;
     private final WorkflowHttpApiService httpApiService;
     private final ObjectMapper objectMapper;
+    private final org.springframework.context.ApplicationContext applicationContext;
 
     public record HttpConnectionRequest(String name, String authType, Map<String, Object> credential, Boolean active) {
     }
@@ -81,10 +82,14 @@ public class WorkflowHttpConnectionService {
             .authType(authType)
             .active(request.active() == null || request.active())
             .build();
+        // Save connection first to get its ID for credential linkage
+        OutboundHttpConnection saved = connectionRepository.save(connection);
         if (request.credential() != null && !request.credential().isEmpty()) {
-            connection.setCredentialId(storeCredential(tenantId, actorId, authType, request.credential()));
+            UUID credId = storeCredential(tenantId, actorId, saved.getId(), null, "TENANT", authType, request.credential());
+            saved.setCredentialId(credId);
+            saved = connectionRepository.save(saved);
         }
-        return toResponse(connectionRepository.save(connection));
+        return toResponse(saved);
     }
 
     @Transactional
@@ -108,7 +113,7 @@ public class WorkflowHttpConnectionService {
             } else if (replacingCredential) {
                 validateCredentialValues(authType, request.credential());
                 retireCredential(tenantId, connection);
-                connection.setCredentialId(storeCredential(tenantId, actorId, authType, request.credential()));
+                connection.setCredentialId(storeCredential(tenantId, actorId, connection.getId(), null, "TENANT", authType, request.credential()));
             } else if (!authType.equals(normalizeAuthType(connection.getAuthType())) && connection.getCredentialId() == null) {
                 throw new BusinessException("VALIDATION_ERROR", "Selected authentication requires a credential");
             }
@@ -120,7 +125,7 @@ public class WorkflowHttpConnectionService {
             }
             validateCredentialValues(currentAuthType, request.credential());
             retireCredential(tenantId, connection);
-            connection.setCredentialId(storeCredential(tenantId, actorId, currentAuthType, request.credential()));
+            connection.setCredentialId(storeCredential(tenantId, actorId, connection.getId(), null, "TENANT", currentAuthType, request.credential()));
         }
         return toResponse(connectionRepository.save(connection));
     }
@@ -128,10 +133,42 @@ public class WorkflowHttpConnectionService {
     @Transactional
     public void delete(UUID tenantId, UUID actorId, UUID id) {
         OutboundHttpConnection connection = load(tenantId, id);
+        // Check if referenced by any workflow node (especially active versions)
+        var referencingNodes = connectionReferences(tenantId, id);
+        if (!referencingNodes.isEmpty()) {
+            boolean hasActive = referencingNodes.stream().anyMatch(n -> {
+                var v = n.getWorkflowVersion();
+                return v != null && "ACTIVE".equalsIgnoreCase(String.valueOf(v.getStatus()));
+            });
+            if (hasActive) {
+                throw new BusinessException("CONNECTION_IN_USE", "Cannot delete this connection because it is used by active workflow versions");
+            }
+            // For draft-only references, allow delete but log warning (or require deactivation first)
+            // We allow deletion but the workflows will fail validation until reconfigured — consistent with spec's "offer deactivation instead"
+        }
         retireCredential(tenantId, connection);
         connection.softDelete(actorId);
         connection.setActive(false);
         connectionRepository.save(connection);
+    }
+
+    private java.util.List<com.shivang.crm.modules.workflow.entity.WorkflowNode> connectionReferences(UUID tenantId, UUID connectionId) {
+        String idStr = connectionId.toString();
+        return connectionNodeRepository().findByTenantIdAndDeletedFalse(tenantId).stream()
+            .filter(n -> {
+                var cfg = n.getConfiguration();
+                if (cfg == null) return false;
+                Object configObj = cfg.get("config");
+                if (!(configObj instanceof Map<?,?> m)) return false;
+                Object cid = m.get("connectionId");
+                return cid != null && idStr.equals(String.valueOf(cid));
+            })
+            .toList();
+    }
+
+    // Lazy lookup to avoid circular dependency at construction
+    private com.shivang.crm.modules.workflow.repository.WorkflowNodeRepository connectionNodeRepository() {
+        return applicationContext.getBean(com.shivang.crm.modules.workflow.repository.WorkflowNodeRepository.class);
     }
 
     /**
@@ -165,12 +202,19 @@ public class WorkflowHttpConnectionService {
     }
 
     private UUID storeCredential(UUID tenantId, UUID actorId, String authType, Map<String, Object> values) {
+        return storeCredential(tenantId, actorId, null, null, "TENANT", authType, values);
+    }
+
+    private UUID storeCredential(UUID tenantId, UUID actorId, UUID connectionId, UUID ownerUserId, String credentialScope, String authType, Map<String, Object> values) {
         try {
             String encrypted = encryptionService.encrypt(objectMapper.writeValueAsString(values));
             OutboundHttpConnectionCredential credential = OutboundHttpConnectionCredential.builder()
                 .tenantId(tenantId)
                 .authType(authType)
                 .encryptedValue(encrypted)
+                .connectionId(connectionId)
+                .ownerUserId(ownerUserId)
+                .credentialScope(credentialScope)
                 .isActive(true)
                 .build();
             return credentialRepository.save(credential).getId();

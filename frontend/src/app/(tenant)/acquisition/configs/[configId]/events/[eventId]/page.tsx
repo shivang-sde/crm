@@ -417,13 +417,13 @@ export default function AcquisitionEventDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Overview</CardTitle>
+              <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-x-8 gap-y-3 text-sm md:grid-cols-2">
-              <DetailRow label="Received At">
+              <DetailRow label="Received">
                 {event.receivedAt ? new Date(event.receivedAt).toLocaleString() : "—"}
               </DetailRow>
-              <DetailRow label="Processed At">
+              <DetailRow label="Processed">
                 {event.processedAt ? new Date(event.processedAt).toLocaleString() : "—"}
               </DetailRow>
               <DetailRow label="Stage">
@@ -436,50 +436,49 @@ export default function AcquisitionEventDetailPage() {
                   "—"
                 )}
               </DetailRow>
-              <DetailRow label="Attempt">
-                {event.attemptCount ?? 1}
-              </DetailRow>
-              <DetailRow label="External Event ID">
-                <span className="break-all">{event.externalEventId ?? "—"}</span>
-              </DetailRow>
-              <DetailRow label="Idempotency Key">
-                <span className="break-all">{event.idempotencyKey ?? "—"}</span>
-              </DetailRow>
-              <DetailRow label="Lead ID">
+              <DetailRow label="Lead">
                 {event.leadId ? (
                   <Link
                     href={`/leads/${event.leadId}`}
-                    className="break-all underline"
+                    className="break-all underline inline-flex items-center gap-1"
                   >
-                    {event.leadId}
+                    View lead <ExternalLink className="h-3 w-3" />
                   </Link>
                 ) : (
                   <span className="break-all">—</span>
                 )}
               </DetailRow>
+            </CardContent>
+          </Card>
+
+          <details className="rounded-lg border bg-muted/10 p-4">
+            <summary className="cursor-pointer text-sm font-medium">Advanced details</summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
+              <DetailRow label="External Event ID">
+                <span className="break-all font-mono text-xs">{event.externalEventId ?? "—"}</span>
+              </DetailRow>
+              <DetailRow label="Idempotency Key">
+                <span className="break-all font-mono text-xs">{event.idempotencyKey ?? "—"}</span>
+              </DetailRow>
               <DetailRow label="Created / Updated">
                 {`${new Date(event.createdAt).toLocaleString()} · ${new Date(event.updatedAt).toLocaleString()}`}
               </DetailRow>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Raw Payload</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <JsonBlock value={event.rawPayload} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Headers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <JsonBlock value={event.headers} />
-            </CardContent>
-          </Card>
+              <DetailRow label="Attempt">
+                {event.attemptCount ?? 1}
+              </DetailRow>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Raw Payload (Technical)</p>
+                <p className="text-xs text-muted-foreground">For technical troubleshooting.</p>
+                <JsonBlock value={event.rawPayload} />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Headers (Technical)</p>
+                <JsonBlock value={event.headers} />
+              </div>
+            </div>
+          </details>
         </>
       )}
 

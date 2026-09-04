@@ -74,8 +74,13 @@ class ConnectorExecutionServiceImplTest {
         when(providerRegistryService.findByProviderKey("sellspark_voice")).thenReturn(Optional.of(provider));
         when(providerRegistryService.findActionByProviderKeyAndActionKey("sellspark_voice", "CLICK_TO_CALL")).thenReturn(Optional.of(action));
         when(connectorInstanceService.findActiveByTenantAndProvider(tenantId, "sellspark_voice")).thenReturn(Optional.of(connectorInstance));
-        when(credentialService.resolveCredentialValue(tenantId, connectorId, userId, "username")).thenReturn(Optional.of("agent"));
-        when(credentialService.resolveCredentialValue(tenantId, connectorId, userId, "password")).thenReturn(Optional.of("secret"));
+        com.shivang.crm.modules.integration.entity.ConnectorCredential credential = new com.shivang.crm.modules.integration.entity.ConnectorCredential();
+        credential.setId(UUID.randomUUID());
+        credential.setTenantId(tenantId);
+        credential.setConnectorInstance(connectorInstance);
+        credential.setEncryptedValue("encrypted");
+        when(credentialService.findActiveUserCredentials(tenantId, connectorId, userId)).thenReturn(java.util.List.of(credential));
+        when(credentialService.decryptValue(credential)).thenReturn("{\"username\":\"agent\",\"password\":\"secret\"}");
         when(executionRepository.save(any(ConnectorExecution.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(providerActionExecutor.execute(any(), any(), any(), any())).thenReturn(new ConnectorExecutionResult(true, 200, Map.of("ok", true), Map.of(), Map.of(), null, 12L));
 

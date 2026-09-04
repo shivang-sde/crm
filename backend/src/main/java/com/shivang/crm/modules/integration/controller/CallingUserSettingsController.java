@@ -407,36 +407,19 @@ public class CallingUserSettingsController {
 
     private List<CredentialFieldResponse> credentialFields(
             String providerKey) {
-
-        if ("sellspark_voice".equalsIgnoreCase(providerKey)) {
-            return List.of(
-                    new CredentialFieldResponse(
-                            "userId",
-                            "User ID / Agent ID",
-                            "text",
-                            true
-                    ),
-                    new CredentialFieldResponse(
-                            "password",
-                            "Password",
-                            "password",
-                            true
-                    )
-            );
-        }
-
+        // FE/BE-WF-28: provider-neutral — CALLING providers use userId/password (no hardcoded providerKey branching)
         return List.of(
                 new CredentialFieldResponse(
-                        "apiKey",
-                        "API Key",
-                        "password",
+                        "userId",
+                        "User ID / Agent ID",
+                        "text",
                         true
                 ),
                 new CredentialFieldResponse(
-                        "token",
-                        "Token",
                         "password",
-                        false
+                        "Password",
+                        "password",
+                        true
                 )
         );
     }

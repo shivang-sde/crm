@@ -19,6 +19,7 @@ import {
   WorkflowVersionCreateRequest,
   WorkflowVersionResponse,
 } from "@/types/workflow";
+import type { CallingProviderOption } from "@/types/call-opening";
 
 export const workflowApi = {
   getMetadata: async () => {
@@ -235,6 +236,64 @@ export const workflowApi = {
     const response = await api.post<ApiResponse<string>>(
       `/workflows/${workflowId}/deactivate`
     );
+    return unwrapResponse(response);
+  },
+
+  getCallingProviders: async (): Promise<CallingProviderOption[]> => {
+    const response = await api.get<ApiResponse<CallingProviderOption[]>>(
+      "/calling-providers"
+    );
+    return unwrapResponse(response);
+  },
+
+  getHttpCredentialTenantStatus: async (): Promise<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }> => {
+    const response = await api.get<ApiResponse<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }>>(
+      "/workflows/http-credentials/tenant/status"
+    );
+    return unwrapResponse(response);
+  },
+
+  putHttpCredentialTenant: async (credential: Record<string, string>): Promise<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }> => {
+    const response = await api.put<ApiResponse<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }>>(
+      "/workflows/http-credentials/tenant",
+      credential
+    );
+    return unwrapResponse(response);
+  },
+
+  getHttpCredentialUserStatus: async (userId: string): Promise<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }> => {
+    const response = await api.get<ApiResponse<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }>>(
+      `/workflows/http-credentials/user/${userId}/status`
+    );
+    return unwrapResponse(response);
+  },
+
+  putHttpCredentialUser: async (userId: string, credential: Record<string, string>): Promise<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }> => {
+    const response = await api.put<ApiResponse<{ configured: boolean; scope: string; ownerUserId: string | null; keys: string[] }>>(
+      `/workflows/http-credentials/user/${userId}`,
+      credential
+    );
+    return unwrapResponse(response);
+  },
+
+  getHttpCredentialKeys: async (scope?: string, userId?: string): Promise<string[]> => {
+    const params: Record<string, string> = {};
+    if (scope) params.scope = scope;
+    if (userId) params.userId = userId;
+    const response = await api.get<ApiResponse<string[]>>(
+      "/workflows/http-credentials/keys",
+      { params }
+    );
+    return unwrapResponse(response);
+  },
+
+  deleteHttpCredentialTenant: async (): Promise<string> => {
+    const response = await api.delete<ApiResponse<string>>("/workflows/http-credentials/tenant");
+    return unwrapResponse(response);
+  },
+
+  deleteHttpCredentialUser: async (userId: string): Promise<string> => {
+    const response = await api.delete<ApiResponse<string>>(`/workflows/http-credentials/user/${userId}`);
     return unwrapResponse(response);
   },
 };

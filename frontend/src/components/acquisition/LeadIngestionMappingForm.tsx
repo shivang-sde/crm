@@ -29,16 +29,27 @@ import {
 } from "@/types/acquisition";
 
 const transformLabels: Record<LeadIngestionTransformType, string> = {
-  NONE: "None",
-  TRIM: "Trim",
-  LOWERCASE: "Lowercase",
-  UPPERCASE: "Uppercase",
+  NONE: "Keep as is",
+  TRIM: "Trim spaces",
+  LOWERCASE: "Make lowercase",
+  UPPERCASE: "Make uppercase",
 };
 
-const targetTypeLabels: Record<LeadIngestionTargetType, string> = {
-  STANDARD_FIELD: "Standard Field",
-  SYSTEM_FIELD: "System Field",
-  CUSTOM_FIELD: "Custom Field",
+// Business-friendly grouping for CRM fields
+const getBusinessGroup = (target: LeadIngestionTargetField): string => {
+  if (target.targetType === "CUSTOM_FIELD") return "Custom Fields";
+  if (target.targetType === "SYSTEM_FIELD") return "Lead Details";
+  return "Lead Information";
+};
+
+const friendlySourceLabel = (path: string): string => {
+  const last = path.split(".").pop() ?? path;
+  return last
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 };
 
 interface LeadIngestionMappingFormProps {
@@ -127,24 +138,34 @@ export function LeadIngestionMappingForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValues]);
 
-  const selectedTargetType = form.watch("targetType");
+  // Group all CRM fields business-friendly, hide raw targetType enum from normal UX
+  const groupedCrmFields = useMemo(() => {
+    const groups: Record<string, LeadIngestionTargetField[]> = {};
+    for (const f of targetFields) {
+      const g = getBusinessGroup(f);
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(f);
+    }
+    return groups;
+  }, [targetFields]);
 
-  const targetsForType = useMemo(
-    () => targetFields.filter((t) => t.targetType === selectedTargetType),
-    [targetFields, selectedTargetType]
-  );
-
-  const handleTargetTypeChange = (value: string) => {
-    const nextType = value as LeadIngestionTargetType;
-    const currentTarget = form.getValues("targetField");
-    const stillValid = targetFields.some(
-      (t) => t.targetType === nextType && t.fieldKey === currentTarget
-    );
-    form.setValue("targetType", nextType, { shouldDirty: true });
-    if (!stillValid) {
-      form.setValue("targetField", "", { shouldDirty: true, shouldValidate: true });
+  const handleCrmFieldChange = (value: string) => {
+    // value is "targetType:fieldKey"
+    const [type, ...rest] = value.split(":");
+    const fieldKey = rest.join(":");
+    const target = targetFields.find((t) => t.targetType === type && t.fieldKey === fieldKey);
+    if (target) {
+      form.setValue("targetType", target.targetType, { shouldDirty: true });
+      form.setValue("targetField", target.fieldKey, { shouldDirty: true, shouldValidate: true });
     }
   };
+
+  const selectedCrmValue = (() => {
+    const t = form.watch("targetType");
+    const f = form.watch("targetField");
+    if (!t || !f) return "";
+    return `${t}:${f}`;
+  })();
 
   const handleSubmit = (values: AcquisitionMappingFormOutput) => {
     const tc: Record<string, unknown> = {};
@@ -177,9 +198,10 @@ export function LeadIngestionMappingForm({
   };
 
   return (
-    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="sourcePath">Source field</Label>
+        <Label htmlFor="sourcePath">Incoming information</Label>
+        <p className="text-xs text-muted-foreground">Which piece of information from your lead source should we use?</p>
 
         {sourceFields && sourceFields.length > 0 ? (
           <Select
@@ -192,33 +214,44 @@ export function LeadIngestionMappingForm({
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select discovered source field" />
+              <SelectValue placeholder="Choose incoming field" />
             </SelectTrigger>
             <SelectContent>
               {sourceFields.map((field) => (
                 <SelectItem key={field.path} value={field.path}>
-                  {field.path}
+                  <div className="flex flex-col">
+                    <span className="font-medium">{friendlySourceLabel(field.path)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      e.g. {String(field.sampleValue ?? "").slice(0, 30) || "—"} · {field.detectedType}
+                      {field.path.includes(".") ? ` · ${field.path}` : ""}
+                    </span>
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         ) : null}
 
-        <Input
-          id="sourcePath"
-          placeholder={
-            sourceFields && sourceFields.length > 0
-              ? "Or enter a payload path manually"
-              : "Payload path e.g. customer.name"
-          }
-          {...form.register("sourcePath")}
-        />
+        <div className="relative">
+          <Input
+            id="sourcePath"
+            placeholder={
+              sourceFields && sourceFields.length > 0
+                ? "Or choose 'Other' and type the field name"
+                : "e.g. First Name"
+            }
+            {...form.register("sourcePath")}
+          />
+          {form.watch("sourcePath") && sourceFields?.some((f) => f.path === form.watch("sourcePath")) ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Selected: <span className="font-medium">{friendlySourceLabel(form.watch("sourcePath"))}</span>
+              <span className="text-muted-foreground"> · {form.watch("sourcePath")}</span>
+            </p>
+          ) : null}
+        </div>
 
         <p className="text-xs text-muted-foreground">
-          Path within the incoming lead payload — not a CRM field.
-          {sourceFields && sourceFields.length > 0
-            ? " Choose a discovered field above or type a path."
-            : " Load an ingestion event above to discover available fields."}
+          This is the field name coming from your form or app. Pick from the examples above.
         </p>
 
         {form.formState.errors.sourcePath && (
@@ -228,72 +261,49 @@ export function LeadIngestionMappingForm({
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Target type</Label>
-
-          <Select
-            value={form.watch("targetType")}
-            onValueChange={handleTargetTypeChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select target type" />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(targetTypeLabels) as LeadIngestionTargetType[]).map(
-                (type) => (
-                  <SelectItem key={type} value={type}>
-                    {targetTypeLabels[type]}
-                  </SelectItem>
-                )
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Target field</Label>
-
-          <Select
-            value={form.watch("targetField")}
-            onValueChange={(value) =>
-              form.setValue("targetField", value, {
-                shouldDirty: true,
-                shouldValidate: true,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select target field" />
-            </SelectTrigger>
-            <SelectContent>
-              {targetsForType.map((target) => (
-                <SelectItem key={`${target.targetType}:${target.fieldKey}`} value={target.fieldKey}>
-                  {target.label}
-                  {target.required ? " *" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {targetsForType.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              No {targetTypeLabels[selectedTargetType]?.toLowerCase()}s are
-              registered for this configuration.
-            </p>
-          )}
-
-          {form.formState.errors.targetField && (
-            <p className="text-sm text-red-500">
-              {form.formState.errors.targetField.message}
-            </p>
-          )}
-        </div>
+      <div className="flex items-center justify-center py-1 text-muted-foreground">
+        <span className="text-lg">↓</span>
+        <span className="ml-2 text-xs">Map to</span>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="space-y-2">
+        <Label>Where should we save it in the CRM?</Label>
+        <p className="text-xs text-muted-foreground">Choose the CRM field that should receive this information.</p>
+
+        <Select value={selectedCrmValue} onValueChange={handleCrmFieldChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Choose CRM field" />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(groupedCrmFields).map(([group, fields]) => (
+              <div key={group}>
+                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group}</div>
+                {fields.map((target) => (
+                  <SelectItem key={`${target.targetType}:${target.fieldKey}`} value={`${target.targetType}:${target.fieldKey}`}>
+                    {target.label}
+                    {target.required ? " *" : ""}
+                    <span className="ml-2 text-xs text-muted-foreground">{target.dataType}</span>
+                  </SelectItem>
+                ))}
+              </div>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {targetFields.length === 0 && (
+          <p className="text-xs text-muted-foreground">No CRM fields are available. Check your CRM configuration.</p>
+        )}
+
+        {form.formState.errors.targetField && (
+          <p className="text-sm text-red-500">
+            {form.formState.errors.targetField.message}
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label>Transform</Label>
+          <Label>Clean up value</Label>
 
           <Select
             value={form.watch("transformType")}
@@ -304,7 +314,7 @@ export function LeadIngestionMappingForm({
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select transform" />
+              <SelectValue placeholder="How to clean up" />
             </SelectTrigger>
             <SelectContent>
               {(Object.keys(transformLabels) as LeadIngestionTransformType[]).map(
@@ -317,36 +327,26 @@ export function LeadIngestionMappingForm({
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Applied first. Chain/prefix/suffix/regex follow deterministically.
+            Applied automatically before saving.
           </p>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="defaultValue">Default value</Label>
+          <p className="text-xs text-muted-foreground">If the source does not provide a value, use:</p>
 
-          <Input id="defaultValue" {...form.register("defaultValue")} />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="displayOrder">Display order</Label>
-
-          <Input id="displayOrder" type="number" min="0" step="1" {...form.register("displayOrder")} />
-
-          {form.formState.errors.displayOrder && (
-            <p className="text-sm text-red-500">
-              {form.formState.errors.displayOrder.message}
-            </p>
-          )}
+          <Input id="defaultValue" placeholder="e.g. New" {...form.register("defaultValue")} />
         </div>
       </div>
 
-      <div className="rounded-md border bg-muted/10 p-3 space-y-3">
-        <p className="text-sm font-medium">Advanced transform (transformConfig)</p>
-        <p className="text-xs text-muted-foreground">
-          Deterministic order: primary transform → chain → prefix/suffix → regex → default fallback → normalization → validation. Stored in JSONB.
+      <details className="rounded-md border bg-muted/10 p-3">
+        <summary className="cursor-pointer text-sm font-medium">Advanced cleanup</summary>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Optional cleanup for phone numbers, extra spaces, or custom formatting. Most mappings do not need this.
         </p>
         <div className="space-y-2">
-          <Label>Chain (additional transforms after primary)</Label>
+          <Label>Additional cleanup steps</Label>
+          <p className="text-xs text-muted-foreground">Apply extra cleanup after the main option above.</p>
           <div className="flex flex-wrap gap-4">
             {(["TRIM", "LOWERCASE", "UPPERCASE"] as const).map((t) => {
               const chain = (form.watch("transformChain") ?? []) as string[];
@@ -378,42 +378,42 @@ export function LeadIngestionMappingForm({
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <Label htmlFor="transformPrefix">Prefix</Label>
+            <Label htmlFor="transformPrefix">Add before (prefix)</Label>
             <Input id="transformPrefix" placeholder="e.g. +1 " {...form.register("transformPrefix")} />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="transformSuffix">Suffix</Label>
+            <Label htmlFor="transformSuffix">Add after (suffix)</Label>
             <Input id="transformSuffix" placeholder="e.g.  -lead" {...form.register("transformSuffix")} />
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <Label htmlFor="regexPattern">Regex pattern</Label>
+            <Label htmlFor="regexPattern">Find pattern (advanced)</Label>
             <Input id="regexPattern" placeholder="e.g. \\s+" {...form.register("regexPattern")} />
-            <p className="text-xs text-muted-foreground">Java regex, replaceAll</p>
+            <p className="text-xs text-muted-foreground">Advanced: replaces text matching this pattern.</p>
             {form.formState.errors.regexPattern && (
               <p className="text-sm text-red-500">{form.formState.errors.regexPattern.message}</p>
             )}
           </div>
           <div className="space-y-1">
-            <Label htmlFor="regexReplacement">Regex replacement</Label>
+            <Label htmlFor="regexReplacement">Replace with</Label>
             <Input id="regexReplacement" placeholder="e.g. _" {...form.register("regexReplacement")} />
           </div>
         </div>
+      </details>
+
+      <div className="flex items-center space-x-2">
+        <Switch
+          id="mapping-required"
+          checked={form.watch("required")}
+          onCheckedChange={(value) =>
+            form.setValue("required", value, { shouldDirty: true })
+          }
+        />
+        <Label htmlFor="mapping-required">This information is required</Label>
+        <span className="text-xs text-muted-foreground">If checked, the lead will not be saved when this information is missing.</span>
       </div>
-
-      <div className="flex items-center space-x-6">
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="mapping-required"
-            checked={form.watch("required")}
-            onCheckedChange={(value) =>
-              form.setValue("required", value, { shouldDirty: true })
-            }
-          />
-          <Label htmlFor="mapping-required">Required</Label>
-        </div>
-
+      <div className="hidden">
         <div className="flex items-center space-x-2">
           <Switch
             id="mapping-active"

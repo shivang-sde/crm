@@ -28,6 +28,20 @@ function businessMessageForIssue(issue: WorkflowValidationIssue): { title: strin
       return { title: "Wait time required", message: "Choose how long to wait.", hint: "Pick a duration or a future date/time." };
     case "WORKFLOW_WAIT_RESUME_AT_PAST":
       return { title: "Wait time is in the past", message: "The selected time is already past.", hint: "Choose a future time, or use a duration. If time is past at execution, it will continue immediately." };
+    case "WORKFLOW_CLICK_TO_CALL_PROVIDER_REQUIRED":
+      return { title: "Calling provider required", message: "Click to Call requires a configured calling provider.", hint: "Select a calling provider in the action configuration." };
+    case "WORKFLOW_CLICK_TO_CALL_PHONE_REQUIRED":
+      return { title: "Phone required", message: "Click to Call requires a phone number or linked record.", hint: "Provide a phone override or choose a record to call." };
+    case "WORKFLOW_HTTP_API_URL_REQUIRED":
+      return { title: "URL required", message: "HTTP API requires a URL.", hint: "Enter the HTTPS endpoint to call." };
+    case "WORKFLOW_HTTP_API_INVALID_METHOD":
+      return { title: "Method required", message: "Choose a valid HTTP method.", hint: "Use GET, POST, PUT, PATCH or DELETE." };
+    case "WORKFLOW_HTTP_API_INVALID_CONFIG":
+      return { title: "HTTP configuration", message: issue.message, hint: "Check authentication and credential settings." };
+    case "WORKFLOW_HTTP_API_CREDENTIAL_NOT_CONFIGURED":
+      return { title: "Credential not configured", message: "The selected user does not have credentials configured for this API.", hint: "Configure credentials for that user or choose a different credential source." };
+    case "WORKFLOW_HTTP_API_INVALID_CONNECTION":
+      return { title: "Connection required", message: "A saved connection is required for this authentication mode.", hint: "Select a connection or change authentication to No authentication / Credential." };
     default:
       return { title: issue.code, message: issue.message, hint: "" };
   }

@@ -41,6 +41,16 @@ export interface ClickToCallRequest {
   entityType: string;
   entityId: string;
   phoneNumber?: string | null;
+  providerKey?: string | null;
+}
+
+export interface CallingProviderOption {
+  providerKey: string;
+  providerName: string;
+  connectorInstanceId: string;
+  connectorName: string;
+  environment?: string | null;
+  active: boolean;
 }
 
 export interface ClickToCallResponse {

@@ -56,6 +56,16 @@ import {
   LeadIngestionSourceField,
 } from "@/types/acquisition";
 
+const friendlySourceLabel = (path: string): string => {
+  const last = path.split(".").pop() ?? path;
+  return last
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+};
+
 function getCompatibility(
   sourceType: string | null | undefined,
   targetDataType: string | null | undefined
@@ -272,11 +282,10 @@ export default function AcquisitionMappingsPage() {
             </Link>
           </div>
           <h1 className="text-2xl font-semibold">
-            {config ? config.name : "Field Mappings"}
+            Map Information
           </h1>
           <p className="text-sm text-muted-foreground">
-            Map incoming source fields to CRM fields. Source paths refer to the
-            inbound payload — not CRM records. Transform → default → normalization → validation.
+            Connect information from <span className="font-medium">{config?.name ?? "your lead source"}</span> to CRM fields.
           </p>
         </div>
 
@@ -292,43 +301,43 @@ export default function AcquisitionMappingsPage() {
         )}
       </div>
 
-      {/* Stats */}
+      {/* Stats — business language */}
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-3 md:grid-cols-4">
             <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground">Source fields</p>
+              <p className="text-xs text-muted-foreground">Incoming information</p>
               <p className="text-lg font-semibold">
                 {sourceFields.length ? `${sourceFieldStats.mapped} / ${sourceFieldStats.total}` : "—"}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">mapped</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {sourceFieldStats.unmapped} unmapped
+                {sourceFieldStats.unmapped} not yet mapped
               </p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground">CRM mappings</p>
+              <p className="text-xs text-muted-foreground">Mapped fields</p>
               <p className="text-lg font-semibold">{mappings.filter((m) => m.active).length}</p>
               <p className="text-xs text-muted-foreground">{mappings.length} total</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground">Required missing</p>
+              <p className="text-xs text-muted-foreground">Required fields</p>
               <p className={`text-lg font-semibold ${requiredMissing.length ? "text-red-600" : "text-green-600"}`}>
-                {requiredMissing.length}
+                {requiredMissing.length ? `${requiredMissing.length} missing` : "All set ✓"}
               </p>
               <p className="text-xs text-muted-foreground">
                 {requiredMissing.length
-                  ? requiredMissing.map((r) => r.fieldKey).join(", ")
-                  : "All required mapped ✓"}
+                  ? requiredMissing.map((r) => r.label).join(", ")
+                  : "All required fields are mapped"}
               </p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs text-muted-foreground">Warnings / duplicates</p>
+              <p className="text-xs text-muted-foreground">Needs attention</p>
               <p className={`text-lg font-semibold ${mappingWarnings.length || duplicateTargets.length ? "text-amber-600" : "text-green-600"}`}>
-                {mappingWarnings.length + duplicateTargets.length}
+                {mappingWarnings.length + duplicateTargets.length ? `${mappingWarnings.length + duplicateTargets.length} items` : "None"}
               </p>
               <p className="text-xs text-muted-foreground">
-                {mappingWarnings.length} warnings{duplicateTargets.length ? `, ${duplicateTargets.length} duplicate target(s)` : ""}
+                {mappingWarnings.length ? `${mappingWarnings.length} mapping warnings` : "No warnings"}
               </p>
             </div>
           </div>
@@ -336,14 +345,17 @@ export default function AcquisitionMappingsPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               {requiredMissing.map((r) => (
                 <Badge key={`${r.targetType}:${r.fieldKey}`} variant="destructive">
-                  Missing required: {r.targetType}:{r.fieldKey}
+                  Missing: {r.label}
                 </Badge>
               ))}
-              {duplicateTargets.map((k) => (
-                <Badge key={k} variant="destructive">
-                  Duplicate target: {k}
-                </Badge>
-              ))}
+              {duplicateTargets.map((k) => {
+                const tf = targetByKey.get(k);
+                return (
+                  <Badge key={k} variant="destructive">
+                    Duplicate: {tf?.label ?? k}
+                  </Badge>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -351,13 +363,11 @@ export default function AcquisitionMappingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Source field discovery</CardTitle>
+          <CardTitle>Incoming Information</CardTitle>
+          <p className="text-sm text-muted-foreground">We found these fields from your source. Map them to your CRM.</p>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Pick a recent event or paste an ID. Sample values help verify the source type before mapping.
-          </p>
-          {recentEvents.length > 0 && (
+          {recentEvents.length > 0 ? (
             <div className="flex flex-col gap-2 sm:flex-row">
               <Select
                 value={activeSourceEventId}
@@ -367,12 +377,12 @@ export default function AcquisitionMappingsPage() {
                 }}
               >
                 <SelectTrigger className="w-full sm:w-[360px]">
-                  <SelectValue placeholder="Choose recent event" />
+                  <SelectValue placeholder="Choose a recent lead example" />
                 </SelectTrigger>
                 <SelectContent>
                   {recentEvents.map((ev) => (
                     <SelectItem key={ev.id} value={ev.id}>
-                      {ev.externalEventId ?? ev.id.slice(0, 8)} — {ev.status} · {new Date(ev.receivedAt).toLocaleDateString()}
+                      {ev.externalEventId ?? `Lead ${ev.id.slice(0, 8)}`} — {ev.status} · {new Date(ev.receivedAt).toLocaleDateString()}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -381,21 +391,18 @@ export default function AcquisitionMappingsPage() {
                 Reload
               </Button>
             </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">We haven&apos;t received sample information yet. Send a test lead to discover the fields provided by this source.</p>
           )}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              value={sourceEventIdInput}
-              onChange={(e) => setSourceEventIdInput(e.target.value)}
-              placeholder="Or paste ingestion event ID (UUID)"
-            />
-            <Button
-              variant="outline"
-              onClick={() => setActiveSourceEventId(sourceEventIdInput.trim())}
-              disabled={!sourceEventIdInput.trim()}
-            >
-              Load fields
-            </Button>
-          </div>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground">Advanced: paste event ID</summary>
+            <div className="mt-2 flex gap-2">
+              <Input value={sourceEventIdInput} onChange={(e) => setSourceEventIdInput(e.target.value)} placeholder="Lead example ID" />
+              <Button variant="outline" onClick={() => setActiveSourceEventId(sourceEventIdInput.trim())} disabled={!sourceEventIdInput.trim()}>
+                Load
+              </Button>
+            </div>
+          </details>
           {activeSourceEventId && (
             <>
               {sourceFieldsQuery.isLoading && (
@@ -422,23 +429,21 @@ export default function AcquisitionMappingsPage() {
                             ) : (
                               <Circle className="h-3 w-3 text-muted-foreground" />
                             )}
-                            <span className="font-medium">{field.path}</span>
-                            <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0">
-                              {field.detectedType ?? "unknown"}
-                            </Badge>
-                            {isMapped && <Badge className="text-[10px] px-1 py-0">Mapped</Badge>}
+                            <span className="font-medium">{friendlySourceLabel(field.path)}</span>
+                            {isMapped && <Badge className="text-[10px] px-1 py-0">✓ Mapped</Badge>}
                           </div>
                           {field.sampleValue != null && (
                             <span className="text-muted-foreground truncate max-w-[220px]">
-                              e.g. {String(field.sampleValue).slice(0, 80)}
+                              e.g. {String(field.sampleValue).slice(0, 40)}
                             </span>
                           )}
+                          <span className="text-[10px] text-muted-foreground">{field.path}</span>
                         </div>
                       );
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {sourceFieldStats.mapped} mapped, {sourceFieldStats.unmapped} unmapped. Map required CRM fields before test ingestion.
+                    We found {sourceFields.length} fields from your source. {sourceFieldStats.mapped} mapped, {sourceFieldStats.unmapped} not yet mapped.
                   </p>
                 </div>
               )}
@@ -484,29 +489,19 @@ export default function AcquisitionMappingsPage() {
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{mapping.sourcePath}</span>
+                        <span className="font-medium">{friendlySourceLabel(mapping.sourcePath)}</span>
+                        <span className="text-xs text-muted-foreground">({mapping.sourcePath})</span>
                         {sf?.sampleValue != null && (
-                          <span className="text-xs text-muted-foreground truncate max-w-[160px]">
-                            e.g. {String(sf.sampleValue).slice(0, 40)}
+                          <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                            e.g. {String(sf.sampleValue).slice(0, 30)}
                           </span>
                         )}
                         <span className="text-muted-foreground">→</span>
-                        <span className="font-medium">{mapping.targetField}</span>
-                        <Badge variant={mapping.active ? "default" : "secondary"}>
-                          {mapping.active ? "Active" : "Inactive"}
-                        </Badge>
-                        {mapping.transformType !== "NONE" && (
-                          <Badge variant="outline">{mapping.transformType}</Badge>
-                        )}
-                        {mapping.transformConfig && Object.keys(mapping.transformConfig).length > 0 && (
-                          <Badge variant="outline" title={JSON.stringify(mapping.transformConfig)}>
-                            +config
-                          </Badge>
-                        )}
-                        {mapping.required && <Badge variant="outline">Required</Badge>}
+                        <span className="font-medium">{tf?.label ?? mapping.targetField}</span>
+                        {tf?.required && <span className="text-xs text-red-600">*</span>}
                         {compat === "warning" && (
                           <Badge variant="outline" className="border-amber-300 text-amber-700">
-                            <AlertTriangle className="h-3 w-3 mr-1" /> Warning
+                            <AlertTriangle className="h-3 w-3 mr-1" /> May need conversion
                           </Badge>
                         )}
                         {compat === "incompatible" && (
@@ -516,14 +511,14 @@ export default function AcquisitionMappingsPage() {
                         )}
                         {isDup && (
                           <Badge variant="destructive">
-                            <Copy className="h-3 w-3 mr-1" /> Duplicate target
+                            <Copy className="h-3 w-3 mr-1" /> Duplicate
                           </Badge>
                         )}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {mapping.targetType} · {tf?.dataType ?? "STRING"}
-                        {tf?.required ? " · required" : ""} · {sf?.detectedType ?? "unknown type"}
-                        {compat === "warning" && " · conversion may be needed"}
+                        {tf?.label ? `${tf.label} · ` : ""}
+                        {mapping.required ? "Required · " : ""}
+                        {isDup ? "Multiple sources → same CRM field" : compat === "warning" ? "Different types — will be kept as text" : ""}
                       </p>
                     </div>
 

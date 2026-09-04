@@ -97,6 +97,18 @@ export function WorkflowValuePicker({
       });
     }
 
+    // Credential namespace — available for HTTP_API CREDENTIAL mode; shown always for discoverability
+    const credentialKeys = ["apiKey", "token", "username", "password", "accountId", "clientId", "secret", "clientSecret", "accessToken", "client_id", "client_secret"];
+    for (const key of credentialKeys) {
+      out.push({
+        label: `Credential: ${key}`,
+        path: `credential.${key}`,
+        insertion: `{{credential.${key}}}`,
+        group: "Credential",
+        keywords: `credential ${key}`.toLowerCase(),
+      });
+    }
+
     // Previous Nodes (graph-aware)
     const ancestors = ancestorsOf(currentNodeId, nodes, edges);
     if (nodes && ancestors.size > 0) {
@@ -229,7 +241,7 @@ export function WorkflowValuePicker({
           </CommandList>
           <div className="border-t p-2 text-[11px] text-muted-foreground">
             Inserts a runtime token like <span className="font-mono">{"{{entity.id}}"}</span>. Supports{" "}
-            <span className="font-mono">entity.* customFields.* trigger.metadata.* nodeOutputs.*</span>.
+            <span className="font-mono">entity.* trigger.* nodeOutputs.* credential.*</span> (credential only when HTTP authentication is Credential).
           </div>
         </Command>
       </PopoverContent>

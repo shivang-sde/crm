@@ -1,5 +1,7 @@
 "use client";
 
+import "@xyflow/react/dist/style.css";
+
 import {
   ReactFlow,
   Background,
@@ -76,19 +78,6 @@ export function WorkflowCanvas({
 
   return (
     <div className="h-full w-full">
-      <svg style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} aria-hidden="true">
-        <defs>
-          <marker id="wf-arrow" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--foreground) / 0.6)" />
-          </marker>
-          <marker id="wf-arrow-selected" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--primary))" />
-          </marker>
-          <marker id="wf-arrow-dimmed" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--muted-foreground))" />
-          </marker>
-        </defs>
-      </svg>
       <ReactFlow
         nodes={nodes}
         edges={edges}

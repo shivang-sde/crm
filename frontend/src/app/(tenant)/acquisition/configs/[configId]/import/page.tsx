@@ -158,10 +158,10 @@ export default function CsvImportPage() {
           <ArrowLeft className="h-4 w-4" /> Back to source
         </Link>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <FileSpreadsheet className="h-5 w-5" /> CSV Import
+          <FileSpreadsheet className="h-5 w-5" /> Import Leads from CSV
         </h1>
         <p className="text-sm text-muted-foreground">
-          Adapter into the universal pipeline: CSV → Acquisition Event (per row) → Mapping → Transform → Normalization → Validation → Deduplication → Lead → Workflow
+          Upload your CSV file to create leads. We&apos;ll map your columns to CRM fields and show you what will happen before importing.
         </p>
       </div>
 

@@ -8,16 +8,24 @@ import org.springframework.stereotype.Component;
 
 import com.shivang.crm.modules.call.dto.ClickToCallRequest;
 import com.shivang.crm.modules.call.dto.ClickToCallResponse;
+import com.shivang.crm.modules.integration.service.ConnectorInstanceService;
+import com.shivang.crm.modules.integration.service.ProviderRegistryService;
 
 @Component
 public class CreateClickToCallActionExecutor implements WorkflowActionExecutor {
 
     private final WorkflowClickToCallService clickToCallService;
     private final WorkflowValueResolver valueResolver;
+    private final WorkflowExecutionIdentityResolver executionIdentityResolver;
+    private final ProviderRegistryService providerRegistryService;
+    private final ConnectorInstanceService connectorInstanceService;
 
-    public CreateClickToCallActionExecutor(WorkflowClickToCallService clickToCallService, WorkflowValueResolver valueResolver) {
+    public CreateClickToCallActionExecutor(WorkflowClickToCallService clickToCallService, WorkflowValueResolver valueResolver, WorkflowExecutionIdentityResolver executionIdentityResolver, ProviderRegistryService providerRegistryService, ConnectorInstanceService connectorInstanceService) {
         this.clickToCallService = clickToCallService;
         this.valueResolver = valueResolver;
+        this.executionIdentityResolver = executionIdentityResolver;
+        this.providerRegistryService = providerRegistryService;
+        this.connectorInstanceService = connectorInstanceService;
     }
 
     @Override
@@ -35,6 +43,14 @@ public class CreateClickToCallActionExecutor implements WorkflowActionExecutor {
         String entityType = textOrNull(resolve(configuration.get("entityType"), context));
         UUID entityId = uuidOrNull(resolve(configuration.get("entityId"), context));
         String subject = textOrNull(resolve(configuration.get("subject"), context));
+        // provider must be explicit — no fallback (FE/BE-WF-28)
+        Object rawProvider = configuration.get("providerKey");
+        if (rawProvider == null) rawProvider = configuration.get("provider");
+        String providerKey = textOrNull(resolve(rawProvider, context));
+        if (providerKey == null || providerKey.isBlank()) {
+            throw failure("WORKFLOW_CLICK_TO_CALL_PROVIDER_REQUIRED", "Click to Call requires a configured calling provider");
+        }
+        providerKey = providerKey.trim();
 
         boolean directPhone = phoneNumber != null && !phoneNumber.isBlank();
         boolean entityCall = entityType != null && !entityType.isBlank() && entityId != null;
@@ -45,17 +61,53 @@ public class CreateClickToCallActionExecutor implements WorkflowActionExecutor {
             throw failure("WORKFLOW_CLICK_TO_CALL_INVALID_CONFIG", "entityType and entityId must be provided together");
         }
 
+        // ── Tenant-scoped provider validation ──
+        UUID tenantId = context.getIdentity().tenantId();
+        var providerOpt = providerRegistryService.findByProviderKey(providerKey);
+        if (providerOpt.isEmpty()) {
+            throw failure("PROVIDER_NOT_FOUND", "Calling provider not found: " + providerKey);
+        }
+        var provider = providerOpt.get();
+        try {
+            providerRegistryService.validateProviderActive(provider);
+        } catch (RuntimeException ex) {
+            throw failure("PROVIDER_INACTIVE", "Calling provider is inactive: " + providerKey);
+        }
+        var actionOpt = providerRegistryService.findActionByProviderKeyAndActionKey(providerKey, "CLICK_TO_CALL");
+        if (actionOpt.isEmpty()) {
+            throw failure("PROVIDER_DOES_NOT_SUPPORT_CLICK_TO_CALL", "Provider does not support Click-to-Call: " + providerKey);
+        }
+        try {
+            providerRegistryService.validateActionActive(actionOpt.get());
+        } catch (RuntimeException ex) {
+            throw failure("ACTION_INACTIVE", "Click-to-Call action is inactive for provider: " + providerKey);
+        }
+        var instanceOpt = connectorInstanceService.findActiveByTenantAndProvider(tenantId, providerKey);
+        if (instanceOpt.isEmpty()) {
+            throw failure("CONNECTOR_NOT_FOUND", "Calling provider not configured for this tenant: " + providerKey);
+        }
+
         ClickToCallRequest request = ClickToCallRequest.builder()
             .phoneNumber(phoneNumber)
             .entityType(entityType)
             .entityId(entityId)
             .subject(subject)
+            .providerKey(providerKey)
             .build();
+
+        UUID executionUserId;
+        try {
+            executionUserId = executionIdentityResolver.resolveExecutionUser(context, configuration);
+        } catch (WorkflowRuntimeException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new WorkflowRuntimeException("EXECUTION_USER_RESOLUTION_FAILED", "Failed to resolve execution user: " + ex.getMessage());
+        }
 
         try {
             ClickToCallResponse response = clickToCallService.execute(
                 context.getIdentity().tenantId(),
-                context.getIdentity().actorId(),
+                executionUserId,
                 request
             );
             Map<String, Object> output = new LinkedHashMap<>();

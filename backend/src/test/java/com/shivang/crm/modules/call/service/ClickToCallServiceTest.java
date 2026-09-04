@@ -61,8 +61,7 @@ class ClickToCallServiceTest {
     }
 
     @Test
-    void sellSparkSuccessWithoutCallId() {
-        // SellSpark returns {"response":"Call Successfully Schedule","status":"success"} — no callId
+    void successWithoutCallId() {
         when(resolver.resolvePhone(any(), any(), any())).thenReturn(
             com.shivang.crm.shared.service.EntityPhoneResolutionResult.builder().found(true).phone("9555969516").build()
         );
@@ -83,7 +82,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).providerKey("provider_a").build();
         var resp = svc.clickToCall(req);
 
         assertThat(resp.getExternalCallId()).isNull();
@@ -94,19 +93,29 @@ class ClickToCallServiceTest {
 
         var execCaptor = ArgumentCaptor.forClass(com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest.class);
         verify(execService).execute(execCaptor.capture());
+        assertThat(execCaptor.getValue().getProviderKey()).isEqualTo("provider_a");
         assertThat(execCaptor.getValue().getInputData().get("leadId")).isEqualTo(callResp.getId().toString());
 
         ArgumentCaptor<java.util.Map<String, Object>> metaCaptor = ArgumentCaptor.forClass(java.util.Map.class);
         verify(activityService, times(1)).logActivity(eq(tenantId), any(), any(), eq("CALL"), any(), eq(userId), metaCaptor.capture());
         java.util.Map<String, Object> meta = metaCaptor.getValue();
         assertThat(meta).containsKeys("crmCallId", "providerKey", "connectorExecutionId");
+        assertThat(meta).containsEntry("providerKey", "provider_a");
         assertThat(meta).containsEntry("subType", "CALL_INITIATED");
         assertThat(meta).doesNotContainKey("password");
         assertThat(meta).doesNotContainKey("token");
     }
 
     @Test
-    void providerExecutionFailureDoesNotCreateCall() {
+    void providerKeyRequired() {
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        assertThatThrownBy(() -> svc.clickToCall(req))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", "PROVIDER_REQUIRED");
+    }
+
+    @Test
+    void providerExecutionFailureMarksCancelled() {
         when(resolver.resolvePhone(any(), any(), any())).thenReturn(
             com.shivang.crm.shared.service.EntityPhoneResolutionResult.builder().found(true).phone("9555969516").build()
         );
@@ -121,13 +130,12 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).providerKey("provider_a").build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", "PROVIDER_EXECUTION_FAILED");
 
-        // CRM Call SHOULD be created before provider execution, and then marked CANCELLED on failure
         verify(callService, times(1)).createCall(any(), any(), any(CallCreateRequest.class));
         verify(callRepo, times(1)).save(any(com.shivang.crm.modules.call.entity.Call.class));
     }
@@ -150,7 +158,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).providerKey("provider_a").build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
@@ -182,14 +190,14 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("CONTACT").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("CONTACT").entityId(UUID.randomUUID()).providerKey("provider_a").build();
         var resp = svc.clickToCall(req);
 
         assertThat(resp.getStatus()).isEqualTo("success");
-        // Verify the normalized phone was sent
         var execCaptor = ArgumentCaptor.forClass(com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest.class);
         verify(execService).execute(execCaptor.capture());
         assertThat(execCaptor.getValue().getInputData().get("phoneNumber")).isEqualTo("9555969516");
+        assertThat(execCaptor.getValue().getProviderKey()).isEqualTo("provider_a");
     }
 
     @Test
@@ -198,7 +206,7 @@ class ClickToCallServiceTest {
             com.shivang.crm.shared.service.EntityPhoneResolutionResult.builder().found(true).phone("12345").build()
         );
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).providerKey("provider_a").build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
@@ -211,7 +219,7 @@ class ClickToCallServiceTest {
             com.shivang.crm.shared.service.EntityPhoneResolutionResult.builder().found(true).phone("not-a-number").build()
         );
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("ACCOUNT").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("ACCOUNT").entityId(UUID.randomUUID()).providerKey("provider_a").build();
 
         assertThatThrownBy(() -> svc.clickToCall(req))
             .isInstanceOf(BusinessException.class)
@@ -239,7 +247,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).providerKey("provider_a").build();
         var resp = svc.clickToCall(req);
 
         assertThat(resp.getStatus()).isEqualTo("success");
@@ -269,7 +277,7 @@ class ClickToCallServiceTest {
         com.shivang.crm.modules.call.entity.Call callEntity = com.shivang.crm.modules.call.entity.Call.builder().id(callResp.getId()).subject("Stub").build();
         when(callRepo.findById(callResp.getId())).thenReturn(Optional.of(callEntity));
 
-        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).build();
+        ClickToCallRequest req = ClickToCallRequest.builder().entityType("lead").entityId(UUID.randomUUID()).providerKey("provider_a").build();
         var resp = svc.clickToCall(req);
 
         var execCaptor = ArgumentCaptor.forClass(com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest.class);

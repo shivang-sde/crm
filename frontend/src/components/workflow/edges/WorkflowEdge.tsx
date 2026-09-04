@@ -1,11 +1,11 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useId } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
   EdgeProps,
-  getBezierPath,
+  getSmoothStepPath,
 } from "@xyflow/react";
 
 function WorkflowEdgeComponent({
@@ -18,34 +18,59 @@ function WorkflowEdgeComponent({
   data,
   selected,
   sourceHandleId,
+  id,
 }: EdgeProps) {
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
     targetX,
     targetY,
     sourcePosition,
     targetPosition,
+    borderRadius: 8,
   });
 
   const label = resolveEdgeLabel(data, sourceHandleId);
   const d = data as unknown as { executed?: boolean; dimmed?: boolean } | undefined;
   const isExecuted = Boolean(d?.executed);
   const isDimmed = Boolean(d?.dimmed);
-
-  // ponytail: SVG marker defined in WorkflowCanvas (#wf-arrow), arrow via url()
-  const markerId = selected || isExecuted ? "url(#wf-arrow-selected)" : isDimmed ? "url(#wf-arrow-dimmed)" : "url(#wf-arrow)";
+  const rawId = useId();
+  const markerId = `wf-arrow-${id ?? rawId.replace(/:/g, "")}`;
+  const markerSelectedId = `${markerId}-selected`;
+  const markerDimmedId = `${markerId}-dimmed`;
+  const activeMarker = selected || isExecuted ? markerSelectedId : isDimmed ? markerDimmedId : markerId;
   return (
     <>
+      <svg style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} aria-hidden="true">
+        <defs>
+          <marker id={markerId} viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--foreground)" opacity={isDimmed ? 0.35 : 1} />
+          </marker>
+          <marker id={markerSelectedId} viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--primary)" />
+          </marker>
+          <marker id={markerDimmedId} viewBox="0 0 10 10" refX={8} refY={5} markerWidth={8} markerHeight={8} orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted-foreground)" />
+          </marker>
+        </defs>
+      </svg>
       <BaseEdge
         path={edgePath}
-        markerEnd={markerId}
+        markerEnd={`url(#${activeMarker})`}
         style={{
-          stroke: selected ? "hsl(var(--primary))" : isExecuted ? "hsl(var(--primary))" : isDimmed ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground) / 0.55)",
-          strokeWidth: selected || isExecuted ? 2.6 : 1.9,
-          opacity: isDimmed ? 0.35 : 1,
+          stroke: selected || isExecuted ? "var(--primary)" : isDimmed ? "var(--muted-foreground)" : "var(--foreground)",
+          strokeWidth: selected ? 3 : isExecuted ? 2.8 : 2.2,
+          opacity: isDimmed ? 0.45 : 1,
         }}
-        interactionWidth={18}
+        interactionWidth={24}
+      />
+      {/* Invisible wider hit area for easy selection (n8n-style) */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={24}
+        style={{ pointerEvents: "stroke" }}
       />
       {label && (
         <EdgeLabelRenderer>

@@ -15,7 +15,8 @@ import { OperationalReports } from "@/components/reports/OperationalReports";
 export default function ReportsPage() {
   const userRole = useAuthStore((s) => s.userRole);
   const isPlatform = userRole === "SUPERADMIN" || userRole === "RESELLER";
-  return isPlatform ? <PlatformReportsPage /> : <OperationalReports />;
+  // return isPlatform ? <PlatformReportsPage /> : <OperationalReports />;
+  return <div>Reports are currently in development.</div>;
 }
 
 function PlatformReportsPage() {

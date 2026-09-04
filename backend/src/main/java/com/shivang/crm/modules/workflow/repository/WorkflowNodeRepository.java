@@ -17,4 +17,6 @@ public interface WorkflowNodeRepository extends JpaRepository<WorkflowNode, UUID
     Optional<WorkflowNode> findByIdAndTenantIdAndWorkflowVersionIdAndDeletedFalse(UUID id, UUID tenantId, UUID workflowVersionId);
 
     Optional<WorkflowNode> findByTenantIdAndWorkflowVersionIdAndNodeKeyAndDeletedFalse(UUID tenantId, UUID workflowVersionId, String nodeKey);
+
+    List<WorkflowNode> findByTenantIdAndDeletedFalse(UUID tenantId);
 }

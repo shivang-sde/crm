@@ -311,6 +311,20 @@ export function isNodeConfigured(data: BuilderNodeData): {
         if (!method) issues.push("Method required");
         else if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method))
           issues.push("Method must be GET, POST, PUT, PATCH, or DELETE");
+        const rawAuthMode = typeof conf.authenticationMode === "string" ? conf.authenticationMode : typeof conf.authMode === "string" ? conf.authMode : "";
+        const authMode = rawAuthMode ? String(rawAuthMode).trim().toUpperCase() : (conf.connectionId ? "SAVED_CONNECTION" : (conf.credentialSource || conf.executeAs) ? "CREDENTIAL" : "NONE");
+        if (authMode === "SAVED_CONNECTION") {
+          const connId = typeof conf.connectionId === "string" ? conf.connectionId.trim() : "";
+          if (!connId) issues.push("Saved connection required");
+        } else if (authMode === "CREDENTIAL") {
+          const credSrc = typeof conf.credentialSource === "string" ? conf.credentialSource : typeof conf.executeAs === "string" ? conf.executeAs : "WORKFLOW_USER";
+          const src = String(credSrc).trim().toUpperCase();
+          if (!["WORKFLOW_USER", "RECORD_OWNER", "SPECIFIC_USER", "TENANT"].includes(src)) issues.push("Credential source required");
+          if (src === "SPECIFIC_USER") {
+            const uid = typeof conf.credentialSourceUserId === "string" ? conf.credentialSourceUserId : typeof conf.executeAsUserId === "string" ? conf.executeAsUserId : "";
+            if (!String(uid).trim()) issues.push("Specific user required for credential");
+          }
+        }
       } else if (actionType === "CREATE_TASK") {
         const subject = typeof conf.subject === "string" ? conf.subject.trim() : "";
         if (!subject) issues.push("Subject required");
@@ -328,6 +342,8 @@ export function isNodeConfigured(data: BuilderNodeData): {
           if (!v) issues.push(`${k} required`);
         }
       } else if (actionType === "CLICK_TO_CALL") {
+        const providerKey = typeof conf.providerKey === "string" ? conf.providerKey.trim() : typeof conf.provider === "string" ? String(conf.provider).trim() : "";
+        if (!providerKey) issues.push("Calling provider required");
         const phone = typeof conf.phoneNumber === "string" ? conf.phoneNumber.trim() : "";
         const et = typeof conf.entityType === "string" ? conf.entityType.trim() : "";
         const eid = typeof conf.entityId === "string" ? conf.entityId.trim() : "";

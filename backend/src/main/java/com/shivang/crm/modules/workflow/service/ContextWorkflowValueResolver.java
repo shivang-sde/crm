@@ -14,6 +14,14 @@ public class ContextWorkflowValueResolver implements WorkflowValueResolver {
         }
 
         String normalizedPath = fieldPath.trim();
+        // Credential namespace — execution-only, never persisted
+        if (normalizedPath.startsWith("credential.")) {
+            String credPath = normalizedPath.substring("credential.".length());
+            Map<String, Object> credRoot = context.getCredentialContext();
+            if (credRoot == null || credRoot.isEmpty()) return WorkflowResolvedValue.missing();
+            // Support nested credential keys like credential.oauth.token via dotted traversal
+            return find(credRoot, credPath);
+        }
         Map<String, Object> root = context.getEntity();
         if (normalizedPath.startsWith("entity.")) {
             normalizedPath = normalizedPath.substring("entity.".length());

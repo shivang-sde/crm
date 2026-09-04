@@ -543,3 +543,70 @@ export function useRetryWorkflowExecution() {
     },
   });
 }
+
+export function useCallingProviders() {
+  return useQuery({
+    queryKey: [...workflowKeys.all, "calling-providers"],
+    queryFn: () => workflowApi.getCallingProviders(),
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function useHttpCredentialTenantStatus() {
+  return useQuery({
+    queryKey: [...workflowKeys.all, "http-credential-tenant"],
+    queryFn: () => workflowApi.getHttpCredentialTenantStatus(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useHttpCredentialUserStatus(userId?: string) {
+  return useQuery({
+    queryKey: [...workflowKeys.all, "http-credential-user", userId ?? ""],
+    queryFn: () => workflowApi.getHttpCredentialUserStatus(userId ?? ""),
+    enabled: Boolean(userId),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function usePutHttpCredentialTenant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (credential: Record<string, string>) => workflowApi.putHttpCredentialTenant(credential),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...workflowKeys.all, "http-credential-tenant"] });
+      qc.invalidateQueries({ queryKey: [...workflowKeys.all, "http-credential-keys"] });
+    },
+  });
+}
+
+export function usePutHttpCredentialUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, credential }: { userId: string; credential: Record<string, string> }) => workflowApi.putHttpCredentialUser(userId, credential),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: [...workflowKeys.all, "http-credential-user", vars.userId] });
+      qc.invalidateQueries({ queryKey: [...workflowKeys.all, "http-credential-keys"] });
+    },
+  });
+}
+
+export function useDeleteHttpCredentialTenant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => workflowApi.deleteHttpCredentialTenant(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...workflowKeys.all, "http-credential-tenant"] });
+    },
+  });
+}
+
+export function useDeleteHttpCredentialUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => workflowApi.deleteHttpCredentialUser(userId),
+    onSuccess: (_data, userId) => {
+      qc.invalidateQueries({ queryKey: [...workflowKeys.all, "http-credential-user", userId] });
+    },
+  });
+}

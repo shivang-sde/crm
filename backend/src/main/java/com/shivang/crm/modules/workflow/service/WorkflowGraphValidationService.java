@@ -244,11 +244,35 @@ public class WorkflowGraphValidationService {
             }
             if ("CLICK_TO_CALL".equalsIgnoreCase(String.valueOf(actionType))
                 && configuration != null && configuration.get("config") instanceof Map<?, ?> callConfig) {
+                // FE/BE-WF-28: provider must be explicit — no fallback
+                Object rawProvider = callConfig.get("providerKey");
+                if (rawProvider == null) rawProvider = callConfig.get("provider");
+                boolean hasProvider = rawProvider != null && !String.valueOf(rawProvider).isBlank();
+                if (!hasProvider) {
+                    errors.add(errorForNode("WORKFLOW_CLICK_TO_CALL_PROVIDER_REQUIRED", "Click to Call requires a configured calling provider", action));
+                }
                 boolean hasPhone = callConfig.get("phoneNumber") != null && !String.valueOf(callConfig.get("phoneNumber")).isBlank();
                 boolean hasEntityPair = callConfig.get("entityType") != null && !String.valueOf(callConfig.get("entityType")).isBlank()
                     && callConfig.get("entityId") != null && !String.valueOf(callConfig.get("entityId")).isBlank();
                 if (!hasPhone && !hasEntityPair) {
                     errors.add(errorForNode("WORKFLOW_CLICK_TO_CALL_PHONE_REQUIRED", "CLICK_TO_CALL requires phoneNumber or entityType and entityId", action));
+                }
+                Object executeAs = callConfig.get("executeAs");
+                if (executeAs != null && !String.valueOf(executeAs).isBlank()) {
+                    String ea = String.valueOf(executeAs).trim().toUpperCase();
+                    if (!Set.of("WORKFLOW_USER", "RECORD_OWNER", "SPECIFIC_USER").contains(ea)) {
+                        errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "CLICK_TO_CALL executeAs must be WORKFLOW_USER, RECORD_OWNER or SPECIFIC_USER", action));
+                    } else if ("SPECIFIC_USER".equals(ea)) {
+                        Object userId = callConfig.get("executeAsUserId");
+                        if (userId == null || String.valueOf(userId).isBlank()) {
+                            errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "SPECIFIC_USER requires executeAsUserId", action));
+                        } else {
+                            String uid = String.valueOf(userId).trim();
+                            if (!uid.startsWith("{{") && !uid.endsWith("}}")) {
+                                try { UUID.fromString(uid); } catch (Exception ex) { errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "executeAsUserId must be a valid UUID or template", action)); }
+                            }
+                        }
+                    }
                 }
             }
             if ("HTTP_API".equalsIgnoreCase(String.valueOf(actionType))
@@ -265,10 +289,56 @@ public class WorkflowGraphValidationService {
                 validateObjectFieldForNode(httpConfig, "queryParams", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors, action);
                 validateObjectFieldForNode(httpConfig, "headers", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors, action);
                 validateObjectFieldForNode(httpConfig, "body", "WORKFLOW_HTTP_API_INVALID_CONFIG", errors, action);
+                // ── Phase 6: authentication mode ──
+                Object rawAuthMode = httpConfig.get("authenticationMode");
+                if (rawAuthMode == null) rawAuthMode = httpConfig.get("authMode");
+                String authMode = rawAuthMode == null ? null : String.valueOf(rawAuthMode).trim().toUpperCase();
+                if (authMode != null && !authMode.isBlank() && !Set.of("NONE", "SAVED_CONNECTION", "CREDENTIAL").contains(authMode)) {
+                    errors.add(errorForNode("WORKFLOW_HTTP_API_INVALID_CONFIG", "Authentication mode must be NONE, SAVED_CONNECTION or CREDENTIAL", action));
+                }
+                String effectiveAuthMode = authMode;
+                if (effectiveAuthMode == null || effectiveAuthMode.isBlank()) {
+                    Object connCheck = httpConfig.get("connectionId");
+                    if (connCheck != null && !String.valueOf(connCheck).isBlank()) effectiveAuthMode = "SAVED_CONNECTION";
+                    else {
+                        Object credSrcCheck = httpConfig.get("credentialSource");
+                        if (credSrcCheck == null) credSrcCheck = httpConfig.get("executeAs");
+                        if (credSrcCheck != null && !String.valueOf(credSrcCheck).isBlank()) effectiveAuthMode = "CREDENTIAL";
+                        else effectiveAuthMode = "NONE";
+                    }
+                }
                 Object connectionId = httpConfig.get("connectionId");
                 if (connectionId != null && !String.valueOf(connectionId).trim().startsWith("{{")) {
                     try { UUID.fromString(String.valueOf(connectionId)); }
                     catch (IllegalArgumentException ex) { errors.add(errorForNode("WORKFLOW_HTTP_API_INVALID_CONNECTION", "connectionId must be a UUID or runtime expression", action)); }
+                }
+                if ("SAVED_CONNECTION".equals(effectiveAuthMode) && (connectionId == null || String.valueOf(connectionId).isBlank())) {
+                    errors.add(errorForNode("WORKFLOW_HTTP_API_INVALID_CONFIG", "Saved connection is required when authentication mode is SAVED_CONNECTION", action));
+                }
+                if ("CREDENTIAL".equals(effectiveAuthMode) && connectionId != null && !String.valueOf(connectionId).isBlank()) {
+                    errors.add(errorForNode("WORKFLOW_HTTP_API_INVALID_CONFIG", "Credential mode must not include a saved connection", action));
+                }
+                // Validate credential source / executeAs for HTTP_API (includes TENANT)
+                Object credSourceRaw = httpConfig.get("credentialSource");
+                if (credSourceRaw == null) credSourceRaw = httpConfig.get("executeAs");
+                if (credSourceRaw != null && !String.valueOf(credSourceRaw).isBlank()) {
+                    String ea = String.valueOf(credSourceRaw).trim().toUpperCase();
+                    if (!Set.of("WORKFLOW_USER", "RECORD_OWNER", "SPECIFIC_USER", "TENANT").contains(ea)) {
+                        errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "HTTP_API credential source must be WORKFLOW_USER, RECORD_OWNER, SPECIFIC_USER or TENANT", action));
+                    } else if ("SPECIFIC_USER".equals(ea)) {
+                        Object userId = httpConfig.get("credentialSourceUserId");
+                        if (userId == null) userId = httpConfig.get("executeAsUserId");
+                        if (userId == null || String.valueOf(userId).isBlank()) {
+                            errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "SPECIFIC_USER requires credentialSourceUserId", action));
+                        } else {
+                            String uid = String.valueOf(userId).trim();
+                            if (!uid.startsWith("{{") && !uid.endsWith("}}")) {
+                                try { UUID.fromString(uid); } catch (Exception ex) { errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "credentialSourceUserId must be a valid UUID or template", action)); }
+                            }
+                        }
+                    }
+                } else if ("CREDENTIAL".equals(effectiveAuthMode)) {
+                    // CREDENTIAL mode defaults to WORKFLOW_USER if not specified — no error, but explicit is preferred
                 }
             }
         }

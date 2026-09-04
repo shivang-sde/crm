@@ -36,7 +36,7 @@ import {
   serializeWaitUntil,
 } from "./utils/node-config";
 import { findEntityMetadata } from "./utils/field-options";
-import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipReferenceData, useWorkflowHttpConnections } from "@/lib/hooks/workflow";
+import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipReferenceData, useWorkflowHttpConnections, useCallingProviders, useHttpCredentialTenantStatus, useHttpCredentialUserStatus } from "@/lib/hooks/workflow";
 import { PickerField, WorkflowValuePicker } from "./WorkflowValuePicker";
 import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
 
@@ -523,6 +523,8 @@ function ActionConfig({
   const message = typeof configuration.message === "string" ? configuration.message : "";
   const referenceData = useWorkflowReferenceData(entityType);
   const userOptions = referenceData.optionsByField["entity.ownerId"] ?? [];
+  const callingProviders = useCallingProviders();
+  const hasCallingProvider = (callingProviders.data?.length ?? 0) > 0;
 
   const setConfig = (patch: Record<string, unknown>) =>
     onChange({ ...configuration, actionType, config: { ...config, ...patch } });
@@ -552,11 +554,16 @@ function ActionConfig({
             <SelectValue placeholder="Select action" />
           </SelectTrigger>
           <SelectContent>
-            {(actions.length > 0 ? actions : Object.keys(ACTION_LABELS)).map((action) => (
-              <SelectItem key={action} value={action}>
-                {ACTION_LABELS[action] ?? action}
-              </SelectItem>
-            ))}
+            {(actions.length > 0 ? actions : Object.keys(ACTION_LABELS)).map((action) => {
+              const isClickToCall = action === "CLICK_TO_CALL";
+              const disabled = isClickToCall && !hasCallingProvider && !callingProviders.isLoading;
+              return (
+                <SelectItem key={action} value={action} disabled={disabled}>
+                  {ACTION_LABELS[action] ?? action}
+                  {isClickToCall && disabled ? " — Configure provider first" : ""}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -700,54 +707,15 @@ function ActionConfig({
       )}
 
       {actionType === "CLICK_TO_CALL" && (
-        <>
-          <ConfigSelect
-            label="Target entity"
-            value={targetEntityType}
-            readOnly={readOnly}
-            rawOptions={[
-              { value: "LEAD", label: "Lead" },
-              { value: "CONTACT", label: "Contact" },
-              { value: "ACCOUNT", label: "Account" },
-              { value: "DEAL", label: "Deal" },
-            ]}
-            fallback={null}
-            onValueChange={(value) => setConfig({ entityType: value })}
-          />
-          <TargetRecordField
-            label="Record"
-            value={stringValue(config.entityId)}
-            readOnly={readOnly}
-            triggerEntityType={entityType}
-            onChange={(entityId) => setConfig({ entityId })}
-          />
-          <PickerField
-            label="Phone number override"
-            value={stringValue(config.phoneNumber)}
-            placeholder="{{entity.phone}}"
-            readOnly={readOnly}
-            triggerEntityType={entityType}
-            currentNodeId={currentNodeId}
-            nodes={nodes}
-            edges={edges}
-            onChange={(phoneNumber) => setConfig({ phoneNumber })}
-          />
-          <PickerField
-            label="Subject"
-            value={stringValue(config.subject)}
-            placeholder="Call about {{entity.fullName}}"
-            readOnly={readOnly}
-            triggerEntityType={entityType}
-            currentNodeId={currentNodeId}
-            nodes={nodes}
-            edges={edges}
-            onChange={(subject) => setConfig({ subject })}
-          />
-          <p className="text-xs text-muted-foreground">
-            Uses the tenant&apos;s configured calling provider. Phone is resolved
-            from the linked record when no override is given.
-          </p>
-        </>
+        <ClickToCallConfig
+          config={config}
+          readOnly={readOnly}
+          triggerEntityType={entityType}
+          currentNodeId={currentNodeId}
+          nodes={nodes}
+          edges={edges}
+          onChange={setConfig}
+        />
       )}
 
       {actionType === "HTTP_API" && (
@@ -801,6 +769,16 @@ function HttpApiConfig({
 }) {
   const connections = useWorkflowHttpConnections();
   const options = connections.data ?? [];
+  const httpReferenceData = useWorkflowReferenceData(triggerEntityType ?? "");
+  const httpUserOptions = httpReferenceData.optionsByField["entity.ownerId"] ?? [];
+  const tenantCredStatus = useHttpCredentialTenantStatus();
+  const credSourceForStatus = String((config.credentialSource ?? config.executeAs) ?? "WORKFLOW_USER").toUpperCase();
+  const credUserIdForStatus = String((config.credentialSourceUserId ?? config.executeAsUserId) ?? "");
+  const userCredStatus = useHttpCredentialUserStatus(credSourceForStatus === "SPECIFIC_USER" ? credUserIdForStatus : undefined);
+  const rawAuthMode = (config.authenticationMode ?? (config as Record<string, unknown>).authMode) as string | undefined;
+  const authMode = rawAuthMode ? String(rawAuthMode).trim().toUpperCase() : (config.connectionId ? "SAVED_CONNECTION" : ((config.credentialSource ?? config.executeAs) ? "CREDENTIAL" : "NONE"));
+  const credSource = credSourceForStatus;
+  const credUserId = credUserIdForStatus;
   const idempotency =
     config.idempotency && typeof config.idempotency === "object"
       ? (config.idempotency as Record<string, unknown>)
@@ -862,42 +840,127 @@ function HttpApiConfig({
         }))}
         onValueChange={(method) => onChange({ method })}
       />
-      <ConfigText
+      <PickerField
         label="URL *"
         value={stringValue(config.url)}
+        placeholder="https://api.example.com/customers/{{entity.id}}  — supports {{credential.*}} when Credential mode"
         readOnly={readOnly}
+        triggerEntityType={triggerEntityType}
+        currentNodeId={currentNodeId}
+        nodes={nodes}
+        edges={edges}
         onChange={(url) => onChange({ url })}
-        placeholder="https://example.com/hook"
       />
       <div className="space-y-1">
-        <Label>Credential reference</Label>
+        <Label>Authentication</Label>
         <Select
-          value={config.connectionId ? stringValue(config.connectionId) : ""}
-          disabled={readOnly || connections.isLoading}
-          onValueChange={(connectionId) => onChange({ connectionId: connectionId === "__none__" ? null : connectionId })}
+          value={authMode}
+          disabled={readOnly}
+          onValueChange={(mode) => {
+            if (mode === "NONE") onChange({ authenticationMode: "NONE", connectionId: null, credentialSource: undefined, credentialSourceUserId: undefined, executeAs: undefined, executeAsUserId: undefined });
+            else if (mode === "SAVED_CONNECTION") onChange({ authenticationMode: "SAVED_CONNECTION", credentialSource: undefined, credentialSourceUserId: undefined });
+            else if (mode === "CREDENTIAL") onChange({ authenticationMode: "CREDENTIAL", connectionId: null, credentialSource: (config.credentialSource as string) || (config.executeAs as string) || "WORKFLOW_USER" });
+          }}
         >
-          <SelectTrigger>
-            <SelectValue placeholder="None (unauthenticated)" />
-          </SelectTrigger>
+          <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">None (unauthenticated)</SelectItem>
-            {options.map((option) => (
-              <SelectItem key={option.id} value={option.id}>
-                {option.name} — {option.authType}
-                {!option.active ? " (inactive)" : ""}
-              </SelectItem>
-            ))}
+            <SelectItem value="NONE">No authentication</SelectItem>
+            <SelectItem value="SAVED_CONNECTION">Use saved connection</SelectItem>
+            <SelectItem value="CREDENTIAL">Use credentials of…</SelectItem>
           </SelectContent>
         </Select>
-        {Boolean(config.connectionId) && !options.some((option) => option.id === stringValue(config.connectionId)) && (
-          <p className="text-xs text-orange-600">
-            Selected connection is unavailable — it may have been deactivated.
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          Credentials are stored in connection settings and referenced by ID only.
+        <p className="text-[11px] text-muted-foreground">
+          {authMode === "NONE" ? "Call the API without authentication." : authMode === "SAVED_CONNECTION" ? "Use a reusable connection (API key, bearer token, basic auth) stored for this workspace." : "Resolve credentials for a CRM user/tenant and inject via {{credential.*}} wherever needed."}
         </p>
       </div>
+      {authMode === "SAVED_CONNECTION" && (
+        <div className="space-y-1">
+          <Label>Saved connection *</Label>
+          <Select
+            value={config.connectionId ? stringValue(config.connectionId) : ""}
+            disabled={readOnly || connections.isLoading}
+            onValueChange={(connectionId) => onChange({ connectionId: connectionId === "__none__" ? null : connectionId })}
+          >
+            <SelectTrigger><SelectValue placeholder="Select connection" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__" disabled>Select connection</SelectItem>
+              {options.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.name} — {option.authType}
+                  {!option.active ? " (inactive)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {Boolean(config.connectionId) && !options.some((option) => option.id === stringValue(config.connectionId)) && (
+            <p className="text-xs text-orange-600">Selected connection is unavailable — it may have been deactivated.</p>
+          )}
+          <p className="text-xs text-muted-foreground">Credentials are stored in connection settings and referenced by ID only.</p>
+        </div>
+      )}
+      {authMode === "CREDENTIAL" && (
+        <>
+          <div className="space-y-1">
+            <Label>Use credentials of *</Label>
+            <Select
+              value={["WORKFLOW_USER", "RECORD_OWNER", "SPECIFIC_USER", "TENANT"].includes(credSource) ? credSource : "WORKFLOW_USER"}
+              disabled={readOnly}
+              onValueChange={(v) => onChange({ credentialSource: v, executeAs: v, ...(v === "SPECIFIC_USER" ? {} : { credentialSourceUserId: undefined, executeAsUserId: undefined }) })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="WORKFLOW_USER">Workflow user — who triggered the workflow</SelectItem>
+                <SelectItem value="RECORD_OWNER">Record owner — owner of the current record</SelectItem>
+                <SelectItem value="SPECIFIC_USER">Specific CRM user</SelectItem>
+                <SelectItem value="TENANT">Workspace — shared credential</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {credSource === "WORKFLOW_USER" && "The API request will use the credential configured for the person who triggered the workflow."}
+              {credSource === "RECORD_OWNER" && "The API request will use the credential configured for the owner of the current record."}
+              {credSource === "SPECIFIC_USER" && "The API request will use the credential configured for the selected user."}
+              {credSource === "TENANT" && "The API request will use the workspace’s shared credential."}
+            </p>
+          </div>
+          {credSource === "SPECIFIC_USER" && (
+            <div className="space-y-1">
+              <Label>CRM user *</Label>
+              {httpUserOptions.length > 0 ? (
+                <Select
+                  value={httpUserOptions.some((o) => o.value === credUserId) ? credUserId : credUserId ? "__legacy__" : ""}
+                  disabled={readOnly}
+                  onValueChange={(v) => onChange({ credentialSourceUserId: v === "__legacy__" ? credUserId : v, executeAsUserId: v === "__legacy__" ? credUserId : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+                  <SelectContent>
+                    {httpUserOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                    {credUserId && !httpUserOptions.some((o) => o.value === credUserId) && (
+                      <SelectItem value="__legacy__">{credUserId}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={credUserId} placeholder="User ID or {{entity.ownerId}}" disabled={readOnly} onChange={(e) => onChange({ credentialSourceUserId: e.target.value, executeAsUserId: e.target.value })} />
+              )}
+            </div>
+          )}
+          {credSource === "TENANT" && (
+            tenantCredStatus.isLoading ? <p className="text-xs text-muted-foreground">Checking workspace credential…</p> : tenantCredStatus.data?.configured ? <p className="text-xs text-emerald-600">✓ Workspace credential configured</p> : <p className="text-xs text-amber-600">⚠ Workspace credential not configured — configure in Settings → HTTP Credentials</p>
+          )}
+          {credSource === "SPECIFIC_USER" && !credUserId && <p className="text-xs text-amber-600">Select a user for credential lookup</p>}
+          {credSource === "SPECIFIC_USER" && credUserId && (
+            userCredStatus.isLoading ? <p className="text-xs text-muted-foreground">Checking user credential…</p> : userCredStatus.data?.configured ? <p className="text-xs text-emerald-600">✓ Credential configured for selected user</p> : <p className="text-xs text-amber-600">⚠ Selected user has no credential configured for this API</p>
+          )}
+          {credSource === "WORKFLOW_USER" && <p className="text-xs text-muted-foreground">Credential will be resolved for the workflow user at execution time</p>}
+          {credSource === "RECORD_OWNER" && <p className="text-xs text-muted-foreground">Credential will be resolved for the record owner at execution time</p>}
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+            <p className="font-medium">Credential injection</p>
+            <p className="text-[11px]">Use <span className="font-mono">{"{{credential.apiKey}}"}</span>, <span className="font-mono">{"{{credential.token}}"}</span>, <span className="font-mono">{"{{credential.accountId}}"}</span> etc. in URL, headers, query or body. Insert via “Insert value → Credential”.</p>
+          </div>
+        </>
+      )}
       <div className="space-y-2">
         <Label>Headers</Label>
         <div className="space-y-2">
@@ -1037,14 +1100,29 @@ function HttpApiConfig({
         </div>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="http-body">Body</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="http-body">Body</Label>
+          {!readOnly && (
+            <WorkflowValuePicker
+              triggerEntityType={triggerEntityType}
+              currentNodeId={currentNodeId}
+              nodes={nodes}
+              edges={edges}
+              onSelect={(ins) => {
+                const cur = bodyString ?? "";
+                const insertion = cur ? (cur.endsWith(" ") || cur.endsWith("\n") ? cur + ins : cur + " " + ins) : ins;
+                onChange({ body: insertion });
+              }}
+            />
+          )}
+        </div>
         <Textarea
           id="http-body"
           rows={4}
           disabled={readOnly}
           value={bodyString}
           onChange={(event) => onChange({ body: event.target.value })}
-          placeholder={'{"leadId":"{{entity.id}}","name":"{{entity.fullName}}"}'}
+          placeholder={'{"customerId":"{{entity.id}}","secret":"{{credential.secret}}"}  — supports {{credential.*}}'}
           aria-invalid={bodyError ? true : undefined}
           aria-describedby={bodyError ? "http-body-error" : undefined}
         />
@@ -1055,6 +1133,7 @@ function HttpApiConfig({
         ) : bodyString.trim() ? (
           <p className="text-xs text-emerald-600">✓ Valid JSON</p>
         ) : null}
+        <p className="text-[11px] text-muted-foreground">Supports <span className="font-mono">{"{{entity.*}}"}</span> and <span className="font-mono">{"{{credential.*}}"}</span> when Authentication is Credential.</p>
       </div>
       <div className="flex items-center gap-2">
         <Checkbox
@@ -1391,5 +1470,156 @@ function ConfigText({
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
+  );
+}
+
+function ClickToCallConfig({
+  config,
+  readOnly,
+  triggerEntityType,
+  currentNodeId,
+  nodes,
+  edges,
+  onChange,
+}: {
+  config: Record<string, unknown>;
+  readOnly: boolean;
+  triggerEntityType: string;
+  currentNodeId?: string;
+  nodes?: BuilderNode[];
+  edges?: BuilderEdge[];
+  onChange: (patch: Record<string, unknown>) => void;
+}) {
+  const callingProviders = useCallingProviders();
+  const providers = callingProviders.data ?? [];
+  const isLoading = callingProviders.isLoading;
+  const providerKey = stringValue(config.providerKey ?? config.provider);
+  const executeAs = stringValue(config.executeAs) || "WORKFLOW_USER";
+  const executeAsUserId = stringValue(config.executeAsUserId);
+  const targetEntityType = typeof config.entityType === "string" ? config.entityType : "";
+  const referenceData = useWorkflowReferenceData(triggerEntityType);
+  const userOptions = referenceData.optionsByField["entity.ownerId"] ?? [];
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground">Loading calling providers…</p>;
+  }
+  if (providers.length === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-medium text-amber-800">Calling provider not configured</p>
+          <p className="mt-1 text-xs text-amber-700">Configure a calling provider to use Click to Call.</p>
+          <a href="/admin/settings" className="mt-2 inline-block text-xs font-medium text-amber-800 underline">Go to Calling settings →</a>
+        </div>
+        <p className="text-xs text-muted-foreground">This action cannot be executed until a calling provider is configured for this tenant.</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="space-y-1">
+        <Label>Calling provider *</Label>
+        <Select
+          value={providers.some((p) => p.providerKey === providerKey) ? providerKey : ""}
+          disabled={readOnly}
+          onValueChange={(value) => onChange({ providerKey: value })}
+        >
+          <SelectTrigger><SelectValue placeholder="Select provider" /></SelectTrigger>
+          <SelectContent>
+            {providers.map((provider) => (
+              <SelectItem key={provider.providerKey} value={provider.providerKey}>
+                {provider.providerName} {provider.connectorName ? `— ${provider.connectorName}` : ""} {provider.environment ? `(${provider.environment})` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {providerKey && !providers.some((p) => p.providerKey === providerKey) && (
+          <p className="text-xs text-amber-600">Selected provider is unavailable — it may have been deactivated or removed.</p>
+        )}
+        <p className="text-[11px] text-muted-foreground">Which calling system should receive the call. Credentials are resolved per execution user.</p>
+      </div>
+      <ConfigSelect
+        label="Target entity"
+        value={targetEntityType}
+        readOnly={readOnly}
+        rawOptions={[
+          { value: "LEAD", label: "Lead" },
+          { value: "CONTACT", label: "Contact" },
+          { value: "ACCOUNT", label: "Account" },
+          { value: "DEAL", label: "Deal" },
+        ]}
+        fallback={null}
+        onValueChange={(value) => onChange({ entityType: value })}
+      />
+      <TargetRecordField
+        label="Record"
+        value={stringValue(config.entityId)}
+        readOnly={readOnly}
+        triggerEntityType={triggerEntityType}
+        onChange={(entityId) => onChange({ entityId })}
+      />
+      <PickerField
+        label="Phone number override"
+        value={stringValue(config.phoneNumber)}
+        placeholder="{{entity.phone}}"
+        readOnly={readOnly}
+        triggerEntityType={triggerEntityType}
+        currentNodeId={currentNodeId}
+        nodes={nodes}
+        edges={edges}
+        onChange={(phoneNumber) => onChange({ phoneNumber })}
+      />
+      <PickerField
+        label="Subject"
+        value={stringValue(config.subject)}
+        placeholder="Call about {{entity.fullName}}"
+        readOnly={readOnly}
+        triggerEntityType={triggerEntityType}
+        currentNodeId={currentNodeId}
+        nodes={nodes}
+        edges={edges}
+        onChange={(subject) => onChange({ subject })}
+      />
+      <div className="space-y-1">
+        <Label>Use credentials of</Label>
+        <Select
+          value={["WORKFLOW_USER", "RECORD_OWNER", "SPECIFIC_USER"].includes(executeAs) ? executeAs : "WORKFLOW_USER"}
+          disabled={readOnly}
+          onValueChange={(value) => onChange({ executeAs: value })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="WORKFLOW_USER">Workflow user — who triggered the workflow</SelectItem>
+            <SelectItem value="RECORD_OWNER">Record owner — owner of the triggering record</SelectItem>
+            <SelectItem value="SPECIFIC_USER">Specific user</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-muted-foreground">Credentials are looked up for the selected provider and the resolved user.</p>
+      </div>
+      {executeAs === "SPECIFIC_USER" && (
+        <div className="space-y-1">
+          <Label>Specific user *</Label>
+          {userOptions.length > 0 ? (
+            <Select
+              value={userOptions.some((o) => o.value === executeAsUserId) ? executeAsUserId : executeAsUserId ? "__legacy__" : ""}
+              disabled={readOnly}
+              onValueChange={(value) => onChange({ executeAsUserId: value === "__legacy__" ? executeAsUserId : value })}
+            >
+              <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+              <SelectContent>
+                {userOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+                {executeAsUserId && !userOptions.some((o) => o.value === executeAsUserId) && (
+                  <SelectItem value="__legacy__">{executeAsUserId}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input value={executeAsUserId} placeholder="User ID (UUID) or {{entity.ownerId}}" disabled={readOnly} onChange={(e) => onChange({ executeAsUserId: e.target.value })} />
+          )}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Phone is resolved from the linked record when no override is given. The credential for the resolved user and selected provider is used.</p>
+    </>
   );
 }

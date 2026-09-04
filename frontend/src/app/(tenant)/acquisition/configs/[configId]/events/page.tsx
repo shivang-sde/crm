@@ -27,17 +27,17 @@ import {
 const statusLabels: Record<LeadIngestionEventStatus, string> = {
   RECEIVED: "Received",
   PROCESSING: "Processing",
-  PROCESSED: "Processed",
-  REJECTED: "Rejected",
-  DUPLICATE: "Duplicate",
+  PROCESSED: "Lead created",
+  REJECTED: "Needs fix",
+  DUPLICATE: "Already existed",
   FAILED: "Failed",
 };
 
 const stageLabels: Record<LeadIngestionFailureStage, string> = {
   MAPPING: "Mapping",
-  VALIDATION: "Validation",
-  DEDUPLICATION: "Dedup",
-  LEAD_CREATION: "Lead Creation",
+  VALIDATION: "Check",
+  DEDUPLICATION: "Duplicate check",
+  LEAD_CREATION: "Lead creation",
   UNKNOWN: "Unknown",
 };
 
@@ -98,9 +98,9 @@ export default function AcquisitionEventsPage() {
               <ArrowLeft className="h-3 w-3" /> Source
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">Ingestion Events</h1>
+          <h1 className="text-2xl font-semibold">Lead History</h1>
           <p className="text-sm text-muted-foreground">
-            Operational visibility: which source, when, what happened, where it failed, which lead, can it be reprocessed. Derived from event API.
+            See which leads were received, which were created, and which need attention.
           </p>
         </div>
 

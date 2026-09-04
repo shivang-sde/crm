@@ -35,6 +35,16 @@ public class OutboundHttpConnection extends BaseEntity {
     @Column(name = "auth_type", nullable = false, length = 30)
     private String authType;
 
+    /**
+     * Legacy/default credential reference for this connection.
+     * Retained for backward compatibility — the authoritative runtime
+     * credential selection for HTTP_API now uses
+     * {@code OutboundHttpConnectionCredential.credentialScope + ownerUserId + connectionId}
+     * (TENANT vs USER) and for generic CREDENTIAL mode uses
+     * {@code connectionId IS NULL}. New code should not treat this as the
+     * single source of truth; it remains as the canonical tenant default
+     * for existing rows and is kept in sync by {@code WorkflowHttpConnectionService}.
+     */
     @Column(name = "credential_id")
     private UUID credentialId;
 

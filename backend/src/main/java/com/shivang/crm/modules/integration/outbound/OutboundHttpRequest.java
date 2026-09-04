@@ -14,6 +14,20 @@ public record OutboundHttpRequest(
     Map<String, List<String>> queryParams,
     Map<String, String> headers,
     Object body,
-    UUID connectionId
+    UUID connectionId,
+    UUID executionUserId
 ) {
+    public OutboundHttpRequest(
+            UUID tenantId,
+            UUID actorId,
+            UUID workflowExecutionId,
+            UUID workflowNodeExecutionId,
+            OutboundHttpMethod method,
+            String url,
+            Map<String, List<String>> queryParams,
+            Map<String, String> headers,
+            Object body,
+            UUID connectionId) {
+        this(tenantId, actorId, workflowExecutionId, workflowNodeExecutionId, method, url, queryParams, headers, body, connectionId, actorId);
+    }
 }

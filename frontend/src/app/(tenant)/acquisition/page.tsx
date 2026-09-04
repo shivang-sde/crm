@@ -392,10 +392,9 @@ export default function AcquisitionPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Lead Acquisition</h1>
+          <h1 className="text-2xl font-semibold">Lead Sources</h1>
           <p className="text-sm text-muted-foreground max-w-2xl">
-            Adapter-based lead ingestion. Different sources → source-specific mapping → universal pipeline → workflow.
-            Webhook and CSV Import are available; other transports are coming soon and are not activatable.
+            Where do your leads come from? Connect a source, map its information to CRM fields, and activate.
           </p>
         </div>
 
