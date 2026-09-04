@@ -16,6 +16,9 @@ import {
 import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipReferenceData } from "@/lib/hooks/workflow";
 import { buildFieldOptions, findEntityMetadata } from "./utils/field-options";
 import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
+import { useQuery } from "@tanstack/react-query";
+import { workflowApi } from "@/lib/api/workflow";
+import { workflowKeys } from "@/lib/hooks/workflow";
 
 interface WorkflowValuePickerProps {
   triggerEntityType?: string;
@@ -24,6 +27,11 @@ interface WorkflowValuePickerProps {
   edges?: BuilderEdge[];
   onSelect: (insertion: string, meta: { label: string; path: string }) => void;
   align?: "start" | "center" | "end";
+  credentialContext?: {
+    authenticationMode?: string;
+    credentialSource?: string;
+    credentialSourceUserId?: string;
+  };
 }
 
 type PickerItem = {
@@ -32,6 +40,7 @@ type PickerItem = {
   insertion: string;
   group: string;
   keywords: string;
+  disabled?: boolean;
 };
 
 function ancestorsOf(currentNodeId: string | undefined, nodes: BuilderNode[] | undefined, edges: BuilderEdge[] | undefined): Set<string> {
@@ -67,6 +76,7 @@ export function WorkflowValuePicker({
   edges,
   onSelect,
   align = "start",
+  credentialContext,
 }: WorkflowValuePickerProps) {
   const [open, setOpen] = useState(false);
   const metadataQuery = useWorkflowMetadata();
@@ -74,6 +84,27 @@ export function WorkflowValuePicker({
   const referenceData = useWorkflowReferenceData(triggerEntityType ?? "");
   const entityMeta = findEntityMetadata(metadata, triggerEntityType);
   const relationshipData = useWorkflowRelationshipReferenceData(entityMeta?.relationships);
+
+  // Dynamic credential keys — only when credential context is resolvable
+  const credentialSource = credentialContext?.credentialSource?.toUpperCase();
+  const credentialUserId = credentialContext?.credentialSourceUserId;
+  const shouldFetchDynamicKeys =
+    credentialContext?.authenticationMode?.toUpperCase() === "CREDENTIAL" &&
+    (credentialSource === "TENANT" ||
+      credentialSource === "SPECIFIC_USER" ||
+      credentialSource === "WORKFLOW_USER" ||
+      credentialSource === "RECORD_OWNER");
+  const dynamicKeysQuery = useQuery({
+    queryKey: [...workflowKeys.all, "http-credential-keys", credentialSource ?? "", credentialUserId ?? ""],
+    queryFn: () => {
+      if (credentialSource === "TENANT") return workflowApi.getHttpCredentialKeys("TENANT");
+      if (credentialSource === "SPECIFIC_USER" && credentialUserId) return workflowApi.getHttpCredentialKeys("USER", credentialUserId);
+      // For WORKFLOW_USER / RECORD_OWNER we cannot know the user at design time — fall back to static
+      return Promise.resolve([] as string[]);
+    },
+    enabled: shouldFetchDynamicKeys && open,
+    staleTime: 30 * 1000,
+  });
 
   const items: PickerItem[] = useMemo(() => {
     const out: PickerItem[] = [];
@@ -97,16 +128,83 @@ export function WorkflowValuePicker({
       });
     }
 
-    // Credential namespace — available for HTTP_API CREDENTIAL mode; shown always for discoverability
-    const credentialKeys = ["apiKey", "token", "username", "password", "accountId", "clientId", "secret", "clientSecret", "accessToken", "client_id", "client_secret"];
-    for (const key of credentialKeys) {
-      out.push({
-        label: `Credential: ${key}`,
-        path: `credential.${key}`,
-        insertion: `{{credential.${key}}}`,
-        group: "Credential",
-        keywords: `credential ${key}`.toLowerCase(),
-      });
+    // Credential namespace — dynamic when context is known, static fallback otherwise
+    const staticFallbackKeys = ["apiKey", "token", "username", "password", "accountId", "clientId", "secret", "clientSecret", "accessToken", "client_id", "client_secret"];
+    const hasDynamicKeys = dynamicKeysQuery.data && dynamicKeysQuery.data.length > 0;
+    const hasDynamicContext = shouldFetchDynamicKeys && (credentialSource === "TENANT" || credentialSource === "SPECIFIC_USER");
+    if (hasDynamicContext) {
+      if (dynamicKeysQuery.isLoading) {
+        out.push({
+          label: "Loading credential fields…",
+          path: "credential.loading",
+          insertion: "",
+          group: "Credential",
+          keywords: "credential loading",
+          disabled: true,
+        });
+      } else if (dynamicKeysQuery.isError) {
+        out.push({
+          label: "Could not load credential fields — Retry",
+          path: "credential.error",
+          insertion: "",
+          group: "Credential",
+          keywords: "credential error",
+          disabled: true,
+        });
+      } else if (hasDynamicKeys) {
+        for (const key of dynamicKeysQuery.data!) {
+          out.push({
+            label: `Credential: ${key}`,
+            path: `credential.${key}`,
+            insertion: `{{credential.${key}}}`,
+            group: "Credential",
+            keywords: `credential ${key}`.toLowerCase(),
+          });
+        }
+      } else {
+        // Check if we know the credential is not configured
+        const isTenantAndNotConfigured = credentialSource === "TENANT" && dynamicKeysQuery.data?.length === 0;
+        const isSpecificUserAndNotConfigured = credentialSource === "SPECIFIC_USER" && credentialUserId && dynamicKeysQuery.data?.length === 0;
+        if (isTenantAndNotConfigured || isSpecificUserAndNotConfigured) {
+          out.push({
+            label: "No credentials are configured for this context.",
+            path: "credential.empty",
+            insertion: "",
+            group: "Credential",
+            keywords: "credential empty",
+            disabled: true,
+          });
+        } else if (credentialSource === "SPECIFIC_USER" && !credentialUserId) {
+          out.push({
+            label: "Select a CRM user to load credential fields.",
+            path: "credential.no-user",
+            insertion: "",
+            group: "Credential",
+            keywords: "credential no user",
+            disabled: true,
+          });
+        } else {
+          // Fallback for WORKFLOW_USER / RECORD_OWNER where we cannot know at design time
+          out.push({
+            label: "Credential fields will be available at runtime for the resolved user.",
+            path: "credential.runtime",
+            insertion: "",
+            group: "Credential",
+            keywords: "credential runtime",
+            disabled: true,
+          });
+        }
+      }
+    } else {
+      for (const key of staticFallbackKeys) {
+        out.push({
+          label: `Credential: ${key}`,
+          path: `credential.${key}`,
+          insertion: `{{credential.${key}}}`,
+          group: "Credential",
+          keywords: `credential ${key}`.toLowerCase(),
+        });
+      }
     }
 
     // Previous Nodes (graph-aware)
@@ -170,7 +268,7 @@ export function WorkflowValuePicker({
     }
 
     return out;
-  }, [metadata, triggerEntityType, referenceData, relationshipData, nodes, edges, currentNodeId]);
+  }, [metadata, triggerEntityType, referenceData, relationshipData, nodes, edges, currentNodeId, dynamicKeysQuery.data, dynamicKeysQuery.isLoading, dynamicKeysQuery.isError, credentialSource, credentialUserId, shouldFetchDynamicKeys]);
 
   // Group items
   const grouped = useMemo(() => {
@@ -224,12 +322,14 @@ export function WorkflowValuePicker({
                     <CommandItem
                       key={item.path}
                       value={item.path}
+                      disabled={item.disabled}
                       onSelect={() => {
+                        if (item.disabled || !item.insertion) return;
                         onSelect(item.insertion, { label: item.label, path: item.path });
                         setOpen(false);
                         setQuery("");
                       }}
-                      className="flex flex-col items-start gap-0.5"
+                      className={`flex flex-col items-start gap-0.5 ${item.disabled ? "opacity-60 pointer-events-none" : ""}`}
                     >
                       <span className="text-sm font-medium leading-none">{item.label}</span>
                       <span className="font-mono text-[11px] text-muted-foreground">{item.insertion}</span>
@@ -261,6 +361,7 @@ export function PickerField({
   edges,
   onChange,
   inputType,
+  credentialContext,
 }: {
   label: string;
   value: string;
@@ -272,6 +373,11 @@ export function PickerField({
   edges?: BuilderEdge[];
   onChange: (v: string) => void;
   inputType?: "input" | "textarea";
+  credentialContext?: {
+    authenticationMode?: string;
+    credentialSource?: string;
+    credentialSourceUserId?: string;
+  };
 }) {
   const [hasInvalidRef, invalidRef] = useMemo(() => {
     if (!value) return [false, null] as const;
@@ -304,6 +410,7 @@ export function PickerField({
             currentNodeId={currentNodeId}
             nodes={nodes}
             edges={edges}
+            credentialContext={credentialContext}
             onSelect={(ins) => handleInsert(ins)}
           />
         )}

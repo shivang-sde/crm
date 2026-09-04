@@ -46,6 +46,13 @@ public class ConnectorExecutionServiceImpl implements ConnectorExecutionService 
     public ConnectorExecutionResult execute(ConnectorExecutionRequest request) {
         validateRequest(request);
 
+        String providerKey = request.getProviderKey();
+        if ((providerKey == null || providerKey.isBlank()) && request.getConnectorInstanceId() != null) {
+            ConnectorInstance tmp = connectorInstanceService.findById(request.getTenantId(), request.getConnectorInstanceId())
+                .orElseThrow(() -> new BusinessException("CONNECTOR_NOT_FOUND", "Connector instance not found"));
+            providerKey = tmp.getProvider() != null ? tmp.getProvider().getProviderKey() : null;
+            request.setProviderKey(providerKey);
+        }
         ProviderDefinition provider = providerRegistryService.findByProviderKey(request.getProviderKey())
             .orElseThrow(() -> new BusinessException("PROVIDER_NOT_FOUND", "Provider not found: " + request.getProviderKey()));
         providerRegistryService.validateProviderActive(provider);
@@ -54,8 +61,20 @@ public class ConnectorExecutionServiceImpl implements ConnectorExecutionService 
             .orElseThrow(() -> new BusinessException("ACTION_NOT_FOUND", "Action not found: " + request.getActionKey()));
         providerRegistryService.validateActionActive(action);
 
-        ConnectorInstance connectorInstance = connectorInstanceService.findActiveByTenantAndProvider(request.getTenantId(), request.getProviderKey())
-            .orElseThrow(() -> new BusinessException("CONNECTOR_NOT_FOUND", "Active connector instance not found for tenant and provider"));
+        ConnectorInstance connectorInstance;
+        if (request.getConnectorInstanceId() != null) {
+            connectorInstance = connectorInstanceService.findById(request.getTenantId(), request.getConnectorInstanceId())
+                .orElseThrow(() -> new BusinessException("CONNECTOR_NOT_FOUND", "Connector instance not found"));
+            if (!Boolean.TRUE.equals(connectorInstance.getIsActive())) {
+                throw new BusinessException("CONNECTOR_INACTIVE", "Connector instance is inactive");
+            }
+            if (connectorInstance.getProvider() == null || !request.getProviderKey().equals(connectorInstance.getProvider().getProviderKey())) {
+                throw new BusinessException("CONNECTOR_PROVIDER_MISMATCH", "Connector instance does not belong to the specified provider");
+            }
+        } else {
+            connectorInstance = connectorInstanceService.findActiveByTenantAndProvider(request.getTenantId(), request.getProviderKey())
+                .orElseThrow(() -> new BusinessException("CONNECTOR_NOT_FOUND", "Active connector instance not found for tenant and provider"));
+        }
 
         Map<String, Object> credentials = resolveCredentials(request, connectorInstance);
 

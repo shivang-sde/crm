@@ -825,32 +825,42 @@ function HttpApiConfig({
 
   return (
     <>
+      <p className="text-xs text-muted-foreground">Send an HTTP request to another system. Use Insert value to add dynamic data from records, triggers, previous steps, or credentials.</p>
       <div className="rounded-md border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/30">
         <p className="font-medium text-blue-900 dark:text-blue-100">Output available</p>
         <p className="font-mono text-[11px] text-blue-700 dark:text-blue-300">response, statusCode</p>
         <p className="text-[11px] text-muted-foreground">Usable in later nodes via Insert value → Previous Nodes → this HTTP Request.</p>
       </div>
-      <ConfigSelect
-        label="Method *"
-        value={stringValue(config.method)}
-        readOnly={readOnly}
-        rawOptions={["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => ({
-          value: method,
-          label: method,
-        }))}
-        onValueChange={(method) => onChange({ method })}
-      />
+
+      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Request</p>
+        <ConfigSelect
+          label="Method *"
+          value={stringValue(config.method)}
+          readOnly={readOnly}
+          rawOptions={["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => ({
+            value: method,
+            label: method,
+          }))}
+          onValueChange={(method) => onChange({ method })}
+        />
       <PickerField
         label="URL *"
         value={stringValue(config.url)}
-        placeholder="https://api.example.com/customers/{{entity.id}}  — supports {{credential.*}} when Credential mode"
+        placeholder="https://api.example.com/leads/{{entity.id}}"
         readOnly={readOnly}
         triggerEntityType={triggerEntityType}
         currentNodeId={currentNodeId}
         nodes={nodes}
         edges={edges}
+        credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
         onChange={(url) => onChange({ url })}
       />
+        <p className="text-[11px] text-muted-foreground">Supports <span className="font-mono">{"{{entity.id}}"}</span>, <span className="font-mono">{"{{trigger.*}}"}</span> and <span className="font-mono">{"{{credential.*}}"}</span> (when Credential mode).</p>
+      </div>
+
+      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Authentication</p>
       <div className="space-y-1">
         <Label>Authentication</Label>
         <Select
@@ -961,6 +971,7 @@ function HttpApiConfig({
           </div>
         </>
       )}
+      </div>
       <div className="space-y-2">
         <Label>Headers</Label>
         <div className="space-y-2">
@@ -997,6 +1008,7 @@ function HttpApiConfig({
                     currentNodeId={currentNodeId}
                     nodes={nodes}
                     edges={edges}
+                    credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
                     onSelect={(ins) => {
                       const next = [...headerRows];
                       const cur = next[idx].value;
@@ -1066,6 +1078,7 @@ function HttpApiConfig({
                     currentNodeId={currentNodeId}
                     nodes={nodes}
                     edges={edges}
+                    credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
                     onSelect={(ins) => {
                       const next = [...queryRows];
                       const cur = next[idx].value;
@@ -1108,6 +1121,7 @@ function HttpApiConfig({
               currentNodeId={currentNodeId}
               nodes={nodes}
               edges={edges}
+              credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
               onSelect={(ins) => {
                 const cur = bodyString ?? "";
                 const insertion = cur ? (cur.endsWith(" ") || cur.endsWith("\n") ? cur + ins : cur + " " + ins) : ins;
@@ -1493,7 +1507,10 @@ function ClickToCallConfig({
   const callingProviders = useCallingProviders();
   const providers = callingProviders.data ?? [];
   const isLoading = callingProviders.isLoading;
+  const connectorInstanceId = stringValue(config.connectorInstanceId ?? config.providerInstanceId);
   const providerKey = stringValue(config.providerKey ?? config.provider);
+  // Prefer connectorInstanceId as authoritative tenant instance, fallback to providerKey for legacy
+  const selectedInstanceId = connectorInstanceId || (providerKey ? providers.find((p) => p.providerKey === providerKey)?.connectorInstanceId ?? "" : "");
   const executeAs = stringValue(config.executeAs) || "WORKFLOW_USER";
   const executeAsUserId = stringValue(config.executeAsUserId);
   const targetEntityType = typeof config.entityType === "string" ? config.entityType : "";
@@ -1506,36 +1523,39 @@ function ClickToCallConfig({
     return (
       <div className="space-y-3">
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-          <p className="text-sm font-medium text-amber-800">Calling provider not configured</p>
-          <p className="mt-1 text-xs text-amber-700">Configure a calling provider to use Click to Call.</p>
-          <a href="/admin/settings" className="mt-2 inline-block text-xs font-medium text-amber-800 underline">Go to Calling settings →</a>
+          <p className="text-sm font-medium text-amber-800">No calling connection is configured for this workspace.</p>
+          <p className="mt-1 text-xs text-amber-700">Create a calling connection in Settings to use Click to Call.</p>
+          <a href="/settings/calling" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-amber-800 underline">Configure calling connection →</a>
         </div>
-        <p className="text-xs text-muted-foreground">This action cannot be executed until a calling provider is configured for this tenant.</p>
+        <p className="text-xs text-muted-foreground">This action cannot be executed until a calling connection is configured.</p>
       </div>
     );
   }
   return (
     <>
       <div className="space-y-1">
-        <Label>Calling provider *</Label>
+        <Label>Calling connection *</Label>
         <Select
-          value={providers.some((p) => p.providerKey === providerKey) ? providerKey : ""}
+          value={providers.some((p) => p.connectorInstanceId === selectedInstanceId) ? selectedInstanceId : ""}
           disabled={readOnly}
-          onValueChange={(value) => onChange({ providerKey: value })}
+          onValueChange={(value) => {
+            const inst = providers.find((p) => p.connectorInstanceId === value);
+            onChange({ connectorInstanceId: value, providerKey: inst?.providerKey ?? value });
+          }}
         >
-          <SelectTrigger><SelectValue placeholder="Select provider" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="Select calling connection" /></SelectTrigger>
           <SelectContent>
             {providers.map((provider) => (
-              <SelectItem key={provider.providerKey} value={provider.providerKey}>
-                {provider.providerName} {provider.connectorName ? `— ${provider.connectorName}` : ""} {provider.environment ? `(${provider.environment})` : ""}
+              <SelectItem key={provider.connectorInstanceId} value={provider.connectorInstanceId}>
+                {provider.connectorName} — {provider.providerName} {provider.environment ? `(${provider.environment})` : ""}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {providerKey && !providers.some((p) => p.providerKey === providerKey) && (
-          <p className="text-xs text-amber-600">Selected provider is unavailable — it may have been deactivated or removed.</p>
+        {selectedInstanceId && !providers.some((p) => p.connectorInstanceId === selectedInstanceId) && (
+          <p className="text-xs text-amber-600">Selected calling connection is unavailable — it may have been deactivated or removed.</p>
         )}
-        <p className="text-[11px] text-muted-foreground">Which calling system should receive the call. Credentials are resolved per execution user.</p>
+        {providers.length === 0 ? null : <p className="text-[11px] text-muted-foreground">Uses the configured Exotel/Sellspark connection for this workspace. Credentials are resolved per execution user.</p>}
       </div>
       <ConfigSelect
         label="Target entity"

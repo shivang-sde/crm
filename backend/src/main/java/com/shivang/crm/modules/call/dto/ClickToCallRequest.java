@@ -19,4 +19,5 @@ public class ClickToCallRequest {
     private String phoneNumber; // optional override
     private String subject;
     private String providerKey;
+    private UUID connectorInstanceId;
 }

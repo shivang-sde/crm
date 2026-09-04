@@ -342,8 +342,9 @@ export function isNodeConfigured(data: BuilderNodeData): {
           if (!v) issues.push(`${k} required`);
         }
       } else if (actionType === "CLICK_TO_CALL") {
+        const connectorInstanceId = typeof conf.connectorInstanceId === "string" ? conf.connectorInstanceId.trim() : typeof conf.providerInstanceId === "string" ? String(conf.providerInstanceId).trim() : "";
         const providerKey = typeof conf.providerKey === "string" ? conf.providerKey.trim() : typeof conf.provider === "string" ? String(conf.provider).trim() : "";
-        if (!providerKey) issues.push("Calling provider required");
+        if (!connectorInstanceId && !providerKey) issues.push("Calling connection required");
         const phone = typeof conf.phoneNumber === "string" ? conf.phoneNumber.trim() : "";
         const et = typeof conf.entityType === "string" ? conf.entityType.trim() : "";
         const eid = typeof conf.entityId === "string" ? conf.entityId.trim() : "";

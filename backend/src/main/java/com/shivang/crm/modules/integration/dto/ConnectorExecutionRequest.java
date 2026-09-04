@@ -18,6 +18,7 @@ public class ConnectorExecutionRequest {
     private UUID tenantId;
     private UUID userId;
     private String providerKey;
+    private UUID connectorInstanceId;
     private String actionKey;
     private String entityType;
     private UUID entityId;

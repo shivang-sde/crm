@@ -24,7 +24,9 @@ import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionRequest;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionResult;
 import com.shivang.crm.modules.integration.entity.ConnectorExecution;
+import com.shivang.crm.modules.integration.entity.ConnectorInstance;
 import com.shivang.crm.modules.integration.service.ConnectorExecutionService;
+import com.shivang.crm.modules.integration.service.ConnectorInstanceService;
 import com.shivang.crm.shared.service.EntityPhoneResolver;
 
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class DefaultClickToCallService implements ClickToCallService {
     private final TenantContext tenantContext;
     private final EntityPhoneResolver phoneResolver;
     private final ConnectorExecutionService connectorExecutionService;
+    private final ConnectorInstanceService connectorInstanceService;
     private final CallService callService;
     private final CallProviderLinkService callProviderLinkService;
     private final CallRepository callRepository;
@@ -62,12 +65,24 @@ public class DefaultClickToCallService implements ClickToCallService {
 
     public ClickToCallResponse clickToCall(UUID tenantId, UUID actorId, ClickToCallRequest request) {
 
-        // ── Provider must be explicit — no fallback (FE/BE-WF-28) ──
+        // ── Provider/instance must be explicit — no fallback (FE/BE-WF-28/32) ──
         String providerKey = request.getProviderKey();
-        if (providerKey == null || providerKey.isBlank()) {
-            throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_REQUIRED", "Click to Call requires a configured calling provider");
+        UUID connectorInstanceId = request.getConnectorInstanceId();
+        if (connectorInstanceId != null) {
+            ConnectorInstance instance = connectorInstanceService.findById(tenantId, connectorInstanceId)
+                .orElseThrow(() -> new com.shivang.crm.shared.exception.BusinessException("CONNECTOR_NOT_FOUND", "Calling connection not found"));
+            if (instance.getProvider() == null || instance.getProvider().getProviderKey() == null) {
+                throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_NOT_FOUND", "Provider not found for connection");
+            }
+            providerKey = instance.getProvider().getProviderKey();
+        } else {
+            if (providerKey == null || providerKey.isBlank()) {
+                throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_REQUIRED", "Click to Call requires a configured calling provider");
+            }
+            providerKey = providerKey.trim();
+            // If tenant has multiple instances for this provider, the workflow-selected instance is preferred;
+            // for direct calls without instance, the first active instance for the provider will be used by ConnectorExecutionService.
         }
-        providerKey = providerKey.trim();
 
         // ── Step 1: Resolve and normalize phone ──
         String phone = resolveAndNormalizePhone(request, tenantId);
@@ -93,6 +108,7 @@ public class DefaultClickToCallService implements ClickToCallService {
             execRequest.setTenantId(tenantId);
             execRequest.setUserId(actorId);
             execRequest.setProviderKey(providerKey);
+            execRequest.setConnectorInstanceId(request.getConnectorInstanceId());
             execRequest.setActionKey("CLICK_TO_CALL");
             execRequest.setEntityType(request.getEntityType());
             execRequest.setEntityId(request.getEntityId());

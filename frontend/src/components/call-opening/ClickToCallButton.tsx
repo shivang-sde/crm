@@ -33,7 +33,7 @@ export function ClickToCallButton({
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<CallingProviderOption[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
-  const [selectedProviderKey, setSelectedProviderKey] = useState<string>("");
+  const [selectedConnectorInstanceId, setSelectedConnectorInstanceId] = useState<string>("");
 
   const canCall = hasPermission("call", "write");
 
@@ -45,8 +45,8 @@ export function ClickToCallButton({
         const list = await callOpeningApi.getCallingProviders();
         if (cancelled) return;
         setProviders(list);
-        if (list.length === 1) setSelectedProviderKey(list[0].providerKey);
-        else if (list.length > 1 && !selectedProviderKey) setSelectedProviderKey(list[0].providerKey);
+        if (list.length === 1) setSelectedConnectorInstanceId(list[0].connectorInstanceId);
+        else if (list.length > 1 && !selectedConnectorInstanceId) setSelectedConnectorInstanceId(list[0].connectorInstanceId);
       } catch {
         if (!cancelled) setProviders([]);
       } finally {
@@ -78,17 +78,18 @@ export function ClickToCallButton({
   }
 
   const handleClick = async () => {
-    if (!selectedProviderKey && providers.length > 0) {
-      toast.error("Select a calling provider");
+    if (!selectedConnectorInstanceId && providers.length > 0) {
+      toast.error("Select a calling connection");
       return;
     }
     setIsLoading(true);
-
+    const selected = providers.find((p) => p.connectorInstanceId === selectedConnectorInstanceId);
     const request: ClickToCallRequest = {
       entityType,
       entityId,
       phoneNumber,
-      providerKey: selectedProviderKey || undefined,
+      providerKey: selected?.providerKey || undefined,
+      connectorInstanceId: selectedConnectorInstanceId || undefined,
     };
 
     try {
@@ -143,13 +144,13 @@ export function ClickToCallButton({
   if (providers.length > 1) {
     return (
       <div className="inline-flex items-center gap-2">
-        <Select value={selectedProviderKey} onValueChange={setSelectedProviderKey}>
+        <Select value={selectedConnectorInstanceId} onValueChange={setSelectedConnectorInstanceId}>
           <SelectTrigger className="w-[160px] h-8 text-xs">
-            <SelectValue placeholder="Provider" />
+            <SelectValue placeholder="Connection" />
           </SelectTrigger>
           <SelectContent>
             {providers.map((p) => (
-              <SelectItem key={p.providerKey} value={p.providerKey}>{p.providerName}</SelectItem>
+              <SelectItem key={p.connectorInstanceId} value={p.connectorInstanceId}>{p.connectorName} — {p.providerName}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -157,7 +158,7 @@ export function ClickToCallButton({
           variant={variant}
           size={size}
           onClick={handleClick}
-          disabled={disabled || !selectedProviderKey}
+          disabled={disabled || !selectedConnectorInstanceId}
           aria-label={`${label} ${entityType}`}
           className="inline-flex items-center gap-2"
         >

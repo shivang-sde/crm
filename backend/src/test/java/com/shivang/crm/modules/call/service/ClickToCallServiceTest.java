@@ -26,6 +26,7 @@ import com.shivang.crm.modules.call.service.impl.DefaultClickToCallService;
 import com.shivang.crm.modules.dialer.service.CallProviderLinkService;
 import com.shivang.crm.modules.integration.dto.ConnectorExecutionResult;
 import com.shivang.crm.modules.integration.service.ConnectorExecutionService;
+import com.shivang.crm.modules.integration.service.ConnectorInstanceService;
 import com.shivang.crm.shared.exception.BusinessException;
 import com.shivang.crm.shared.service.EntityPhoneResolver;
 
@@ -34,6 +35,7 @@ class ClickToCallServiceTest {
     private TenantContext tenantContext;
     private EntityPhoneResolver resolver;
     private ConnectorExecutionService execService;
+    private ConnectorInstanceService connectorInstanceService;
     private CallService callService;
     private CallProviderLinkService linkService;
     private CallRepository callRepo;
@@ -53,11 +55,12 @@ class ClickToCallServiceTest {
 
         resolver = mock(EntityPhoneResolver.class);
         execService = mock(ConnectorExecutionService.class);
+        connectorInstanceService = mock(ConnectorInstanceService.class);
         callService = mock(CallService.class);
         linkService = mock(CallProviderLinkService.class);
         callRepo = mock(CallRepository.class);
         activityService = mock(ActivityService.class);
-        svc = new DefaultClickToCallService(tenantContext, resolver, execService, callService, linkService, callRepo, activityService);
+        svc = new DefaultClickToCallService(tenantContext, resolver, execService, connectorInstanceService, callService, linkService, callRepo, activityService);
     }
 
     @Test

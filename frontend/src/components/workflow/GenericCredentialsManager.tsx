@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { useWorkflowReferenceData } from "@/lib/hooks/workflow";
+import { useQuery } from "@tanstack/react-query";
+import { userApi } from "@/lib/api/users";
 import {
   useHttpCredentialTenantStatus,
   useHttpCredentialUserStatus,
@@ -86,8 +87,15 @@ export function GenericCredentialsManager() {
   const putUser = usePutHttpCredentialUser();
   const delUser = useDeleteHttpCredentialUser();
   const [userPairs, setUserPairs] = useState<Array<{ key: string; value: string }>>([{ key: "apiKey", value: "" }]);
-  const referenceData = useWorkflowReferenceData("");
-  const userOptions = referenceData.optionsByField["entity.ownerId"] ?? [];
+  const tenantUsersQuery = useQuery({
+    queryKey: ["tenant-users", "active"],
+    queryFn: () => userApi.getUsers({ page: 0, isActive: true }),
+    staleTime: 60 * 1000,
+  });
+  const userOptions = (tenantUsersQuery.data?.content ?? []).map((u: { id?: string; firstName?: string; lastName?: string; email?: string }) => ({
+    value: String(u.id ?? ""),
+    label: [u.firstName, u.lastName].filter(Boolean).join(" ") || String(u.email ?? u.id),
+  }));
 
   const saveTenant = async () => {
     const credential: Record<string, string> = {};
@@ -164,14 +172,28 @@ export function GenericCredentialsManager() {
         <CardContent className="space-y-3">
           <div className="space-y-1">
             <Label>User</Label>
-            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-              <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+            <Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={tenantUsersQuery.isLoading}>
+              <SelectTrigger><SelectValue placeholder={tenantUsersQuery.isLoading ? "Loading users…" : "Select user"} /></SelectTrigger>
               <SelectContent>
-                {userOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
+                {tenantUsersQuery.isLoading ? (
+                  <div className="p-2 text-sm text-muted-foreground">Loading users…</div>
+                ) : tenantUsersQuery.isError ? (
+                  <div className="p-2 text-sm text-muted-foreground">Could not load users. <button className="underline" onClick={() => tenantUsersQuery.refetch()}>Retry</button></div>
+                ) : userOptions.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">No active users found for this workspace.</div>
+                ) : (
+                  <>
+                    {userOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                    {selectedUserId && !userOptions.some((o) => o.value === selectedUserId) && (
+                      <SelectItem value={selectedUserId}>Previously selected — unavailable / inactive</SelectItem>
+                    )}
+                  </>
+                )}
               </SelectContent>
             </Select>
+            {tenantUsersQuery.isError && <p className="text-xs text-muted-foreground">Unable to load users. Check permissions and try again.</p>}
           </div>
           {selectedUserId && (
             <div className="flex items-center gap-2">

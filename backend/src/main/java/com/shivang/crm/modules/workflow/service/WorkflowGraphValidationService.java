@@ -244,12 +244,21 @@ public class WorkflowGraphValidationService {
             }
             if ("CLICK_TO_CALL".equalsIgnoreCase(String.valueOf(actionType))
                 && configuration != null && configuration.get("config") instanceof Map<?, ?> callConfig) {
-                // FE/BE-WF-28: provider must be explicit — no fallback
+                // FE/BE-WF-28/32: provider/instance must be explicit — no fallback
+                Object rawInstance = callConfig.get("connectorInstanceId");
+                if (rawInstance == null) rawInstance = callConfig.get("providerInstanceId");
                 Object rawProvider = callConfig.get("providerKey");
                 if (rawProvider == null) rawProvider = callConfig.get("provider");
+                boolean hasInstance = rawInstance != null && !String.valueOf(rawInstance).isBlank();
                 boolean hasProvider = rawProvider != null && !String.valueOf(rawProvider).isBlank();
-                if (!hasProvider) {
+                if (!hasInstance && !hasProvider) {
                     errors.add(errorForNode("WORKFLOW_CLICK_TO_CALL_PROVIDER_REQUIRED", "Click to Call requires a configured calling provider", action));
+                }
+                if (hasInstance) {
+                    String iid = String.valueOf(rawInstance).trim();
+                    if (!iid.startsWith("{{") && !iid.endsWith("}}")) {
+                        try { UUID.fromString(iid); } catch (Exception ex) { errors.add(errorForNode("WORKFLOW_ACTION_INVALID_CONFIG", "connectorInstanceId must be a valid UUID or template", action)); }
+                    }
                 }
                 boolean hasPhone = callConfig.get("phoneNumber") != null && !String.valueOf(callConfig.get("phoneNumber")).isBlank();
                 boolean hasEntityPair = callConfig.get("entityType") != null && !String.valueOf(callConfig.get("entityType")).isBlank()

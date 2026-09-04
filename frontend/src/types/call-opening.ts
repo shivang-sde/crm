@@ -42,6 +42,7 @@ export interface ClickToCallRequest {
   entityId: string;
   phoneNumber?: string | null;
   providerKey?: string | null;
+  connectorInstanceId?: string | null;
 }
 
 export interface CallingProviderOption {
