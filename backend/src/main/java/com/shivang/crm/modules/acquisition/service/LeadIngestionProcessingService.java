@@ -278,6 +278,7 @@ public class LeadIngestionProcessingService {
             .email(validated.getEmail())
             .phone(validated.getPhone())
             .company(validated.getCompany())
+            .score(validated.getScore())
             .statusId(statusId)
             .sourceId(readUuid(validated.getSourceValue()))
             .ownerUserId(null)

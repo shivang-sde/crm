@@ -33,6 +33,9 @@ public class ValidatedLeadIngestionData {
     @JsonProperty("company")
     private String company;
 
+    @JsonProperty("score")
+    private Integer score;
+
     @JsonProperty("sourceValue")
     private Object sourceValue;
 

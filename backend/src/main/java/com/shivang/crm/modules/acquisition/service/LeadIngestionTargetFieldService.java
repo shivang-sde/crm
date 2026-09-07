@@ -25,7 +25,9 @@ public class LeadIngestionTargetFieldService {
         "lastName", "STRING",
         "email", "STRING",
         "phone", "STRING",
-        "company", "STRING"
+        "company", "STRING",
+        "score", "INTEGER"
+
     );
 
     private static final Map<String, String> SYSTEM_FIELDS = Map.of(

@@ -85,21 +85,17 @@ export function WorkflowValuePicker({
   const entityMeta = findEntityMetadata(metadata, triggerEntityType);
   const relationshipData = useWorkflowRelationshipReferenceData(entityMeta?.relationships);
 
-  // Dynamic credential keys — only when credential context is resolvable
+  // Dynamic credential keys — execution-time secrets, picker shows only key names
   const credentialSource = credentialContext?.credentialSource?.toUpperCase();
   const credentialUserId = credentialContext?.credentialSourceUserId;
+  const isCredentialMode = credentialContext?.authenticationMode?.toUpperCase() === "CREDENTIAL";
   const shouldFetchDynamicKeys =
-    credentialContext?.authenticationMode?.toUpperCase() === "CREDENTIAL" &&
-    (credentialSource === "TENANT" ||
-      credentialSource === "SPECIFIC_USER" ||
-      credentialSource === "WORKFLOW_USER" ||
-      credentialSource === "RECORD_OWNER");
+    isCredentialMode && (credentialSource === "TENANT" || credentialSource === "SPECIFIC_USER");
   const dynamicKeysQuery = useQuery({
     queryKey: [...workflowKeys.all, "http-credential-keys", credentialSource ?? "", credentialUserId ?? ""],
     queryFn: () => {
       if (credentialSource === "TENANT") return workflowApi.getHttpCredentialKeys("TENANT");
       if (credentialSource === "SPECIFIC_USER" && credentialUserId) return workflowApi.getHttpCredentialKeys("USER", credentialUserId);
-      // For WORKFLOW_USER / RECORD_OWNER we cannot know the user at design time — fall back to static
       return Promise.resolve([] as string[]);
     },
     enabled: shouldFetchDynamicKeys && open,
@@ -128,81 +124,112 @@ export function WorkflowValuePicker({
       });
     }
 
-    // Credential namespace — dynamic when context is known, static fallback otherwise
-    const staticFallbackKeys = ["apiKey", "token", "username", "password", "accountId", "clientId", "secret", "clientSecret", "accessToken", "client_id", "client_secret"];
-    const hasDynamicKeys = dynamicKeysQuery.data && dynamicKeysQuery.data.length > 0;
-    const hasDynamicContext = shouldFetchDynamicKeys && (credentialSource === "TENANT" || credentialSource === "SPECIFIC_USER");
-    if (hasDynamicContext) {
-      if (dynamicKeysQuery.isLoading) {
-        out.push({
-          label: "Loading credential fields…",
-          path: "credential.loading",
-          insertion: "",
-          group: "Credential",
-          keywords: "credential loading",
-          disabled: true,
-        });
-      } else if (dynamicKeysQuery.isError) {
-        out.push({
-          label: "Could not load credential fields — Retry",
-          path: "credential.error",
-          insertion: "",
-          group: "Credential",
-          keywords: "credential error",
-          disabled: true,
-        });
-      } else if (hasDynamicKeys) {
-        for (const key of dynamicKeysQuery.data!) {
+    // Credential namespace — only when CREDENTIAL mode; never show fake static keys
+    if (isCredentialMode) {
+      if (credentialSource === "TENANT") {
+        if (dynamicKeysQuery.isLoading) {
           out.push({
-            label: `Credential: ${key}`,
-            path: `credential.${key}`,
-            insertion: `{{credential.${key}}}`,
+            label: "Loading credentials…",
+            path: "credential.loading",
+            insertion: "",
             group: "Credential",
-            keywords: `credential ${key}`.toLowerCase(),
+            keywords: "credential loading",
+            disabled: true,
           });
-        }
-      } else {
-        // Check if we know the credential is not configured
-        const isTenantAndNotConfigured = credentialSource === "TENANT" && dynamicKeysQuery.data?.length === 0;
-        const isSpecificUserAndNotConfigured = credentialSource === "SPECIFIC_USER" && credentialUserId && dynamicKeysQuery.data?.length === 0;
-        if (isTenantAndNotConfigured || isSpecificUserAndNotConfigured) {
+        } else if (dynamicKeysQuery.isError) {
           out.push({
-            label: "No credentials are configured for this context.",
+            label: "Unable to load credential keys.",
+            path: "credential.error",
+            insertion: "",
+            group: "Credential",
+            keywords: "credential error",
+            disabled: true,
+          });
+        } else if (dynamicKeysQuery.data && dynamicKeysQuery.data.length > 0) {
+          for (const key of dynamicKeysQuery.data) {
+            out.push({
+              label: `Credential: ${key}`,
+              path: `credential.${key}`,
+              insertion: `{{credential.${key}}}`,
+              group: "Credential",
+              keywords: `credential ${key}`.toLowerCase(),
+            });
+          }
+        } else {
+          out.push({
+            label: "No workspace credentials are configured.",
             path: "credential.empty",
             insertion: "",
             group: "Credential",
             keywords: "credential empty",
             disabled: true,
           });
-        } else if (credentialSource === "SPECIFIC_USER" && !credentialUserId) {
+        }
+      } else if (credentialSource === "SPECIFIC_USER") {
+        if (!credentialUserId) {
           out.push({
-            label: "Select a CRM user to load credential fields.",
+            label: "Select a user to view available credentials.",
             path: "credential.no-user",
             insertion: "",
             group: "Credential",
             keywords: "credential no user",
             disabled: true,
           });
-        } else {
-          // Fallback for WORKFLOW_USER / RECORD_OWNER where we cannot know at design time
+        } else if (dynamicKeysQuery.isLoading) {
           out.push({
-            label: "Credential fields will be available at runtime for the resolved user.",
-            path: "credential.runtime",
+            label: "Loading credentials…",
+            path: "credential.loading",
             insertion: "",
             group: "Credential",
-            keywords: "credential runtime",
+            keywords: "credential loading",
+            disabled: true,
+          });
+        } else if (dynamicKeysQuery.isError) {
+          out.push({
+            label: "Unable to load credential keys.",
+            path: "credential.error",
+            insertion: "",
+            group: "Credential",
+            keywords: "credential error",
+            disabled: true,
+          });
+        } else if (dynamicKeysQuery.data && dynamicKeysQuery.data.length > 0) {
+          for (const key of dynamicKeysQuery.data) {
+            out.push({
+              label: `Credential: ${key}`,
+              path: `credential.${key}`,
+              insertion: `{{credential.${key}}}`,
+              group: "Credential",
+              keywords: `credential ${key}`.toLowerCase(),
+            });
+          }
+        } else {
+          out.push({
+            label: "No credentials are configured for this user.",
+            path: "credential.empty",
+            insertion: "",
+            group: "Credential",
+            keywords: "credential empty",
             disabled: true,
           });
         }
-      }
-    } else {
-      for (const key of staticFallbackKeys) {
+      } else if (credentialSource === "WORKFLOW_USER" || credentialSource === "RECORD_OWNER") {
         out.push({
-          label: `Credential: ${key}`,
-          path: `credential.${key}`,
-          insertion: `{{credential.${key}}}`,
+          label: "Credential fields will be available at runtime for the resolved user.",
+          path: "credential.runtime",
+          insertion: "",
           group: "Credential",
-          keywords: `credential ${key}`.toLowerCase(),
+          keywords: "credential runtime",
+          disabled: true,
+        });
+      } else {
+        out.push({
+          label: "Select a credential source to view available keys.",
+          path: "credential.select-source",
+          insertion: "",
+          group: "Credential",
+          keywords: "credential select",
+          disabled: true,
         });
       }
     }

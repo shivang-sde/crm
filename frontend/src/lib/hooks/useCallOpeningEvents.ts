@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { callOpeningApi } from "@/lib/api/call-opening";
 import { useAuthStore } from "@/lib/store/authStore";
 import { handleCallOpeningInstruction } from "@/lib/call-opening/handleCallOpeningInstruction";
@@ -20,14 +21,52 @@ export function useCallOpeningEvents(
 ) {
   const { onEvent } = options;
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const hydrated = useAuthStore((state) => state.hydrated);
+  const userRole = useAuthStore((state) => state.userRole);
+  const tenantId = useAuthStore((state) => state.tenant?.id);
   const router = useRouter();
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastErrorRef = useRef<string | null>(null);
   const isPollingRef = useRef(false);
 
+  // Role gate: only tenant-side users poll. Platform roles never poll.
+  const isPlatformRole = userRole === "SUPERADMIN" || userRole === "RESELLER";
+  const isTenantRole = !!userRole && !isPlatformRole;
+
+  // Only check Click-to-Call availability for eligible tenant users (avoids unnecessary request for platform roles)
+  const canCheckProviders =
+    POLLING_ENABLED && isAuthenticated && hydrated && isTenantRole && !!tenantId;
+
+  const callingProvidersQuery = useQuery({
+    queryKey: ["call-opening", "calling-providers", tenantId ?? "no-tenant"],
+    queryFn: () => callOpeningApi.getCallingProviders(),
+    enabled: canCheckProviders,
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
+  // Fail closed: loading -> no poll, error -> no poll, empty -> no poll
+  const isProvidersLoading = canCheckProviders && callingProvidersQuery.isLoading;
+  const isClickToCallConfigured =
+    canCheckProviders &&
+    !callingProvidersQuery.isLoading &&
+    !callingProvidersQuery.isError &&
+    !!callingProvidersQuery.data &&
+    callingProvidersQuery.data.length > 0;
+
+  const shouldPoll =
+    POLLING_ENABLED &&
+    isAuthenticated &&
+    hydrated &&
+    isTenantRole &&
+    !!tenantId &&
+    !isProvidersLoading &&
+    isClickToCallConfigured;
+
   useEffect(() => {
-    if (!POLLING_ENABLED || !isAuthenticated) {
+    if (!shouldPoll) {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -94,5 +133,5 @@ export function useCallOpeningEvents(
 
       isPollingRef.current = false;
     };
-  }, [isAuthenticated, onEvent, router]);
+  }, [shouldPoll, onEvent, router]);
 }

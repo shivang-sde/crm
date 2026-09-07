@@ -60,6 +60,7 @@ public class LeadIngestionValidationService {
         String email = normalizeEmail(toStringValue(getStringValue(mappedData.getStandardFields(), "email")));
         String phone = normalizePhone(toStringValue(getStringValue(mappedData.getStandardFields(), "phone")));
         String company = normalizeStringValue(getStringValue(mappedData.getStandardFields(), "company"));
+        Integer score = normalizeScore(getStringValue(mappedData.getStandardFields(), "score"), errors);
 
         if (firstName == null || firstName.isBlank()) {
             errors.add(validationError("firstName", "REQUIRED", "Lead firstName is required"));
@@ -94,6 +95,7 @@ public class LeadIngestionValidationService {
             .email(email)
             .phone(phone)
             .company(company)
+            .score(score)
             .sourceValue(sourceValue)
             .statusValue(statusValue)
             .customData(customData.isEmpty() ? null : customData)
@@ -584,6 +586,23 @@ public class LeadIngestionValidationService {
             return null;
         }
         return fieldMap.get(key);
+    }
+
+    private Integer normalizeScore(Object rawValue, List<ValidationError> errors) {
+        if (rawValue == null) return null;
+        String s = toStringValue(rawValue);
+        if (s == null || s.isBlank()) return null;
+        try {
+            int v = Integer.parseInt(s.trim());
+            if (v < 0 || v > 100) {
+                errors.add(validationError("score", "INVALID_SCORE", "Score must be between 0 and 100"));
+                return null;
+            }
+            return v;
+        } catch (NumberFormatException e) {
+            errors.add(validationError("score", "INVALID_SCORE", "Score must be a number between 0 and 100"));
+            return null;
+        }
     }
 
     private String toStringValue(Object value) {

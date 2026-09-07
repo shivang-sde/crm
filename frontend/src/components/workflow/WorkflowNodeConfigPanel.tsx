@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConditionRulesEditor } from "./ConditionRulesEditor";
@@ -807,21 +807,75 @@ function HttpApiConfig({
     onChange({ queryParams: obj });
   };
 
-  const bodyString = typeof config.body === "object" ? JSON.stringify(config.body, null, 2) : stringValue(config.body);
+  // Body: store as object, edit as text (template-aware)
+  const initialBodyText =
+    typeof config.body === "object" && config.body !== null ? JSON.stringify(config.body, null, 2) : stringValue(config.body);
+  const [bodyText, setBodyText] = useState(initialBodyText);
+  useEffect(() => {
+    const expected =
+      typeof config.body === "object" && config.body !== null ? JSON.stringify(config.body, null, 2) : stringValue(config.body);
+    // Sync when external config.body changes (e.g., reopen, external update) — avoid overwriting active invalid edit
+    if (expected !== bodyText) {
+      try {
+        const parsedDraft = bodyText.trim() ? JSON.parse(bodyText) : null;
+        if (JSON.stringify(parsedDraft) !== JSON.stringify(config.body)) {
+          // Only auto-sync if draft is not currently invalid JSON that the user is editing
+          // If draft is invalid, keep it so user can fix; otherwise sync to formatted expected
+          const draftValid = (() => {
+            try {
+              const p = JSON.parse(bodyText);
+              return p !== null && typeof p === "object" && !Array.isArray(p);
+            } catch {
+              return false;
+            }
+          })();
+          if (!draftValid || expected !== bodyText) {
+            // When config body changes externally, reflect it
+            // We check JSON.stringify(config.body) as dep, so this runs only on external change
+            setBodyText(expected);
+          }
+        }
+      } catch {
+        // draft invalid — keep it unless expected is empty and draft is empty? sync externally
+        if (JSON.stringify(config.body) !== bodyText) {
+          // do not overwrite invalid draft automatically; keep user text
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(config.body)]);
+
   const bodyError = useMemo(() => {
-    const trimmed = bodyString.trim();
+    const trimmed = bodyText.trim();
     if (!trimmed) return null;
-    // Only validate when body looks like JSON
-    if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return null;
-    // Replace template expressions with placeholder string to allow validation
-    const withoutTemplates = trimmed.replace(/\{\{[^}]+\}\}/g, '"__template__"');
     try {
-      JSON.parse(withoutTemplates);
+      const parsed = JSON.parse(trimmed);
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return "Body must be a JSON object (not array, string, number, boolean or null)";
+      }
       return null;
     } catch (e) {
       return (e as Error).message ?? "Invalid JSON";
     }
-  }, [bodyString]);
+  }, [bodyText]);
+
+  const handleBodyChange = (nextText: string) => {
+    setBodyText(nextText);
+    const trimmed = nextText.trim();
+    if (!trimmed) {
+      onChange({ body: undefined });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        onChange({ body: parsed });
+      }
+      // else: valid JSON but not object — keep text, show error, do not persist
+    } catch {
+      // invalid JSON — keep text, show error, do not persist yet
+    }
+  };
 
   return (
     <>
@@ -1123,31 +1177,36 @@ function HttpApiConfig({
               edges={edges}
               credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
               onSelect={(ins) => {
-                const cur = bodyString ?? "";
-                const insertion = cur ? (cur.endsWith(" ") || cur.endsWith("\n") ? cur + ins : cur + " " + ins) : ins;
-                onChange({ body: insertion });
+                // Insert as quoted JSON string value for body object
+                const quoted = `"${ins}"`;
+                const cur = bodyText ?? "";
+                const insertion = cur ? (cur.endsWith(" ") || cur.endsWith("\n") ? cur + quoted : cur + " " + quoted) : quoted;
+                handleBodyChange(insertion);
               }}
             />
           )}
         </div>
         <Textarea
           id="http-body"
-          rows={4}
+          rows={6}
           disabled={readOnly}
-          value={bodyString}
-          onChange={(event) => onChange({ body: event.target.value })}
-          placeholder={'{"customerId":"{{entity.id}}","secret":"{{credential.secret}}"}  — supports {{credential.*}}'}
+          value={bodyText}
+          onChange={(event) => handleBodyChange(event.target.value)}
+          placeholder={'{\n  "userId": "{{credential.admin_user}}",\n  "password": "{{credential.admin_pass}}"\n}  — object only'}
           aria-invalid={bodyError ? true : undefined}
           aria-describedby={bodyError ? "http-body-error" : undefined}
         />
         {bodyError ? (
           <p id="http-body-error" className="text-xs font-medium text-red-600" role="alert">
-            ⚠ Invalid JSON: {bodyError}
+            ⚠ {bodyError}
           </p>
-        ) : bodyString.trim() ? (
-          <p className="text-xs text-emerald-600">✓ Valid JSON</p>
+        ) : bodyText.trim() ? (
+          <p className="text-xs text-emerald-600">✓ Valid JSON object</p>
         ) : null}
-        <p className="text-[11px] text-muted-foreground">Supports <span className="font-mono">{"{{entity.*}}"}</span> and <span className="font-mono">{"{{credential.*}}"}</span> when Authentication is Credential.</p>
+        <p className="text-[11px] text-muted-foreground">
+          Body must be a JSON <span className="font-medium">object</span> (not string/array). Use <span className="font-mono">{"{{entity.*}}"}</span> /{" "}
+          <span className="font-mono">{"{{credential.*}}"}</span> inside quoted strings.
+        </p>
       </div>
       <div className="flex items-center gap-2">
         <Checkbox

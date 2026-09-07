@@ -47,6 +47,8 @@ import {
   useUpdateLeadIngestionMapping,
   useLeadIngestionEvents,
 } from "@/lib/hooks/acquisition";
+import { RecordCombobox } from "@/components/common/RecordCombobox";
+import { useLeads } from "@/lib/hooks/leads";
 import { LeadIngestionMappingDialog } from "@/components/acquisition/LeadIngestionMappingDialog";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import {
@@ -594,6 +596,10 @@ export default function AcquisitionMappingsPage() {
 function PreviewContent({ configId }: { configId: string }) {
   const [eventId, setEventId] = useState("");
   const [submittedEventId, setSubmittedEventId] = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState<string | undefined>(undefined);
+  // For Lead → event resolution (tenant-scoped)
+  const eventsForLead = useLeadIngestionEvents(configId, { page: 0, size: 50 });
+  const leadsQ = useLeads({ page: 0, size: 20 });
 
   const enabled = Boolean(configId) && Boolean(submittedEventId);
 
@@ -613,24 +619,76 @@ function PreviewContent({ configId }: { configId: string }) {
     staleTime: 0,
   });
 
+  const handleLeadSelect = (leadId: string | undefined) => {
+    setSelectedLeadId(leadId);
+    if (!leadId) return;
+    // Find ingestion event that created this Lead (tenant-scoped via events list)
+    const events = eventsForLead.data?.data ?? [];
+    const match = events.find((e) => e.leadId === leadId);
+    if (match) {
+      setEventId(match.id);
+      setSubmittedEventId(match.id);
+    } else {
+      // Fallback: try to fetch events filtered — if not found, inform user
+      // We keep eventId empty and show message via validation
+      setEventId("");
+      setSubmittedEventId("");
+    }
+  };
+
+  const mappingsForPreviewQ = useLeadIngestionMappings(configId);
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Input
-          value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-          placeholder="Ingestion event ID (UUID)"
-        />
-        <Button
-          variant="outline"
-          onClick={() => setSubmittedEventId(eventId.trim())}
-          disabled={!eventId.trim()}
-        >
-          Run preview
-        </Button>
+      <div className="space-y-3">
+        <div>
+          <p className="text-xs font-medium">Existing Lead (tenant-scoped)</p>
+          <p className="text-[11px] text-muted-foreground mb-1">Select a Lead to preview its ingestion mapping — resolved via existing Lead API.</p>
+          <RecordCombobox entityType="LEAD" value={selectedLeadId} onChange={handleLeadSelect} placeholder="Select a Lead (e.g., apilead-wf-test-001)" />
+          {selectedLeadId && !submittedEventId && (
+            <p className="text-xs text-amber-600 mt-1">No ingestion event found for this Lead — it may have been created manually. Select an ingestion event below.</p>
+          )}
+        </div>
+        <details className="rounded-md border bg-muted/20 p-2">
+          <summary className="cursor-pointer text-xs font-medium">Advanced: ingestion event ID</summary>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={eventId}
+              onChange={(e) => setEventId(e.target.value)}
+              placeholder="Ingestion event ID (UUID)"
+            />
+            <Button
+              variant="outline"
+              onClick={() => setSubmittedEventId(eventId.trim())}
+              disabled={!eventId.trim()}
+            >
+              Run preview
+            </Button>
+          </div>
+        </details>
+        {eventsForLead.data?.data && eventsForLead.data.data.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            <p className="text-[11px] text-muted-foreground w-full">Recent ingestion events (quick select):</p>
+            {eventsForLead.data.data.slice(0, 5).map((ev) => (
+              <Button
+                key={ev.id}
+                variant={submittedEventId === ev.id ? "default" : "outline"}
+                size="xs"
+                onClick={() => {
+                  setEventId(ev.id);
+                  setSubmittedEventId(ev.id);
+                  // Clear Lead selection to avoid confusion
+                  setSelectedLeadId(undefined);
+                }}
+              >
+                {ev.leadId ? `Lead ${ev.leadId.slice(0, 8)}` : ev.id.slice(0, 8)} · {ev.status}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Backend is authoritative: raw → transform (type+config) → default → normalization → validation. Preview shows actual execution.
+        Backend is authoritative: raw → transform (type+config) → default → normalization → validation. Preview shows actual execution. Lead selection is tenant-scoped via Lead API; event is resolved internally.
       </p>
 
       {enabled && (previewQuery.isFetching || validateQuery.isFetching) && (
@@ -686,6 +744,44 @@ function PreviewContent({ configId }: { configId: string }) {
                 ))}
               </div>
             )}
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium text-xs">Source → CRM → Resolved</p>
+            <div className="space-y-1 rounded-md border bg-muted/20 p-2">
+              {(mappingsForPreviewQ.data?.data ?? [])
+                .filter((m) => m.active)
+                .slice(0, 20)
+                .map((m) => {
+                  const sourcePath = m.sourcePath;
+                  const targetLabel = `${m.targetType}:${m.targetField}`;
+                  let resolved: unknown = "—";
+                  if (m.targetType === "STANDARD_FIELD") {
+                    resolved = (previewQuery.data?.standardFields as Record<string, unknown> | undefined)?.[m.targetField] ?? (validateQuery.data as Record<string, unknown>)[m.targetField] ?? "—";
+                    if (m.targetField === "score" && typeof resolved === "number") resolved = String(resolved);
+                  } else if (m.targetType === "SYSTEM_FIELD") {
+                    if (m.targetField === "status") resolved = validateQuery.data.statusValue ?? previewQuery.data?.systemFields?.["status"] ?? "—";
+                    else if (m.targetField === "source") resolved = validateQuery.data.sourceValue ?? previewQuery.data?.systemFields?.["source"] ?? "—";
+                    else resolved = (previewQuery.data?.systemFields as Record<string, unknown> | undefined)?.[m.targetField] ?? "—";
+                  } else {
+                    resolved = (previewQuery.data?.customFields as Record<string, unknown> | undefined)?.[m.targetField] ?? (validateQuery.data.customData as Record<string, unknown> | undefined)?.[m.targetField] ?? "—";
+                  }
+                  const isInvalid = resolved === "—" || (validateQuery.data.errors ?? []).some((e) => e.field === m.targetField);
+                  return (
+                    <div key={m.id} className="flex flex-wrap items-center gap-1 text-xs">
+                      <span className="font-mono bg-white px-1 rounded border">{sourcePath}</span>
+                      <span>→</span>
+                      <span className="font-medium">{targetLabel}</span>
+                      <span>→</span>
+                      <span className={isInvalid ? "text-red-600 font-medium" : "text-emerald-700 font-medium"}>{String(resolved ?? "—")}</span>
+                      {isInvalid && <span className="text-[10px] text-red-500">(Invalid / not found)</span>}
+                    </div>
+                  );
+                })}
+              {(mappingsForPreviewQ.data?.data ?? []).filter((m) => m.active).length === 0 && (
+                <p className="text-xs text-muted-foreground">No active mappings.</p>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">Resolved via preview + validation; reference values tenant-scoped.</p>
           </div>
         </div>
       )}

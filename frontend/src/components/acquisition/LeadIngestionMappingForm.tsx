@@ -27,6 +27,7 @@ import {
   type LeadIngestionTargetType,
   type LeadIngestionTransformType,
 } from "@/types/acquisition";
+import { useLeadStatuses, useLeadSources } from "@/lib/hooks/leads";
 
 const transformLabels: Record<LeadIngestionTransformType, string> = {
   NONE: "Keep as is",
@@ -35,10 +36,10 @@ const transformLabels: Record<LeadIngestionTransformType, string> = {
   UPPERCASE: "Make uppercase",
 };
 
-// Business-friendly grouping for CRM fields
+// Business-friendly grouping — reuse existing tenant field metadata, do not duplicate definitions
 const getBusinessGroup = (target: LeadIngestionTargetField): string => {
   if (target.targetType === "CUSTOM_FIELD") return "Custom Fields";
-  if (target.targetType === "SYSTEM_FIELD") return "Lead Details";
+  // Lead Information includes standard + system + score/status/source per existing domain
   return "Lead Information";
 };
 
@@ -137,6 +138,15 @@ export function LeadIngestionMappingForm({
     form.reset(getDefaultValues());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValues]);
+
+  // Reference data for system fields — tenant-scoped, never hardcoded
+  const statusesQ = useLeadStatuses();
+  const sourcesQ = useLeadSources();
+  const selectedTargetField = form.watch("targetField");
+  const selectedTargetType = form.watch("targetType");
+  const isStatusTarget = selectedTargetType === "SYSTEM_FIELD" && selectedTargetField === "status";
+  const isSourceTarget = selectedTargetType === "SYSTEM_FIELD" && selectedTargetField === "source";
+  const isScoreTarget = selectedTargetType === "STANDARD_FIELD" && selectedTargetField === "score";
 
   // Group all CRM fields business-friendly, hide raw targetType enum from normal UX
   const groupedCrmFields = useMemo(() => {
@@ -333,9 +343,80 @@ export function LeadIngestionMappingForm({
 
         <div className="space-y-2">
           <Label htmlFor="defaultValue">Default value</Label>
-          <p className="text-xs text-muted-foreground">If the source does not provide a value, use:</p>
+          <p className="text-xs text-muted-foreground">
+            {isStatusTarget
+              ? "If source does not provide a value, use existing status:"
+              : isSourceTarget
+                ? "If source does not provide a value, use existing source:"
+                : isScoreTarget
+                  ? "If source does not provide a value, use numeric score 0–100:"
+                  : "If the source does not provide a value, use:"}
+          </p>
 
-          <Input id="defaultValue" placeholder="e.g. New" {...form.register("defaultValue")} />
+          {isStatusTarget ? (
+            statusesQ.isLoading ? (
+              <p className="text-xs text-muted-foreground">Loading statuses…</p>
+            ) : (statusesQ.data ?? []).length === 0 ? (
+              <p className="text-xs text-amber-600">No statuses configured — create one in Lead settings.</p>
+            ) : (
+              <Select
+                value={form.watch("defaultValue") ?? ""}
+                onValueChange={(v) => form.setValue("defaultValue", v, { shouldDirty: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— No default —</SelectItem>
+                  {(statusesQ.data ?? []).map((s: { id: string; name: string }) => (
+                    <SelectItem key={s.id} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+          ) : isSourceTarget ? (
+            sourcesQ.isLoading ? (
+              <p className="text-xs text-muted-foreground">Loading sources…</p>
+            ) : (sourcesQ.data ?? []).length === 0 ? (
+              <p className="text-xs text-amber-600">No sources configured — create one in Lead settings.</p>
+            ) : (
+              <Select
+                value={form.watch("defaultValue") ?? ""}
+                onValueChange={(v) => form.setValue("defaultValue", v, { shouldDirty: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— No default —</SelectItem>
+                  {(sourcesQ.data ?? []).map((s: { id: string; name: string }) => (
+                    <SelectItem key={s.id} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+          ) : isScoreTarget ? (
+            <Input
+              id="defaultValue"
+              type="number"
+              min={0}
+              max={100}
+              placeholder="e.g. 50"
+              {...form.register("defaultValue")}
+            />
+          ) : (
+            <Input id="defaultValue" placeholder="e.g. New" {...form.register("defaultValue")} />
+          )}
+          {isStatusTarget && statusesQ.data && (
+            <p className="text-[11px] text-muted-foreground">Options from tenant Lead Status — validated against existing records.</p>
+          )}
+          {isSourceTarget && sourcesQ.data && (
+            <p className="text-[11px] text-muted-foreground">Options from tenant Lead Source — validated against existing records.</p>
+          )}
         </div>
       </div>
 
