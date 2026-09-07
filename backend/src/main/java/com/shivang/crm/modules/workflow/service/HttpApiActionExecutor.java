@@ -15,6 +15,9 @@ import com.shivang.crm.modules.integration.outbound.OutboundHttpResult;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.JsonNode;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 public class HttpApiActionExecutor implements WorkflowActionExecutor {
 
@@ -121,6 +124,11 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
             }
             // Make credential available for {{credential.*}} resolution — execution-only, never persisted
             context.setCredentialContext(credentialMap);
+            // Safe diagnostics: only key names, never values
+            Object diagUserIdRaw = configuration.get("credentialSourceUserId");
+            if (diagUserIdRaw == null) diagUserIdRaw = configuration.get("executeAsUserId");
+            log.info("HTTP_API credential diagnostics: nodeId={}, tenantId={}, authMode={}, credentialSource={}, credentialSourceUserId={}, keys={}, found={}",
+                context.getWorkflowNodeExecutionId(), context.getIdentity().tenantId(), authMode, credentialSourceForAudit, String.valueOf(diagUserIdRaw), credentialMap.keySet(), !credentialMap.isEmpty());
         } else if ("SAVED_CONNECTION".equals(authMode)) {
             // Keep existing per-connection user-aware path; resolve executionUserId for transport
             Map<String, Object> identityConfig = new java.util.LinkedHashMap<>(configuration);

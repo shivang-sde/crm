@@ -118,6 +118,11 @@ public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
     }
 
     private Object resolveValue(Object value, WorkflowExecutionContext context) {
+        // Credential templates must be resolved by HttpApiActionExecutor after it populates credentialContext.
+        // Skipping them here prevents WORKFLOW_ACTION_VALUE_RESOLUTION_FAILED for {{credential.*}} before context is set.
+        if (value instanceof String s && s.contains("{{credential.")) {
+            return value;
+        }
         if (value instanceof String text && text.startsWith("{{") && text.endsWith("}}")) {
             String fieldPath = text.substring(2, text.length() - 2).trim();
             WorkflowResolvedValue resolved = valueResolver.resolve(context, fieldPath);
