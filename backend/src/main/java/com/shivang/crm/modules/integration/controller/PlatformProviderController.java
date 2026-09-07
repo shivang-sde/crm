@@ -9,11 +9,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import com.shivang.crm.modules.auth.security.TenantContext;
 import com.shivang.crm.modules.integration.entity.ProviderActionDefinition;
 import com.shivang.crm.modules.integration.entity.ProviderDefinition;
 import com.shivang.crm.modules.integration.repository.ProviderActionDefinitionRepository;
 import com.shivang.crm.modules.integration.repository.ProviderDefinitionRepository;
+import com.shivang.crm.shared.dto.ApiResponse;
 import com.shivang.crm.shared.exception.BusinessException;
 
 import lombok.RequiredArgsConstructor;
@@ -26,21 +26,20 @@ public class PlatformProviderController {
 
     private final ProviderDefinitionRepository providerRepository;
     private final ProviderActionDefinitionRepository actionRepository;
-    private final TenantContext tenantContext;
 
     public record ProviderRequest(String providerKey, String providerName, String description, String category, Boolean isActive, Boolean supportsClickToCall) {}
     public record ProviderResponse(UUID id, String providerKey, String providerName, String description, String category, Boolean isActive, Boolean supportsClickToCall) {}
 
     @GetMapping
-    public ResponseEntity<List<ProviderResponse>> list() {
+    public ResponseEntity<ApiResponse<List<ProviderResponse>>> list() {
         List<ProviderResponse> list = providerRepository.findAll().stream()
             .map(this::toResponse)
             .toList();
-        return ResponseEntity.ok(list);
+        return ResponseEntity.ok(ApiResponse.success(list));
     }
 
     @PostMapping
-    public ResponseEntity<ProviderResponse> create(@RequestBody ProviderRequest req) {
+    public ResponseEntity<ApiResponse<ProviderResponse>> create(@RequestBody ProviderRequest req) {
         if (req.providerKey() == null || req.providerKey().isBlank()) throw new BusinessException("VALIDATION_ERROR", "Provider key is required");
         if (req.providerName() == null || req.providerName().isBlank()) throw new BusinessException("VALIDATION_ERROR", "Provider name is required");
         String key = req.providerKey().trim().toLowerCase();
@@ -57,11 +56,11 @@ public class PlatformProviderController {
         if (Boolean.TRUE.equals(req.supportsClickToCall())) {
             upsertClickToCallAction(provider);
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(provider));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(toResponse(provider)));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ProviderResponse> update(@PathVariable UUID id, @RequestBody ProviderRequest req) {
+    public ResponseEntity<ApiResponse<ProviderResponse>> update(@PathVariable UUID id, @RequestBody ProviderRequest req) {
         ProviderDefinition provider = providerRepository.findById(id)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Provider not found"));
         if (req.providerName() != null && !req.providerName().isBlank()) provider.setProviderName(req.providerName().trim());
@@ -78,18 +77,18 @@ public class PlatformProviderController {
                     .ifPresent(a -> { a.setIsActive(false); actionRepository.save(a); });
             }
         }
-        return ResponseEntity.ok(toResponse(provider));
+        return ResponseEntity.ok(ApiResponse.success(toResponse(provider)));
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<ProviderResponse> updateStatus(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<ProviderResponse>> updateStatus(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
         ProviderDefinition provider = providerRepository.findById(id)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Provider not found"));
         Object active = body.get("isActive");
         if (active == null) active = body.get("active");
         if (active != null) provider.setIsActive(Boolean.parseBoolean(String.valueOf(active)));
         provider = providerRepository.save(provider);
-        return ResponseEntity.ok(toResponse(provider));
+        return ResponseEntity.ok(ApiResponse.success(toResponse(provider)));
     }
 
     private ProviderResponse toResponse(ProviderDefinition p) {

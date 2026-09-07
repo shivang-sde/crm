@@ -53,7 +53,7 @@ function ProvidersList() {
       toast.success("Provider created");
       setIsDialogOpen(false);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || "Create failed"),
+    onError: (e: any) => toast.error(e?.response?.data?.error?.message || e?.response?.data?.message || "Create failed"),
   });
 
   const updateMutation = useMutation({
@@ -66,7 +66,7 @@ function ProvidersList() {
       toast.success("Provider updated");
       setIsDialogOpen(false);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || "Update failed"),
+    onError: (e: any) => toast.error(e?.response?.data?.error?.message || e?.response?.data?.message || "Update failed"),
   });
 
   const toggleActive = async (provider: Provider) => {
