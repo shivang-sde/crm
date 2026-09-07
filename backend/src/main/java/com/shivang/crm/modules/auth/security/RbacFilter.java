@@ -274,6 +274,13 @@ public class RbacFilter extends OncePerRequestFilter {
             // Analytics endpoints are governed by the existing report
             // permissions (report:read / report:export).
             case "analytics" -> "report";
+            // Calling / integration technical resources are part of the CALL business module.
+            // URL naming (integrations, call-settings, calling-providers, settings) must not
+            // create new top-level RBAC modules (integration, call-setting, etc.).
+            case "integrations", "integration" -> "call";
+            case "call-settings", "call-setting" -> "call";
+            case "calling-providers", "calling-provider" -> "call";
+            case "settings", "setting" -> "call";
             default -> {
                 // For unknown resources, return the resource name without trailing 's'
                 String result = resource.endsWith("s") ? resource.substring(0, resource.length() - 1) : resource;

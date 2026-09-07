@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Plus, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/lib/api/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,8 @@ const emptyTriggerForm = {
 
 export default function CallingSettingsPage() {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
+  const [providersError, setProvidersError] = useState<string | null>(null);
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [instances, setInstances] = useState<ConnectorInstanceSummary[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [providerForm, setProviderForm] = useState(emptyProviderForm);
@@ -137,6 +140,8 @@ export default function CallingSettingsPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        setProvidersLoading(true);
+        setProvidersError(null);
         const [providersResponse, instancesResponse, triggersResponse, layoutResponse] = await Promise.all([
           api.get<ProviderSummary[]>("/integrations/providers"),
           api.get<ConnectorInstanceSummary[]>("/integrations/connector-instances"),
@@ -147,6 +152,7 @@ export default function CallingSettingsPage() {
         const providerList = providersResponse.data ?? [];
         const instanceList = instancesResponse.data ?? [];
         setProviders(providerList);
+        setProvidersError(null);
         setInstances(instanceList);
         setTriggers(triggersResponse.data ?? []);
         setLayoutConfig(layoutResponse.data ?? { displayMode: "PAGE", active: true, showEntityDetails: true, showCallHistory: true, showNotes: true, showDisposition: true });
@@ -164,10 +170,17 @@ export default function CallingSettingsPage() {
         } else {
           setProviderForm({ ...emptyProviderForm, providerKey: providerList[0]?.providerKey ?? "" });
         }
-      } catch (error) {
+        if (providerList.length === 0) {
+          console.warn("No active CALLING providers available");
+        }
+      } catch (error: any) {
         console.error("Failed to load calling settings", error);
+        const message = error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || "Failed to load providers";
+        setProvidersError(message);
+        toast.error(message);
       } finally {
         setLoading(false);
+        setProvidersLoading(false);
       }
     };
 
@@ -501,9 +514,9 @@ export default function CallingSettingsPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="provider">Calling provider</Label>
-                      <Select value={providerForm.providerKey} onValueChange={(value) => setProviderForm((previous) => ({ ...previous, providerKey: value }))}>
+                      <Select value={providerForm.providerKey} onValueChange={(value) => setProviderForm((previous) => ({ ...previous, providerKey: value }))} disabled={providersLoading || !!providersError}>
                         <SelectTrigger id="provider">
-                          <SelectValue placeholder="Choose provider" />
+                          <SelectValue placeholder={providersLoading ? "Loading providers..." : providersError ? "Failed to load providers" : "Choose provider"} />
                         </SelectTrigger>
                         <SelectContent>
                           {providers.map((provider) => (
@@ -513,6 +526,13 @@ export default function CallingSettingsPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {providersLoading ? (
+                        <p className="text-xs text-muted-foreground">Loading providers...</p>
+                      ) : providersError ? (
+                        <p className="text-xs text-destructive">Failed to load providers: {providersError}</p>
+                      ) : providers.length === 0 ? (
+                        <p className="text-xs text-amber-600">No active CALLING providers available. Please contact platform admin.</p>
+                      ) : null}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="name">Connector name</Label>
