@@ -46,6 +46,16 @@ public class RbacFilter extends OncePerRequestFilter {
             "/api/v1/auth", "/actuator", "/api/v1/public", "/api/v1/webhooks",
             "/swagger", "/v3/api-docs");
 
+    // Calling configuration endpoints are administrative / self-service and use
+    // explicit controller authorization (CallingAdminController: admin:settings,
+    // CallingUserSettingsController: isAuthenticated). They must not be derived
+    // as artificial RBAC modules (integration, call-setting, calling-provider, setting).
+    private static final Set<String> CALLING_CONFIG_EXCLUDED_PREFIXES = Set.of(
+            "/api/v1/integrations",
+            "/api/v1/call-settings",
+            "/api/v1/calling-providers",
+            "/api/v1/settings/connectors");
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
             HttpServletResponse response,
@@ -70,6 +80,15 @@ public class RbacFilter extends OncePerRequestFilter {
         // Skip for excluded paths
         if (isExcludedPath(request)) {
             log.debug("Skipping RBAC for excluded path: {}", request.getRequestURI());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Calling configuration endpoints use explicit controller authorization
+        // (CallingAdminController: admin:settings, CallingUserSettingsController: isAuthenticated)
+        // and must not be derived as integration/call-setting/calling-provider/setting modules.
+        if (isCallingConfigPath(request)) {
+            log.debug("Skipping URL-derived RBAC for calling config path: {}", request.getRequestURI());
             filterChain.doFilter(request, response);
             return;
         }
@@ -177,6 +196,11 @@ public class RbacFilter extends OncePerRequestFilter {
         return EXCLUDED_PATHS.stream().anyMatch(path::startsWith);
     }
 
+    private boolean isCallingConfigPath(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return CALLING_CONFIG_EXCLUDED_PREFIXES.stream().anyMatch(path::startsWith);
+    }
+
     private ModuleAction extractModuleAction(String path, String method) {
 
         // Special handling for role endpoints
@@ -274,13 +298,6 @@ public class RbacFilter extends OncePerRequestFilter {
             // Analytics endpoints are governed by the existing report
             // permissions (report:read / report:export).
             case "analytics" -> "report";
-            // Calling / integration technical resources are part of the CALL business module.
-            // URL naming (integrations, call-settings, calling-providers, settings) must not
-            // create new top-level RBAC modules (integration, call-setting, etc.).
-            case "integrations", "integration" -> "call";
-            case "call-settings", "call-setting" -> "call";
-            case "calling-providers", "calling-provider" -> "call";
-            case "settings", "setting" -> "call";
             default -> {
                 // For unknown resources, return the resource name without trailing 's'
                 String result = resource.endsWith("s") ? resource.substring(0, resource.length() - 1) : resource;
