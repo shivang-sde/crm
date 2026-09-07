@@ -146,6 +146,13 @@ public class WorkflowDefinitionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(workflowDefinitionService.createDraftVersion(tenant(), workflowId, request)));
     }
 
+    @PostMapping("/versions/{versionId}/clone")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
+    public ResponseEntity<ApiResponse<UUID>> cloneVersion(@PathVariable UUID versionId) {
+        UUID newVersionId = workflowDefinitionService.cloneVersionAsDraft(tenant(), versionId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(newVersionId));
+    }
+
     @PutMapping("/versions/{versionId}")
     @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<String>> updateVersion(@PathVariable UUID versionId, @Valid @RequestBody WorkflowVersionUpdateRequest request) {
@@ -211,6 +218,13 @@ public class WorkflowDefinitionController {
     public ResponseEntity<ApiResponse<String>> deactivate(@PathVariable UUID workflowId) {
         workflowDefinitionService.deactivate(tenant(), workflowId);
         return ResponseEntity.ok(ApiResponse.success("Workflow deactivated"));
+    }
+
+    @PostMapping("/{workflowId}/activate")
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
+    public ResponseEntity<ApiResponse<String>> activateWorkflow(@PathVariable UUID workflowId) {
+        workflowDefinitionService.activateWorkflow(tenant(), workflowId);
+        return ResponseEntity.ok(ApiResponse.success("Workflow activated"));
     }
 
     @PostMapping("/executions/{executionId}/retry")

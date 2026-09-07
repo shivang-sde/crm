@@ -11,8 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
+  useActivateWorkflow,
   useActivateWorkflowVersion,
+  useCloneWorkflowVersion,
   useCreateWorkflowVersion,
+  useDeactivateWorkflow,
   useWorkflow,
   useWorkflowVersions,
 } from "@/lib/hooks/workflow";
@@ -33,6 +36,9 @@ export default function WorkflowDetailPage() {
   const versionsQuery = useWorkflowVersions(workflowId);
   const createVersion = useCreateWorkflowVersion(workflowId);
   const activate = useActivateWorkflowVersion(workflowId);
+  const cloneVersion = useCloneWorkflowVersion(workflowId);
+  const activateWorkflow = useActivateWorkflow(workflowId);
+  const deactivateWorkflow = useDeactivateWorkflow(workflowId);
 
   if (!canViewWorkflows) {
     return (
@@ -91,6 +97,38 @@ export default function WorkflowDetailPage() {
             <Link href={`/workflows/${workflow.id}/executions`}>
               <Button variant="outline">Executions</Button>
             </Link>
+            {workflow.status === "INACTIVE" ? (
+              <Button
+                disabled={activateWorkflow.isPending}
+                onClick={async () => {
+                  try {
+                    await activateWorkflow.mutateAsync(workflow.id);
+                    toast.success("Workflow activated");
+                  } catch (e: any) {
+                    const msg = e?.response?.data?.error?.message ?? e?.message ?? "Failed to activate workflow";
+                    toast.error(msg);
+                  }
+                }}
+              >
+                {activateWorkflow.isPending ? "Activating…" : "Activate Workflow"}
+              </Button>
+            ) : workflow.status === "ACTIVE" ? (
+              <Button
+                variant="outline"
+                disabled={deactivateWorkflow.isPending}
+                onClick={async () => {
+                  try {
+                    await deactivateWorkflow.mutateAsync(workflow.id);
+                    toast.success("Workflow deactivated");
+                  } catch (e: any) {
+                    const msg = e?.response?.data?.error?.message ?? e?.message ?? "Failed to deactivate workflow";
+                    toast.error(msg);
+                  }
+                }}
+              >
+                {deactivateWorkflow.isPending ? "Deactivating…" : "Deactivate Workflow"}
+              </Button>
+            ) : null}
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Create Draft Version
             </Button>
@@ -166,6 +204,39 @@ export default function WorkflowDetailPage() {
                         }}
                       >
                         Activate
+                      </Button>
+                    )}
+                    {canEditWorkflows && version.status === "ACTIVE" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={cloneVersion.isPending}
+                        onClick={async () => {
+                          const existingDraft = versions.find((v) => v.status === "DRAFT");
+                          if (existingDraft) {
+                            toast.info(`Draft already exists (v${existingDraft.versionNumber}) — opening existing draft`);
+                            router.push(`/workflows/${workflowId}/builder?versionId=${existingDraft.id}`);
+                            return;
+                          }
+                          try {
+                            const newId = await cloneVersion.mutateAsync(version.id);
+                            toast.success("Draft created from active version");
+                            router.push(`/workflows/${workflowId}/builder?versionId=${newId}`);
+                          } catch (e: any) {
+                            const msg = e?.response?.data?.error?.message ?? e?.message ?? "Failed to create draft";
+                            if (String(msg).includes("WORKFLOW_DRAFT_EXISTS") || String(msg).toLowerCase().includes("draft already exists")) {
+                              const draft = versions.find((v) => v.status === "DRAFT");
+                              if (draft) {
+                                toast.info(`Draft already exists — opening v${draft.versionNumber}`);
+                                router.push(`/workflows/${workflowId}/builder?versionId=${draft.id}`);
+                                return;
+                              }
+                            }
+                            toast.error(msg);
+                          }
+                        }}
+                      >
+                        {cloneVersion.isPending ? "Creating…" : "Create Draft"}
                       </Button>
                     )}
                   </div>

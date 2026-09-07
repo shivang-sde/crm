@@ -178,6 +178,76 @@ public class WorkflowDefinitionService {
         }
     }
 
+    public UUID cloneVersionAsDraft(UUID tenantId, UUID sourceVersionId) {
+        WorkflowVersion source = requireVersion(tenantId, sourceVersionId);
+        Workflow workflow = source.getWorkflow();
+
+        // Prevent unlimited drafts — one DRAFT per workflow at a time
+        workflowVersionRepository.findFirstByWorkflowIdAndTenantIdAndStatusAndDeletedFalse(
+                workflow.getId(), tenantId, WorkflowVersionStatus.DRAFT)
+            .ifPresent(existing -> {
+                throw new BusinessException("WORKFLOW_DRAFT_EXISTS",
+                    "A draft version already exists (v" + existing.getVersionNumber() + "). Please edit the existing draft.");
+            });
+
+        int nextVersion = workflowVersionRepository
+            .findByWorkflowIdAndTenantIdAndDeletedFalseOrderByVersionNumberDesc(workflow.getId(), tenantId)
+            .stream().findFirst().map(v -> v.getVersionNumber() + 1).orElse(1);
+
+        WorkflowVersion draft;
+        try {
+            draft = workflowVersionRepository.save(WorkflowVersion.builder()
+                .tenantId(tenantId)
+                .workflow(workflow)
+                .versionNumber(nextVersion)
+                .status(WorkflowVersionStatus.DRAFT)
+                .triggerEntityType(source.getTriggerEntityType())
+                .triggerEventType(source.getTriggerEventType())
+                .build());
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException("WORKFLOW_CONCURRENT_DRAFT", "Another version was created concurrently. Refresh and try again.");
+        }
+
+        // Copy nodes
+        List<WorkflowNode> sourceNodes = workflowNodeRepository
+            .findByTenantIdAndWorkflowVersionIdAndDeletedFalse(tenantId, sourceVersionId);
+        Map<UUID, WorkflowNode> nodeIdMap = new java.util.HashMap<>();
+        for (WorkflowNode sourceNode : sourceNodes) {
+            Map<String, Object> cfgCopy = sourceNode.getConfiguration() == null ? null : new java.util.HashMap<>(sourceNode.getConfiguration());
+            WorkflowNode copy = WorkflowNode.builder()
+                .tenantId(tenantId)
+                .workflowVersion(draft)
+                .nodeKey(sourceNode.getNodeKey())
+                .nodeType(sourceNode.getNodeType())
+                .name(sourceNode.getName())
+                .configuration(cfgCopy)
+                .build();
+            WorkflowNode saved = workflowNodeRepository.save(copy);
+            nodeIdMap.put(sourceNode.getId(), saved);
+        }
+
+        // Copy edges
+        List<WorkflowEdge> sourceEdges = workflowEdgeRepository
+            .findByTenantIdAndWorkflowVersionIdAndDeletedFalse(tenantId, sourceVersionId);
+        for (WorkflowEdge sourceEdge : sourceEdges) {
+            WorkflowNode newSource = nodeIdMap.get(sourceEdge.getSourceNode().getId());
+            WorkflowNode newTarget = nodeIdMap.get(sourceEdge.getTargetNode().getId());
+            if (newSource == null || newTarget == null) continue;
+            Map<String, Object> edgeCfgCopy = sourceEdge.getConfiguration() == null ? null : new java.util.HashMap<>(sourceEdge.getConfiguration());
+            WorkflowEdge copyEdge = WorkflowEdge.builder()
+                .tenantId(tenantId)
+                .workflowVersion(draft)
+                .sourceNode(newSource)
+                .targetNode(newTarget)
+                .edgeKey(sourceEdge.getEdgeKey())
+                .configuration(edgeCfgCopy)
+                .build();
+            workflowEdgeRepository.save(copyEdge);
+        }
+
+        return draft.getId();
+    }
+
     public void updateDraftVersionTrigger(UUID tenantId, UUID versionId, com.shivang.crm.modules.workflow.dto.WorkflowVersionUpdateRequest request) {
         WorkflowVersion version = requireDraftVersion(tenantId, versionId);
         String entityType = request.getTriggerEntityType() == null ? "" : request.getTriggerEntityType().trim().toUpperCase();
@@ -313,6 +383,23 @@ public class WorkflowDefinitionService {
             throw new BusinessException("WORKFLOW_NOT_ACTIVE", "Only ACTIVE workflows can be deactivated");
         }
         workflow.setStatus(WorkflowStatus.INACTIVE);
+    }
+
+    public void activateWorkflow(UUID tenantId, UUID workflowId) {
+        Workflow workflow = workflowRepository.findByIdAndTenantIdAndDeletedFalse(workflowId, tenantId)
+            .orElseThrow(() -> notFound("Workflow not found"));
+        if (workflow.getStatus() == WorkflowStatus.ACTIVE) {
+            throw new BusinessException("WORKFLOW_ALREADY_ACTIVE", "Workflow is already active");
+        }
+        if (workflow.getStatus() != WorkflowStatus.INACTIVE) {
+            throw new BusinessException("WORKFLOW_NOT_INACTIVE", "Only INACTIVE workflows can be activated");
+        }
+        workflowVersionRepository.findFirstByWorkflowIdAndTenantIdAndStatusAndDeletedFalse(
+                workflowId, tenantId, WorkflowVersionStatus.ACTIVE)
+            .orElseThrow(() -> new BusinessException("WORKFLOW_NO_ACTIVE_VERSION",
+                "Cannot activate workflow without an active version. Create and activate a version first."));
+        workflow.setStatus(WorkflowStatus.ACTIVE);
+        workflowRepository.save(workflow);
     }
 
     private Workflow requireWorkflow(UUID workflowId, UUID tenantId) {

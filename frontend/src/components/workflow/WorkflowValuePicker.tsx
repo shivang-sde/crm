@@ -102,6 +102,29 @@ export function WorkflowValuePicker({
     staleTime: 30 * 1000,
   });
 
+  // DEBUG ONLY — trace credential picker data flow (key names only, never values)
+  // console.log("[CredentialPicker] context", {
+  //   authenticationMode: credentialContext?.authenticationMode,
+  //   credentialSource,
+  //   credentialUserId,
+  //   isCredentialMode,
+  //   shouldFetchDynamicKeys,
+  // });
+  // console.log("[CredentialPicker] query state", {
+  //   status: dynamicKeysQuery.status,
+  //   isLoading: dynamicKeysQuery.isLoading,
+  //   isFetching: dynamicKeysQuery.isFetching,
+  //   isError: dynamicKeysQuery.isError,
+  //   error: dynamicKeysQuery.error,
+  //   data: dynamicKeysQuery.data,
+  // });
+  // console.log("[CredentialPicker] dynamic credential keys", {
+  //   data: dynamicKeysQuery.data,
+  //   type: typeof dynamicKeysQuery.data,
+  //   isArray: Array.isArray(dynamicKeysQuery.data),
+  //   length: Array.isArray(dynamicKeysQuery.data) ? dynamicKeysQuery.data.length : undefined,
+  // });
+
   const items: PickerItem[] = useMemo(() => {
     const out: PickerItem[] = [];
 
@@ -126,13 +149,19 @@ export function WorkflowValuePicker({
 
     // Credential namespace — only when CREDENTIAL mode; never show fake static keys
     if (isCredentialMode) {
+      const userOptions = referenceData.optionsByField["entity.ownerId"] ?? [];
+      const selectedUserLabel =
+        credentialSource === "SPECIFIC_USER" && credentialUserId
+          ? userOptions.find((o) => o.value === credentialUserId)?.label ?? credentialUserId
+          : undefined;
       if (credentialSource === "TENANT") {
+        const group = "Credentials — Workspace";
         if (dynamicKeysQuery.isLoading) {
           out.push({
             label: "Loading credentials…",
             path: "credential.loading",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential loading",
             disabled: true,
           });
@@ -141,17 +170,17 @@ export function WorkflowValuePicker({
             label: "Unable to load credential keys.",
             path: "credential.error",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential error",
             disabled: true,
           });
         } else if (dynamicKeysQuery.data && dynamicKeysQuery.data.length > 0) {
           for (const key of dynamicKeysQuery.data) {
             out.push({
-              label: `Credential: ${key}`,
+              label: key,
               path: `credential.${key}`,
               insertion: `{{credential.${key}}}`,
-              group: "Credential",
+              group,
               keywords: `credential ${key}`.toLowerCase(),
             });
           }
@@ -160,18 +189,19 @@ export function WorkflowValuePicker({
             label: "No workspace credentials are configured.",
             path: "credential.empty",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential empty",
             disabled: true,
           });
         }
       } else if (credentialSource === "SPECIFIC_USER") {
+        const group = selectedUserLabel ? `Credentials — ${selectedUserLabel}` : "Credentials — Specific user";
         if (!credentialUserId) {
           out.push({
             label: "Select a user to view available credentials.",
             path: "credential.no-user",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential no user",
             disabled: true,
           });
@@ -180,7 +210,7 @@ export function WorkflowValuePicker({
             label: "Loading credentials…",
             path: "credential.loading",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential loading",
             disabled: true,
           });
@@ -189,17 +219,17 @@ export function WorkflowValuePicker({
             label: "Unable to load credential keys.",
             path: "credential.error",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential error",
             disabled: true,
           });
         } else if (dynamicKeysQuery.data && dynamicKeysQuery.data.length > 0) {
           for (const key of dynamicKeysQuery.data) {
             out.push({
-              label: `Credential: ${key}`,
+              label: key,
               path: `credential.${key}`,
               insertion: `{{credential.${key}}}`,
-              group: "Credential",
+              group,
               keywords: `credential ${key}`.toLowerCase(),
             });
           }
@@ -208,26 +238,38 @@ export function WorkflowValuePicker({
             label: "No credentials are configured for this user.",
             path: "credential.empty",
             insertion: "",
-            group: "Credential",
+            group,
             keywords: "credential empty",
             disabled: true,
           });
         }
-      } else if (credentialSource === "WORKFLOW_USER" || credentialSource === "RECORD_OWNER") {
+      } else if (credentialSource === "WORKFLOW_USER") {
+        const group = "Credentials — Workflow user (runtime)";
         out.push({
-          label: "Credential fields will be available at runtime for the resolved user.",
+          label: "Credential fields are resolved at runtime from the workflow user.",
           path: "credential.runtime",
           insertion: "",
-          group: "Credential",
+          group,
+          keywords: "credential runtime",
+          disabled: true,
+        });
+      } else if (credentialSource === "RECORD_OWNER") {
+        const group = "Credentials — Record owner (runtime)";
+        out.push({
+          label: "Credential fields are resolved at runtime from the record owner.",
+          path: "credential.runtime",
+          insertion: "",
+          group,
           keywords: "credential runtime",
           disabled: true,
         });
       } else {
+        const group = "Credentials";
         out.push({
           label: "Select a credential source to view available keys.",
           path: "credential.select-source",
           insertion: "",
-          group: "Credential",
+          group,
           keywords: "credential select",
           disabled: true,
         });
@@ -296,6 +338,8 @@ export function WorkflowValuePicker({
 
     return out;
   }, [metadata, triggerEntityType, referenceData, relationshipData, nodes, edges, currentNodeId, dynamicKeysQuery.data, dynamicKeysQuery.isLoading, dynamicKeysQuery.isError, credentialSource, credentialUserId, shouldFetchDynamicKeys]);
+
+  // console.log("[CredentialPicker] credential items", items.filter((item) => item.group.includes("Credentials")));
 
   // Group items
   const grouped = useMemo(() => {

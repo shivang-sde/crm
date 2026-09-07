@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConditionRulesEditor } from "./ConditionRulesEditor";
@@ -807,43 +807,10 @@ function HttpApiConfig({
     onChange({ queryParams: obj });
   };
 
-  // Body: store as object, edit as text (template-aware)
+  // Body: store as object, edit as text (template-aware) — remounts via key={node.id} so initial is sufficient
   const initialBodyText =
     typeof config.body === "object" && config.body !== null ? JSON.stringify(config.body, null, 2) : stringValue(config.body);
   const [bodyText, setBodyText] = useState(initialBodyText);
-  useEffect(() => {
-    const expected =
-      typeof config.body === "object" && config.body !== null ? JSON.stringify(config.body, null, 2) : stringValue(config.body);
-    // Sync when external config.body changes (e.g., reopen, external update) — avoid overwriting active invalid edit
-    if (expected !== bodyText) {
-      try {
-        const parsedDraft = bodyText.trim() ? JSON.parse(bodyText) : null;
-        if (JSON.stringify(parsedDraft) !== JSON.stringify(config.body)) {
-          // Only auto-sync if draft is not currently invalid JSON that the user is editing
-          // If draft is invalid, keep it so user can fix; otherwise sync to formatted expected
-          const draftValid = (() => {
-            try {
-              const p = JSON.parse(bodyText);
-              return p !== null && typeof p === "object" && !Array.isArray(p);
-            } catch {
-              return false;
-            }
-          })();
-          if (!draftValid || expected !== bodyText) {
-            // When config body changes externally, reflect it
-            // We check JSON.stringify(config.body) as dep, so this runs only on external change
-            setBodyText(expected);
-          }
-        }
-      } catch {
-        // draft invalid — keep it unless expected is empty and draft is empty? sync externally
-        if (JSON.stringify(config.body) !== bodyText) {
-          // do not overwrite invalid draft automatically; keep user text
-        }
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(config.body)]);
 
   const bodyError = useMemo(() => {
     const trimmed = bodyText.trim();
@@ -1021,7 +988,7 @@ function HttpApiConfig({
           {credSource === "RECORD_OWNER" && <p className="text-xs text-muted-foreground">Credential will be resolved for the record owner at execution time</p>}
           <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
             <p className="font-medium">Credential injection</p>
-            <p className="text-[11px]">Use <span className="font-mono">{"{{credential.apiKey}}"}</span>, <span className="font-mono">{"{{credential.token}}"}</span>, <span className="font-mono">{"{{credential.accountId}}"}</span> etc. in URL, headers, query or body. Insert via “Insert value → Credential”.</p>
+            <p className="text-[11px]">Use <span className="font-mono">{"{{credential.admin_user}}"}</span>, <span className="font-mono">{"{{credential.admin_pass}}"}</span> etc. — keys are your actual configured credential fields (e.g., Workspace shows <span className="font-mono">admin_user</span> when configured). Insert via “Insert value → Credentials — Workspace”.</p>
           </div>
         </>
       )}

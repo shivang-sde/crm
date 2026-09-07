@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Hammer, RefreshCw, RotateCcw, Undo2 } from "lucide-react";
@@ -87,15 +87,23 @@ export default function WorkflowExecutionDetailPage() {
     return { nodeKey: null, nodeType: null } as const;
   }, [selectedNodeId, graphNodes, execution]);
 
-  const onGraphSelect = (nodeId: string | null) => {
+  const onGraphSelect = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId);
     if (nodeId) setInspectorOpen(true);
-  };
+  }, []);
 
-  const onTimelineSelect = (nodeId: string) => {
+  const onTimelineSelect = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
     setInspectorOpen(true);
-  };
+  }, []);
+
+  const handleCloseMobileInspector = useCallback(() => {
+    setInspectorOpen(false);
+  }, []);
+
+  const handleCloseDesktopInspector = useCallback(() => {
+    setSelectedNodeId(null);
+  }, []);
 
   return (
     <div className="space-y-6 p-6">
@@ -276,7 +284,7 @@ export default function WorkflowExecutionDetailPage() {
 
             <div className="hidden lg:block">
               <div className="sticky top-6">
-                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} execution={selectedExec} onClose={() => setSelectedNodeId(null)} />
+                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} execution={selectedExec} onClose={handleCloseDesktopInspector} />
                 {!selectedExec && selectedNodeId && <p className="mt-2 text-xs text-muted-foreground">Historical node inspectable via timeline data.</p>}
               </div>
             </div>
@@ -286,7 +294,7 @@ export default function WorkflowExecutionDetailPage() {
             <SheetContent side="right" className="w-[90vw] overflow-auto sm:max-w-md p-0">
               <SheetHeader className="p-4 pb-0"><SheetTitle>Node Inspector</SheetTitle></SheetHeader>
               <div className="p-4">
-                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} execution={selectedExec} onClose={() => setInspectorOpen(false)} />
+                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} execution={selectedExec} onClose={handleCloseMobileInspector} />
               </div>
             </SheetContent>
           </Sheet>

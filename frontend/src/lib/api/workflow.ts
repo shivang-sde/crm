@@ -134,6 +134,11 @@ export const workflowApi = {
     return unwrapResponse(response);
   },
 
+  cloneVersion: async (versionId: string) => {
+    const response = await api.post<ApiResponse<string>>(`/workflows/versions/${versionId}/clone`);
+    return unwrapResponse(response);
+  },
+
   updateVersion: async (versionId: string, data: WorkflowVersionCreateRequest) => {
     const response = await api.put<ApiResponse<string>>(
       `/workflows/versions/${versionId}`,
@@ -236,6 +241,11 @@ export const workflowApi = {
     const response = await api.post<ApiResponse<string>>(
       `/workflows/${workflowId}/deactivate`
     );
+    return unwrapResponse(response);
+  },
+
+  activateWorkflow: async (workflowId: string) => {
+    const response = await api.post<ApiResponse<string>>(`/workflows/${workflowId}/activate`);
     return unwrapResponse(response);
   },
 

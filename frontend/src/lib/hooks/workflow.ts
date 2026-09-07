@@ -390,6 +390,19 @@ export function useCreateWorkflowVersion(workflowId: string) {
   });
 }
 
+export function useCloneWorkflowVersion(workflowId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (versionId: string) => workflowApi.cloneVersion(versionId),
+    onSuccess: (newVersionId) => {
+      qc.invalidateQueries({ queryKey: workflowKeys.versions(workflowId) });
+      qc.invalidateQueries({ queryKey: workflowKeys.detail(workflowId) });
+      qc.invalidateQueries({ queryKey: workflowKeys.lists() });
+      void newVersionId;
+    },
+  });
+}
+
 export function useUpdateWorkflowVersion(versionId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -488,6 +501,18 @@ export function useDeactivateWorkflow(workflowId: string) {
 
   return useMutation({
     mutationFn: (id: string) => workflowApi.deactivateWorkflow(id || workflowId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: workflowKeys.detail(workflowId) });
+      qc.invalidateQueries({ queryKey: workflowKeys.versions(workflowId) });
+      qc.invalidateQueries({ queryKey: workflowKeys.lists() });
+    },
+  });
+}
+
+export function useActivateWorkflow(workflowId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id?: string) => workflowApi.activateWorkflow(id || workflowId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: workflowKeys.detail(workflowId) });
       qc.invalidateQueries({ queryKey: workflowKeys.versions(workflowId) });
