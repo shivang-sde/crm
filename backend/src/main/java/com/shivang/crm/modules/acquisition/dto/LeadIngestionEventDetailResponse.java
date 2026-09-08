@@ -45,6 +45,18 @@ public class LeadIngestionEventDetailResponse {
     @JsonProperty("errorMessage")
     private String errorMessage;
 
+    @JsonProperty("userMessage")
+    private String userMessage;
+
+    @JsonProperty("technicalMessage")
+    private String technicalMessage;
+
+    @JsonProperty("retryable")
+    private Boolean retryable;
+
+    @JsonProperty("duplicateMatchType")
+    private String duplicateMatchType;
+
     @JsonProperty("failureStage")
     private LeadIngestionFailureStage failureStage;
 

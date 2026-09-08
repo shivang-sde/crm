@@ -39,7 +39,7 @@ public class LeadIngestionProcessingService {
     private final LeadService leadService;
     private final LeadRepository leadRepository;
 
-    @Transactional
+    @Transactional(noRollbackFor = {com.shivang.crm.shared.exception.BusinessException.class})
     public LeadIngestionEvent reprocessEvent(UUID tenantId, UUID configId, UUID eventId) {
         LeadIngestionEvent event = leadIngestionEventRepository
             .findByIdForUpdate(eventId)
@@ -135,11 +135,16 @@ public class LeadIngestionProcessingService {
             event.setProcessedAt(Instant.now());
             return leadIngestionEventRepository.save(event);
         } catch (Exception ex) {
+            if (isDuplicateConstraintException(ex)) {
+                log.warn("Duplicate constraint detected during reprocess for event {}: {}", event.getId(), ex.getMessage());
+                return handleDuplicate(tenantId, event, validated, "A lead with this email or phone already exists");
+            }
+            log.error("Lead ingestion failed for event {} tenant={} (reprocess)", event.getId(), tenantId, ex);
             event.setStatus(LeadIngestionEventStatus.FAILED);
             event.setFailureStage(LeadIngestionFailureStage.LEAD_CREATION);
-            event.setErrorCode("LEAD_CREATION_ERROR");
-            String msg = ex.getMessage() != null ? ex.getMessage() : "Lead creation failed";
-            event.setErrorMessage(msg.length() > 1000 ? msg.substring(0, 1000) : msg);
+            event.setErrorCode("PROCESSING_ERROR");
+            String userMsg = toUserFriendlyMessage(ex);
+            event.setErrorMessage(userMsg.length() > 1000 ? userMsg.substring(0, 1000) : userMsg);
             event.setProcessedAt(Instant.now());
             return leadIngestionEventRepository.save(event);
         }
@@ -153,7 +158,7 @@ public class LeadIngestionProcessingService {
         return leadIngestionEventRepository.save(event);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = {com.shivang.crm.shared.exception.BusinessException.class, org.springframework.dao.DataIntegrityViolationException.class})
     public LeadIngestionEvent processEvent(UUID tenantId, UUID configId, UUID eventId) {
         LeadIngestionEvent event = leadIngestionEventRepository
             .findByIdForUpdate(eventId)
@@ -244,11 +249,16 @@ public class LeadIngestionProcessingService {
             event.setProcessedAt(Instant.now());
             return leadIngestionEventRepository.save(event);
         } catch (Exception ex) {
+            if (isDuplicateConstraintException(ex)) {
+                log.warn("Duplicate constraint detected during process for event {}: {}", event.getId(), ex.getMessage());
+                return handleDuplicate(tenantId, event, validated, "A lead with this email or phone already exists");
+            }
+            log.error("Lead ingestion failed for event {} tenant={} (process)", event.getId(), tenantId, ex);
             event.setStatus(LeadIngestionEventStatus.FAILED);
             event.setFailureStage(LeadIngestionFailureStage.LEAD_CREATION);
-            event.setErrorCode("LEAD_CREATION_ERROR");
-            String msg = ex.getMessage() != null ? ex.getMessage() : "Lead creation failed";
-            event.setErrorMessage(msg.length() > 1000 ? msg.substring(0, 1000) : msg);
+            event.setErrorCode("PROCESSING_ERROR");
+            String userMsg = toUserFriendlyMessage(ex);
+            event.setErrorMessage(userMsg.length() > 1000 ? userMsg.substring(0, 1000) : userMsg);
             event.setProcessedAt(Instant.now());
             return leadIngestionEventRepository.save(event);
         }
@@ -343,5 +353,42 @@ public class LeadIngestionProcessingService {
             if (byPhone.isPresent()) return byPhone.get().getId();
         }
         return null;
+    }
+
+    private boolean isDuplicateConstraintException(Throwable ex) {
+        if (ex == null) return false;
+        String msg = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+        Throwable cause = ex.getCause();
+        String causeMsg = cause != null && cause.getMessage() != null ? cause.getMessage().toLowerCase() : "";
+        String combined = msg + " " + causeMsg;
+        // DB unique constraint for lead email/phone (e.g., uq_lead_email, uq_lead_phone) or generic duplicate
+        if (combined.contains("uq_lead") || combined.contains("uq-lead") || combined.contains("lead_email") || combined.contains("lead_phone")) {
+            return true;
+        }
+        if (combined.contains("duplicate") && (combined.contains("email") || combined.contains("phone") || combined.contains("unique") || combined.contains("constraint"))) {
+            return true;
+        }
+        if (combined.contains("violates unique") || combined.contains("unique constraint") || combined.contains("constraintviolation")) {
+            // narrow to lead context — if message mentions lead, treat as duplicate
+            if (combined.contains("lead")) return true;
+        }
+        return false;
+    }
+
+    private String toUserFriendlyMessage(Throwable ex) {
+        if (ex == null) return "We couldn't process this lead right now. Please try again or contact an administrator.";
+        String raw = ex.getMessage() != null ? ex.getMessage() : "";
+        String lower = raw.toLowerCase();
+        if (lower.contains("transaction silently rolled back") || lower.contains("rollback-only") || lower.contains("unexpectedrollback") || lower.contains("transactionsystemexception")) {
+            return "We couldn't process this lead right now. Please try again or contact an administrator.";
+        }
+        if (lower.contains("dataintegrity") || lower.contains("could not execute statement") || lower.contains("constraint")) {
+            // Don't expose DB technical details
+            return "We couldn't process this lead due to a data issue. Please try again.";
+        }
+        if (raw.isBlank()) return "We couldn't process this lead right now.";
+        // For other unexpected, generic friendly but keep short raw if useful and not technical
+        if (raw.length() > 200) return "We couldn't process this lead right now.";
+        return raw;
     }
 }

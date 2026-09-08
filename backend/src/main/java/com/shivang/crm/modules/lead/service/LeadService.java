@@ -49,7 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(noRollbackFor = {com.shivang.crm.shared.exception.BusinessException.class})
 public class LeadService {
 
     private final LeadRepository leadRepository;

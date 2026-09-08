@@ -193,6 +193,9 @@ export interface LeadIngestionEventSummaryResponse {
   externalEventId: string | null;
   leadId: string | null;
   errorCode: string | null;
+  errorMessage?: string | null;
+  userMessage?: string | null;
+  retryable?: boolean | null;
   failureStage?: LeadIngestionFailureStage | null;
   attemptCount?: number | null;
   receivedAt: string;
@@ -208,6 +211,10 @@ export interface LeadIngestionEventDetailResponse {
   leadId: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  userMessage?: string | null;
+  technicalMessage?: string | null;
+  retryable?: boolean | null;
+  duplicateMatchType?: string | null;
   failureStage?: LeadIngestionFailureStage | null;
   attemptCount?: number | null;
   receivedAt: string;

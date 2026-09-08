@@ -38,6 +38,12 @@ public class LeadIngestionEventSummaryResponse {
     @JsonProperty("errorCode")
     private String errorCode;
 
+    @JsonProperty("userMessage")
+    private String userMessage;
+
+    @JsonProperty("retryable")
+    private Boolean retryable;
+
     @JsonProperty("failureStage")
     private LeadIngestionFailureStage failureStage;
 
