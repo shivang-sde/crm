@@ -221,10 +221,18 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
 
         Map<String, Object> output = new LinkedHashMap<>();
         try {
+            // --- Backward-compatible fields ---
             output.put("success", result.success());
             output.put("statusCode", result.statusCode());
+            output.put("httpStatus", result.statusCode());
+            boolean transportSuccess = result.statusCode() != 0;
+            // For transport failure (status 0), OUTBOUND_HTTP_FAILED indicates no response received
+            if (result.errorCode() != null && "OUTBOUND_HTTP_FAILED".equals(result.errorCode()) && result.statusCode() == 0) {
+                transportSuccess = false;
+            }
+            output.put("transportSuccess", transportSuccess);
+
             JsonNode redactedResponse = result.response();
-            // Mask any credential values that may have been echoed in response (extra safety, transport already does)
             if (redactedResponse != null && !credentialMap.isEmpty()) {
                 redactedResponse = redactJsonNode(redactedResponse, credentialMap);
             }
@@ -235,7 +243,6 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
                 Map<String, Object> requestSnapshot = new LinkedHashMap<>();
                 requestSnapshot.put("method", method.name());
                 requestSnapshot.put("url", redactString(url, credentialMap));
-                // query and headers may contain credential values; redact each value
                 Object rawQuery = resolved.get("queryParams");
                 Object rawHeaders = headers;
                 Object rawBody = resolved.get("body");
@@ -246,12 +253,69 @@ public class HttpApiActionExecutor implements WorkflowActionExecutor {
             } catch (Exception ignore) {
                 // request snapshot is best-effort debugging aid; never fail execution
             }
-            if (!result.success()) {
-                output.put("errorCode", result.errorCode());
-                output.put("errorMessage", result.errorMessage());
-                throw failure(result.errorCode() == null ? "WORKFLOW_HTTP_API_EXECUTION_FAILED" : result.errorCode(),
-                    result.errorMessage() == null ? "HTTP_API execution failed" : result.errorMessage());
+
+            // --- Application-level outcome interpretation (provider-agnostic) ---
+            HttpApiResponseInterpreter.Interpretation interpretation = null;
+            if (redactedResponse != null) {
+                interpretation = HttpApiResponseInterpreter.interpret(redactedResponse);
+            } else if (result.response() != null) {
+                interpretation = HttpApiResponseInterpreter.interpret(result.response());
+            } else {
+                interpretation = new HttpApiResponseInterpreter.Interpretation(HttpApiApplicationOutcome.UNKNOWN, "No response body", null);
             }
+            output.put("applicationOutcome", interpretation.outcome().name());
+            output.put("outcomeReason", interpretation.reason());
+            String rawUserMessage = interpretation.userMessage();
+            String redactedUserMessage = rawUserMessage == null ? null : redactString(rawUserMessage, credentialMap);
+            if (redactedUserMessage != null) {
+                output.put("userMessage", redactedUserMessage);
+            }
+            // Alias for frontend convenience
+            if (redactedUserMessage != null) {
+                output.put("applicationMessage", redactedUserMessage);
+            }
+
+            // Precedence:
+            // 1) Transport failure -> throw with output
+            // 2) HTTP failure (non-2xx) -> throw with output
+            // 3) Application FAILURE (2xx + explicit failure signal) -> throw as business failure
+            // 4) Application SUCCESS / UNKNOWN -> retain transport/HTTP success
+            if (!transportSuccess) {
+                String code = result.errorCode() == null ? "WORKFLOW_HTTP_API_EXECUTION_FAILED" : result.errorCode();
+                String msg = result.errorMessage() == null ? "The request could not be sent" : result.errorMessage();
+                output.put("errorCode", code);
+                output.put("errorMessage", msg);
+                throw new WorkflowRuntimeException(code, msg, output);
+            }
+            if (!result.success()) {
+                // HTTP failure (4xx/5xx) — transport succeeded but HTTP indicates failure
+                String code = result.errorCode() == null ? "WORKFLOW_HTTP_API_EXECUTION_FAILED" : result.errorCode();
+                String httpMsg = "The remote service returned HTTP " + result.statusCode();
+                String msg = redactedUserMessage != null ? httpMsg + ": " + redactedUserMessage : httpMsg;
+                // Preserve original errorMessage if present
+                if (result.errorMessage() != null && !result.errorMessage().isBlank()) {
+                    msg = result.errorMessage();
+                    if (redactedUserMessage != null) msg = msg + ": " + redactedUserMessage;
+                }
+                output.put("errorCode", code);
+                output.put("errorMessage", msg);
+                throw new WorkflowRuntimeException(code, msg, output);
+            }
+            // HTTP 2xx succeeded — check application-level outcome
+            if (interpretation.outcome() == HttpApiApplicationOutcome.FAILURE) {
+                String code = "WORKFLOW_HTTP_APPLICATION_FAILURE";
+                String human = redactedUserMessage != null ? redactedUserMessage : interpretation.reason();
+                // Friendly high-level message for CRM users
+                String friendly = human != null ? human : "The request reached the remote service, but the service reported an error.";
+                // Provide technical context in output but user-facing errorMessage is human
+                output.put("errorCode", code);
+                output.put("errorMessage", friendly);
+                // Also include technical explanation for support
+                output.put("technicalMessage", "HTTP 200 received but application-level failure detected: " + interpretation.reason());
+                throw new WorkflowRuntimeException(code, friendly, output);
+            }
+            // SUCCESS or UNKNOWN -> treat as overall success, but retain outcome metadata
+            // For UNKNOWN, frontend will show "Unable to determine" rather than false success
             return WorkflowActionExecutionResult.completed(output);
         } finally {
             // Always clear execution-only credential context

@@ -92,7 +92,8 @@ public class ActionNodeExecutor implements WorkflowNodeExecutor, WorkflowNodeExe
         if (!result.success()) {
             throw new WorkflowRuntimeException(
                 result.errorCode() == null ? "WORKFLOW_ACTION_EXECUTION_FAILED" : result.errorCode(),
-                result.errorMessage() == null ? "Workflow action failed" : result.errorMessage()
+                result.errorMessage() == null ? "Workflow action failed" : result.errorMessage(),
+                result.output()
             );
         }
         if (claim.execute()) {

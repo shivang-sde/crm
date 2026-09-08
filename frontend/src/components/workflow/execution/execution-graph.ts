@@ -18,7 +18,13 @@ export interface ExecutionOverlay {
 export function getVisualState(nodeExec: WorkflowExecutionNodeExecutionResponse | undefined, nodeType?: string): NodeVisualState {
   if (!nodeExec) return "PENDING";
   if (nodeExec.status === "FAILED") return "FAILED";
-  if (nodeExec.status === "COMPLETED") return "COMPLETED";
+  // Backward compat: legacy COMPLETED nodes that actually carried applicationOutcome=FAILURE should still appear FAILED
+  if (nodeExec.status === "COMPLETED") {
+    const out = nodeExec.outputContext as unknown as { applicationOutcome?: string } | null;
+    const app = typeof out?.applicationOutcome === "string" ? out.applicationOutcome.toUpperCase() : null;
+    if (app === "FAILURE") return "FAILED";
+    return "COMPLETED";
+  }
   if (nodeExec.status === "SKIPPED") return "SKIPPED";
   if (nodeExec.status === "RUNNING") return "RUNNING";
   // PENDING with WAIT and nextAttemptAt is WAITING

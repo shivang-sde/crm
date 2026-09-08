@@ -169,6 +169,13 @@ public class WorkflowGraphRuntimeService {
             workflowNodeExecutionRepository.save(nodeExecution);
             throw waitEx;
         } catch (WorkflowRuntimeException ex) {
+            // Persist diagnostic outputContext carried by the exception (e.g. HTTP request/response + applicationOutcome)
+            // so the inspector can show human-friendly debugging even for FAILED nodes.
+            if (ex.getOutputContext() != null && !ex.getOutputContext().isEmpty()) {
+                try {
+                    nodeExecution.setOutputContext(new HashMap<>(ex.getOutputContext()));
+                } catch (Exception ignore) {}
+            }
             WorkflowNodeRetryPolicy policy = workflowNodeRetryPolicyService.resolve(node);
             String attemptText = java.util.Objects.toString(nodeExecution.getAttemptCount(), "1");
             int attempts = Integer.parseInt(attemptText);

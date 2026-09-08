@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Hammer, RefreshCw, RotateCcw, Undo2 } from "lucide-react";
+import { ArrowLeft, Hammer, RefreshCw, RotateCcw, Undo2, Copy, Check } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -32,6 +32,42 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
+
+function getAppOutcome(out?: Record<string, unknown> | null): string | null {
+  if (!out) return null;
+  const v = (out as Record<string, unknown>).applicationOutcome ?? (out as Record<string, unknown>).application_outcome;
+  if (typeof v === "string" && v.trim()) return v.trim().toUpperCase();
+  return null;
+}
+function getUserMsg(out?: Record<string, unknown> | null, fallback?: string | null): string | null {
+  if (!out) return fallback ?? null;
+  const keys = ["userMessage", "applicationMessage", "user_message", "errorMessage"];
+  for (const k of keys) {
+    const v = (out as Record<string, unknown>)[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return fallback ?? null;
+}
+function friendlyTimelineTitle(node: { nodeKey: string; nodeType: string; status: string; outputContext?: Record<string, unknown> | null; lastErrorMessage?: string | null }, graphName?: string): { label: string; sub: string | null; variant: "failed" | "completed" | "unknown" | "default" } {
+  const name = graphName || node.nodeKey;
+  const app = getAppOutcome(node.outputContext);
+  const user = getUserMsg(node.outputContext, node.lastErrorMessage);
+  if (node.status === "FAILED" || app === "FAILURE") {
+    return { label: name, sub: user ?? "Failed", variant: "failed" };
+  }
+  if (node.status === "COMPLETED" && app === "UNKNOWN") {
+    const statusCode = node.outputContext?.statusCode ?? node.outputContext?.httpStatus;
+    if (typeof statusCode === "number" && statusCode >=200 && statusCode<300) {
+      return { label: name, sub: "HTTP request completed — Unable to determine", variant: "unknown" };
+    }
+  }
+  if (node.status === "COMPLETED") {
+    if (user && app === "SUCCESS") return { label: name, sub: user.slice(0,80), variant: "completed" };
+    return { label: name, sub: null, variant: "completed" };
+  }
+  return { label: name, sub: null, variant: "default" };
+}
+
 export default function WorkflowExecutionDetailPage() {
   const params = useParams<{ workflowId: string; executionId: string }>();
   const workflowId = params?.workflowId ?? "";
@@ -69,6 +105,10 @@ export default function WorkflowExecutionDetailPage() {
   const isRetryable = execution?.status === "FAILED";
   const failedNode = execution?.nodeExecutions.find((n) => n.status === "FAILED");
 
+  // Also consider application-level failure captured as FAILED node but execution status might be FAILED anyway
+  const appFailedNode = execution?.nodeExecutions.find((n) => getAppOutcome(n.outputContext as Record<string, unknown>) === "FAILURE");
+  const displayFailedNode = failedNode ?? appFailedNode ?? null;
+
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: workflowKeys.executionDetail(executionId) });
   };
@@ -79,12 +119,15 @@ export default function WorkflowExecutionDetailPage() {
   }, [selectedNodeId, execution, graphNodes]);
 
   const selectedNodeMeta = useMemo(() => {
-    if (!selectedNodeId) return { nodeKey: null, nodeType: null } as const;
+    if (!selectedNodeId) return { nodeKey: null, nodeType: null, nodeName: null } as const;
     const gn = graphNodes.find((n) => n.id === selectedNodeId);
-    if (gn) return { nodeKey: gn.nodeKey, nodeType: gn.nodeType } as const;
+    if (gn) return { nodeKey: gn.nodeKey, nodeType: gn.nodeType, nodeName: gn.name } as const;
     const exec = execution?.nodeExecutions.find((e) => e.nodeId === selectedNodeId);
-    if (exec) return { nodeKey: exec.nodeKey, nodeType: exec.nodeType } as const;
-    return { nodeKey: null, nodeType: null } as const;
+    if (exec) {
+      const gn2 = graphNodes.find((g) => g.nodeKey === exec.nodeKey);
+      return { nodeKey: exec.nodeKey, nodeType: exec.nodeType, nodeName: gn2?.name ?? null } as const;
+    }
+    return { nodeKey: null, nodeType: null, nodeName: null } as const;
   }, [selectedNodeId, graphNodes, execution]);
 
   const onGraphSelect = useCallback((nodeId: string | null) => {
@@ -104,6 +147,49 @@ export default function WorkflowExecutionDetailPage() {
   const handleCloseDesktopInspector = useCallback(() => {
     setSelectedNodeId(null);
   }, []);
+
+  // Execution summary human-friendly
+  const executionSummary = useMemo(() => {
+    if (!execution) return null;
+    const nodes = execution.nodeExecutions;
+    const completed = nodes.filter(n => n.status === "COMPLETED").length;
+    const failed = nodes.filter(n => n.status === "FAILED").length;
+    const appUnknown = nodes.filter(n => n.status === "COMPLETED" && getAppOutcome(n.outputContext as Record<string, unknown>) === "UNKNOWN").length;
+    const hasAppFailure = nodes.some(n => getAppOutcome(n.outputContext as Record<string, unknown>) === "FAILURE");
+    if (execution.status === "FAILED") {
+      const f = displayFailedNode;
+      const msg = f ? (getUserMsg(f.outputContext as Record<string, unknown>, f.lastErrorMessage) ?? f.lastErrorMessage) : execution.lastErrorMessage;
+      const name = f ? (graphNodes.find(g => g.id === f.nodeId)?.name ?? f.nodeKey) : "";
+      return {
+        title: "Workflow failed",
+        detail: failed ? `${failed} action${failed>1?"s":""} failed${name ? `: ${name}${msg ? ` — ${msg.slice(0,80)}` : ""}` : ""}` : "1 action failed",
+        variant: "failed" as const,
+      };
+    }
+    if (execution.status === "COMPLETED" && appUnknown > 0) {
+      return {
+        title: "Workflow completed with warnings",
+        detail: "Remote API returned an unrecognized response — Unable to determine application result. Review inspector for details.",
+        variant: "warning" as const,
+      };
+    }
+    if (execution.status === "COMPLETED") {
+      const actionNodes = nodes.filter(n => n.nodeType === "ACTION");
+      const actionCompleted = actionNodes.filter(n => n.status === "COMPLETED").length;
+      if (actionNodes.length > 0) {
+        return {
+          title: "Workflow completed",
+          detail: `${actionCompleted} action${actionCompleted!==1?"s":""} completed successfully`,
+          variant: "success" as const,
+        };
+      }
+      return { title: "Workflow completed", detail: `${completed} steps completed`, variant: "success" as const };
+    }
+    if (execution.status === "RUNNING" || execution.status === "PENDING") {
+      return { title: "Workflow running", detail: `${completed} steps completed, ${nodes.length - completed} pending`, variant: "running" as const };
+    }
+    return null;
+  }, [execution, graphNodes, displayFailedNode]);
 
   return (
     <div className="space-y-6 p-6">
@@ -125,7 +211,7 @@ export default function WorkflowExecutionDetailPage() {
                 <StatusBadge status={execution.status} />
               </div>
             )}
-            {failedNode && <Badge variant="destructive">Failed node: {failedNode.nodeKey}</Badge>}
+            {displayFailedNode && <Badge variant="destructive">Failed node: {graphNodes.find(g=>g.id===displayFailedNode.nodeId)?.name ?? displayFailedNode.nodeKey}</Badge>}
           </div>
           {execution && (
             <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
@@ -136,7 +222,7 @@ export default function WorkflowExecutionDetailPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {execution && versionId && (
-            <Link href={`/workflows/${workflowId}/builder?versionId=${versionId}${failedNode ? `&nodeId=${failedNode.nodeId}` : ""}`}>
+            <Link href={`/workflows/${workflowId}/builder?versionId=${versionId}${displayFailedNode ? `&nodeId=${displayFailedNode.nodeId}` : ""}`}>
               <Button variant="outline" size="sm"><Hammer className="mr-2 h-4 w-4" /> Open Version Builder</Button>
             </Link>
           )}
@@ -171,6 +257,19 @@ export default function WorkflowExecutionDetailPage() {
         </Card>
       ) : (
         <>
+          {/* Human-friendly execution summary */}
+          {executionSummary && (
+            <Card className={`${executionSummary.variant === "failed" ? "border-red-200 bg-red-50/40 dark:border-red-900 dark:bg-red-950/20" : executionSummary.variant === "warning" ? "border-amber-200 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/20" : executionSummary.variant === "success" ? "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-slate-200"}`}>
+              <CardContent className="pt-4">
+                <p className={`text-sm font-semibold ${executionSummary.variant === "failed" ? "text-red-700 dark:text-red-300" : executionSummary.variant === "warning" ? "text-amber-800 dark:text-amber-200" : executionSummary.variant === "success" ? "text-emerald-800 dark:text-emerald-200" : "text-slate-700"}`}>{executionSummary.title}</p>
+                <p className="text-sm text-muted-foreground">{executionSummary.detail}</p>
+                {executionSummary.variant === "failed" && displayFailedNode && canEditWorkflows && (
+                  <Button size="sm" className="mt-2" onClick={() => setRetryOpen(true)}>Try Again</Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
             <CardContent className="grid gap-x-8 gap-y-3 text-sm md:grid-cols-2">
@@ -253,14 +352,26 @@ export default function WorkflowExecutionDetailPage() {
                   <ol className="space-y-3 border-l-2 pl-5">
                     {execution.nodeExecutions.map((node) => {
                       const isSelected = selectedNodeId === node.nodeId;
+                      const graphName = graphNodes.find(g => g.id === node.nodeId)?.name ?? graphNodes.find(g => g.nodeKey === node.nodeKey)?.name;
+                      const timeline = friendlyTimelineTitle(node as unknown as { nodeKey: string; nodeType: string; status: string; outputContext?: Record<string, unknown> | null; lastErrorMessage?: string | null }, graphName);
+                      const friendlyName = graphName ?? node.nodeKey;
+                      const appOutcome = getAppOutcome(node.outputContext as Record<string, unknown>);
+                      const userMsg = getUserMsg(node.outputContext as Record<string, unknown>, node.lastErrorMessage);
+                      const isAppFailed = appOutcome === "FAILURE" || node.status === "FAILED";
+                      const isAppUnknown = appOutcome === "UNKNOWN" && node.status === "COMPLETED";
+                      const statusText = isAppFailed ? "FAILED" : isAppUnknown ? "HTTP REQUEST COMPLETED" : node.status;
+                      const badgeVariant = isAppFailed ? "destructive" : node.status === "COMPLETED" && !isAppUnknown ? "default" : node.status === "SKIPPED" ? "secondary" : "outline";
+                      const dotCls = isAppFailed ? "bg-red-500" : node.status === "COMPLETED" && !isAppUnknown ? "bg-emerald-500" : isAppUnknown ? "bg-amber-500" : node.status === "RUNNING" ? "animate-pulse bg-blue-500" : node.status === "SKIPPED" ? "bg-slate-400" : "bg-slate-400";
                       return (
                         <li key={node.id} className="relative">
-                          <span className={`absolute -left-[27px] top-2 flex h-3.5 w-3.5 rounded-full border-2 border-background ${node.status === "FAILED" ? "bg-red-500" : node.status === "COMPLETED" ? "bg-emerald-500" : node.status === "RUNNING" ? "animate-pulse bg-blue-500" : node.status === "SKIPPED" ? "bg-slate-400" : node.status === "WAITING" as unknown as string ? "bg-amber-500" : "bg-slate-400"}`} />
-                          <div role="button" tabIndex={0} aria-label={`${node.nodeKey}, ${node.nodeType} node, ${node.status.toLowerCase()}`} onClick={() => onTimelineSelect(node.nodeId)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTimelineSelect(node.nodeId); }}} className={`rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer ${isSelected ? "border-primary ring-1 ring-primary/30 bg-primary/5" : node.status === "FAILED" ? "border-red-300 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30" : ""} ${node.status === "SKIPPED" ? "opacity-70" : ""}`}>
+                          <span className={`absolute -left-[27px] top-2 flex h-3.5 w-3.5 rounded-full border-2 border-background ${dotCls}`} />
+                          <div role="button" tabIndex={0} aria-label={`${friendlyName}, ${node.nodeType} node, ${statusText.toLowerCase()}`} onClick={() => onTimelineSelect(node.nodeId)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTimelineSelect(node.nodeId); }}} className={`rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer ${isSelected ? "border-primary ring-1 ring-primary/30 bg-primary/5" : isAppFailed ? "border-red-300 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30" : isAppUnknown ? "border-amber-200 bg-amber-50/30 dark:border-amber-900" : ""} ${node.status === "SKIPPED" ? "opacity-70" : ""}`}>
                             <div className="flex flex-wrap items-center gap-2">
-                              <StatusBadge status={node.status} />
+                              <Badge variant={badgeVariant as unknown as "default"}>{isAppFailed ? "🔴" : isAppUnknown ? "◐" : node.status === "COMPLETED" ? "✓" : node.status === "FAILED" ? "✕" : "•"} {statusText}</Badge>
                               <span className="text-xs uppercase tracking-wide text-muted-foreground">{node.nodeType}</span>
-                              <span className="font-medium">{node.nodeKey}</span>
+                              <span className="font-medium">{friendlyName}</span>
+                              {timeline.sub && isAppFailed && <span className="text-xs text-red-600 dark:text-red-400 truncate max-w-[180px]">— {timeline.sub}</span>}
+                              {timeline.sub && isAppUnknown && <span className="text-xs text-amber-700 dark:text-amber-300 truncate max-w-[180px]">— {timeline.sub}</span>}
                               {node.status === "SKIPPED" && <Badge variant="outline">— Skipped</Badge>}
                               {node.attemptCount != null && node.attemptCount > 1 && <Badge variant="outline">attempt {node.attemptCount}</Badge>}
                             </div>
@@ -271,7 +382,9 @@ export default function WorkflowExecutionDetailPage() {
                             {node.nextAttemptAt && (
                               <p className="text-xs text-orange-600">{node.nodeType === "WAIT" ? `Waiting until ${new Date(node.nextAttemptAt).toLocaleString()}` : `Retry scheduled for ${new Date(node.nextAttemptAt).toLocaleString()}`}</p>
                             )}
-                            {node.lastErrorCode && <p className="mt-1 text-sm text-red-500">{node.lastErrorCode}{node.lastErrorMessage ? ` - ${node.lastErrorMessage}` : ""}</p>}
+                            {isAppFailed && userMsg && <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400 break-words">{userMsg}</p>}
+                            {isAppUnknown && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Remote response received — Unable to determine</p>}
+                            {!isAppFailed && !isAppUnknown && node.lastErrorCode && <p className="mt-1 text-sm text-red-500">{node.lastErrorCode}{node.lastErrorMessage ? ` - ${node.lastErrorMessage}` : ""}</p>}
                             <NodeOutputContext nodeType={node.nodeType} inputContext={node.inputContext} outputContext={node.outputContext} graphEdges={graphEdges} graphNodes={graphNodes} />
                           </div>
                         </li>
@@ -284,7 +397,7 @@ export default function WorkflowExecutionDetailPage() {
 
             <div className="hidden lg:block">
               <div className="sticky top-6">
-                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} execution={selectedExec} onClose={handleCloseDesktopInspector} />
+                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} nodeName={selectedNodeMeta.nodeName} execution={selectedExec} workflowVersionId={versionId} onClose={handleCloseDesktopInspector} />
                 {!selectedExec && selectedNodeId && <p className="mt-2 text-xs text-muted-foreground">Historical node inspectable via timeline data.</p>}
               </div>
             </div>
@@ -294,7 +407,7 @@ export default function WorkflowExecutionDetailPage() {
             <SheetContent side="right" className="w-[90vw] overflow-auto sm:max-w-md p-0">
               <SheetHeader className="p-4 pb-0"><SheetTitle>Node Inspector</SheetTitle></SheetHeader>
               <div className="p-4">
-                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} execution={selectedExec} onClose={handleCloseMobileInspector} />
+                <ExecutionNodeInspector nodeKey={selectedNodeMeta.nodeKey} nodeType={selectedNodeMeta.nodeType} nodeName={selectedNodeMeta.nodeName} execution={selectedExec} workflowVersionId={versionId} onClose={handleCloseMobileInspector} />
               </div>
             </SheetContent>
           </Sheet>
@@ -339,28 +452,33 @@ export default function WorkflowExecutionDetailPage() {
   );
 }
 
-function NodeOutputContext({ nodeType, inputContext, outputContext, graphEdges, graphNodes }: { nodeType?: string; inputContext?: Record<string, unknown> | null; outputContext?: Record<string, unknown> | null; graphEdges: Array<{ id: string; sourceNodeId: string; targetNodeId: string; edgeKey: string | null; configuration: Record<string, unknown>; }>; graphNodes: Array<{ id: string; nodeKey: string }>; }) {
+function NodeOutputContext({ nodeType, inputContext, outputContext, graphEdges, graphNodes }: { nodeType?: string; inputContext?: Record<string, unknown> | null; outputContext?: Record<string, unknown> | null; graphEdges: Array<{ id: string; sourceNodeId: string; targetNodeId: string; edgeKey: string | null; configuration: Record<string, unknown>; }>; graphNodes: Array<{ id: string; nodeKey: string; name: string; configuration: Record<string, unknown>; }>; }) {
   const hasOutput = outputContext && Object.keys(outputContext).length > 0;
   const hasInput = inputContext && Object.keys(inputContext).length > 0;
   const selectedEdgeId = typeof outputContext?.selectedEdgeId === "string" ? outputContext.selectedEdgeId : null;
   const selectedEdge = selectedEdgeId ? graphEdges.find((e) => e.id === selectedEdgeId) : undefined;
   const targetNode = selectedEdge ? graphNodes.find((n) => n.id === selectedEdge.targetNodeId) : undefined;
   const outcome = typeof selectedEdge?.configuration?.outcome === "string" ? selectedEdge.configuration.outcome : null;
-  const httpStatus = typeof outputContext?.statusCode === "number" ? (outputContext.statusCode as number) : null;
+  const httpStatus = typeof outputContext?.statusCode === "number" ? (outputContext.statusCode as number) : typeof outputContext?.httpStatus === "number" ? (outputContext.httpStatus as number) : null;
   const httpCorrelation = typeof outputContext?.correlationId === "string" ? (outputContext.correlationId as string) : null;
   const httpResponse = (outputContext as unknown as { response?: unknown } | null)?.response;
-  const isHttpNode = hasOutput && (httpStatus !== null || httpResponse !== undefined);
+  const appOutcome = getAppOutcome(outputContext);
+  const userMsg = getUserMsg(outputContext);
+  const isHttpNode = hasOutput && (httpStatus !== null || httpResponse !== undefined || appOutcome !== null);
   return (
     <>
       {typeof outputContext?.outcome === "string" && <p className="mt-1 text-xs font-medium text-indigo-700 dark:text-indigo-400">Branch outcome: {outputContext.outcome}</p>}
-      {selectedEdge && <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">Selected path: {outcome ?? selectedEdge.edgeKey ?? "edge"}{targetNode ? ` → ${targetNode.nodeKey}` : ""}</p>}
+      {selectedEdge && <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">Selected path: {outcome ?? selectedEdge.edgeKey ?? "edge"}{targetNode ? ` → ${targetNode.name ?? targetNode.nodeKey}` : ""}</p>}
       {isHttpNode && (
         <div className="mt-2 rounded-md border bg-white p-2 text-xs">
           <p className="font-medium">HTTP result</p>
           <div className="mt-1 flex flex-wrap gap-2">
             {httpStatus !== null && <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold border ${httpStatus >= 200 && httpStatus < 300 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>Status {httpStatus}</span>}
+            {appOutcome && <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold border ${appOutcome === "FAILURE" ? "bg-red-50 text-red-700 border-red-200" : appOutcome === "SUCCESS" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>App {appOutcome}</span>}
             {httpCorrelation && <span className="font-mono text-[11px] text-muted-foreground break-all">correlation {httpCorrelation.slice(0, 8)}</span>}
           </div>
+          {userMsg && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{userMsg}</p>}
+          {appOutcome === "UNKNOWN" && httpStatus !== null && httpStatus>=200 && httpStatus<300 && <p className="mt-1 text-[11px] text-amber-700">Unable to determine application result</p>}
           {httpResponse !== undefined && (
             <details className="mt-1"><summary className="cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground">Response data</summary><pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 text-[11px] leading-relaxed">{typeof httpResponse === "string" ? httpResponse : JSON.stringify(httpResponse, null, 2)}</pre></details>
           )}
