@@ -132,10 +132,7 @@ function getTechnicalMessage(event: LeadIngestionEventDetailResponse): string | 
   if (t && t.trim()) return t.trim();
   const raw = event.errorMessage ?? "";
   const lower = raw.toLowerCase();
-  if (lower.includes("transaction silently") || lower.contains === undefined) {
-    // if lower contains technical, we already masked userMessage, return raw for technical
-    if (lower.includes("transaction silently") || lower.includes("rollback-only")) return raw;
-  }
+  if (lower.includes("transaction silently") || lower.includes("rollback-only")) return raw;
   return null;
 }
 
@@ -487,7 +484,7 @@ export default function AcquisitionEventDetailPage() {
                     <p className={`mt-1 ${event.status === "REJECTED" ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"}`}>
                       {userMessage ?? event.errorCode ?? "Processing failed"}
                     </p>
-                    {event.failureStage && stageGuidance[event.failureStage] && event.status !== "DUPLICATE" && (
+                    {event.failureStage && stageGuidance[event.failureStage] && (
                       <p className="mt-2 text-xs text-muted-foreground">
                         <span className="font-medium">What you can do: </span>
                         {event.failureStage === "UNKNOWN"
