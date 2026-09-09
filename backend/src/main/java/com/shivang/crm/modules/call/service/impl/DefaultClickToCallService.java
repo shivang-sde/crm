@@ -135,14 +135,22 @@ public class DefaultClickToCallService implements ClickToCallService {
             throw new com.shivang.crm.shared.exception.BusinessException("PROVIDER_EXECUTION_FAILED", errorMsg);
         }
 
-        // Parse SellSpark response
+        // Parse provider response — provider-agnostic: prefer explicit status field, fallback to HTTP success
         String status = null;
         String providerMessage = null;
         if (result.getResponseBody() != null) {
             Object st = result.getResponseBody().get("status");
             Object resp = result.getResponseBody().get("response");
+            Object message = result.getResponseBody().get("message");
             status = st != null ? st.toString() : null;
-            providerMessage = resp != null ? resp.toString() : null;
+            providerMessage = resp != null ? resp.toString() : (message != null ? message.toString() : null);
+            // If response is a simple success indicator without status field, treat HTTP 2xx as success
+            if (status == null && result.isSuccess()) {
+                status = "success";
+                if (providerMessage == null && result.getResponseBody().containsKey("data")) {
+                    providerMessage = String.valueOf(result.getResponseBody().get("data"));
+                }
+            }
         }
 
         if (!"success".equalsIgnoreCase(status)) {

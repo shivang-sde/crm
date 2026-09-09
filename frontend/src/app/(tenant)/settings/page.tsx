@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Phone, Globe, Database, Settings, ChevronRight, Key } from "lucide-react";
+
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { SettingsLayout } from "@/components/settings/SettingsLayout";
 import {
@@ -23,7 +24,7 @@ export default function SettingsPage() {
         <section aria-labelledby="my-settings-heading">
           <h2 id="my-settings-heading" className="sr-only">My Settings</h2>
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Phone className="h-5 w-5" />
@@ -39,9 +40,9 @@ export default function SettingsPage() {
                   Open <ChevronRight className="h-4 w-4" />
                 </Link>
               </CardContent>
-            </Card>
+            </Card> */}
 
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings className="h-5 w-5" />
@@ -57,7 +58,7 @@ export default function SettingsPage() {
                   Open <ChevronRight className="h-4 w-4" />
                 </Link>
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
         </section>
 
