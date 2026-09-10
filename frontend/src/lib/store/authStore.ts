@@ -29,6 +29,7 @@ interface AuthState {
   setPermissions: (permissions: Map<string, string>) => void;
   hasPermission: (module: string, action: string) => boolean;
   getAccessScope: (module: string, action: string) => string;
+  getUserRole: () => string | null;
 
   logout: () => void;
 }
@@ -84,6 +85,10 @@ export const useAuthStore = create<AuthState>()(
       getAccessScope: (module: string, action: string) => {
         const key = `${module}:${action}`;
         return get().permissions.get(key) || "NONE";
+      },
+
+      getUserRole: () => {
+        return get().userRole;
       },
 
       logout: () =>

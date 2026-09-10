@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Phone, Globe, Database, Settings, ChevronRight, Key } from "lucide-react";
+import { useAuthStore } from "@/lib/store/authStore";
 
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { SettingsLayout } from "@/components/settings/SettingsLayout";
@@ -15,6 +16,7 @@ import {
 
 export default function SettingsPage() {
   const { hasPermission } = usePermissions();
+  const UserRole = useAuthStore((state) => state.getUserRole)();
   const canInstallDemoData = hasPermission("tenant", "write");
   const canManageCallingAdminSettings = hasPermission("admin", "settings");
 
@@ -65,7 +67,8 @@ export default function SettingsPage() {
         <section aria-labelledby="workspace-heading">
           <h2 id="workspace-heading" className="sr-only">Workspace</h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
+           {UserRole !== "ADMIN" && (
+              <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Phone className="h-5 w-5" />
@@ -82,6 +85,7 @@ export default function SettingsPage() {
                 </Link>
               </CardContent>
             </Card>
+           )}
 
             <Card>
               <CardHeader>

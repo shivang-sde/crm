@@ -26,7 +26,7 @@ export function SettingsContent({ children, pathname }: SettingsContentProps) {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <div className="mb-6">
+      {/* <div className="mb-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
           <span>Settings</span>
           {pathname !== "/settings" && (
@@ -39,7 +39,7 @@ export function SettingsContent({ children, pathname }: SettingsContentProps) {
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">
           {breadcrumbLabel.replace("Settings / ", "")}
         </h1>
-      </div>
+      </div> */}
       {children}
     </div>
   );

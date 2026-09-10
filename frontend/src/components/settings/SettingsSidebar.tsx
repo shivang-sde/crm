@@ -6,6 +6,7 @@ import { User, Briefcase, Settings, ChevronRight, Phone, Globe, Database, Target
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { SettingsNavItem } from "./SettingsNavItem";
 import { SettingsSection } from "./SettingsSection";
+import { useAuthStore } from "@/lib/store/authStore";
 
 interface SettingsSidebarProps {
   pathname: string;
@@ -19,8 +20,8 @@ interface SettingsNavItemConfig {
 }
 
 const MY_SETTINGS_ITEMS: SettingsNavItemConfig[] = [
-  { href: "/settings/profile", label: "Profile", description: "Manage your name, profile information and personal settings." },
-  { href: "/settings/preferences", label: "Preferences", description: "Manage your personal CRM preferences." },
+  // { href: "/settings/profile", label: "Profile", description: "Manage your name, profile information and personal settings." },
+  // { href: "/settings/preferences", label: "Preferences", description: "Manage your personal CRM preferences." },
   { href: "/settings/calling", label: "Calling", description: "Configure your personal calling credentials and provider agent identity.", permission: { module: "call", action: "read" } },
 ];
 
@@ -32,14 +33,17 @@ const WORKSPACE_ITEMS: SettingsNavItemConfig[] = [
 
 const ADMIN_ITEMS: SettingsNavItemConfig[] = [
   { href: "/admin/settings", label: "Organization", description: "Manage organization-level calling configuration.", permission: { module: "admin", action: "settings" } },
-  { href: "/leads/settings", label: "Lead Settings", description: "Configure lead statuses, sources, and custom fields.", permission: { module: "lead", action: "write" } },
-  { href: "/deals/settings", label: "Deal Settings", description: "Configure deal stages and custom fields.", permission: { module: "deal", action: "write" } },
-  { href: "/users", label: "Users & Roles", description: "Manage users, roles and access.", permission: { module: "admin", action: "user_manage" } },
-  { href: "/roles", label: "Permissions", description: "Configure role permissions and access control.", permission: { module: "admin", action: "role_manage" } },
+  // { href: "/leads/settings", label: "Lead Settings", description: "Configure lead statuses, sources, and custom fields.", permission: { module: "lead", action: "write" } },
+  // { href: "/deals/settings", label: "Deal Settings", description: "Configure deal stages and custom fields.", permission: { module: "deal", action: "write" } },
+  // { href: "/users", label: "Users & Roles", description: "Manage users, roles and access.", permission: { module: "admin", action: "user_manage" } },
+  // { href: "/roles", label: "Permissions", description: "Configure role permissions and access control.", permission: { module: "admin", action: "role_manage" } },
 ];
 
 export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
   const { hasPermission } = usePermissions();
+
+  const getUserRole = useAuthStore((state) => state.getUserRole);
+  const UserRole = getUserRole();
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -101,10 +105,13 @@ export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
   return (
     <aside className="hidden lg:block w-64 shrink-0 border-r bg-white">
       <nav className="flex h-full flex-col p-4" aria-label="Settings navigation">
-        <div className="space-y-1">
+       { UserRole !== "ADMIN" && (
+         <div className="space-y-1">
           <SettingsSection title="My Settings" />
           {mySettingsItems}
         </div>
+       )}
+
 
         {hasWorkspaceItems && (
           <div className="mt-6 space-y-1">

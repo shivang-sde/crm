@@ -113,24 +113,55 @@ export default function MyCallingSettingsPage() {
       try {
         setLoadingDetails(true);
 
-        const [status, mapping] = await Promise.all([
+        const [statusResult, mappingResult] = await Promise.allSettled([
           myCallingSettingsApi.getCredentialStatus(selectedConnectorId),
           myCallingSettingsApi.getAgentMapping(selectedConnectorId),
         ]);
 
-        setCredentialStatus(status);
-        setAgentMapping(mapping);
+        if (statusResult.status === "fulfilled") {
+          setCredentialStatus(statusResult.value);
+        } else {
+          console.error("Failed to load credential status", statusResult.reason);
+          // Keep previous status or set to not configured; don't fail entire flow for expected 403 on admin-only mapping
+          setCredentialStatus({
+            connectorInstanceId: selectedConnectorId,
+            configured: false,
+            authType: "PROVIDER_SPECIFIC",
+          });
+          const isForbidden =
+            (statusResult.reason as any)?.response?.status === 403 ||
+            String((statusResult.reason as any)?.message || "").includes("Unexpected API response format");
+          if (!isForbidden) {
+            toast.error("Unable to load your calling credentials.");
+          }
+        }
 
-        setExternalAgentId(mapping?.externalAgentId ?? "");
-
-        setExternalAgentNumber(mapping?.externalAgentNumber ?? "");
-
-        setMappingActive(mapping?.active ?? true);
+        if (mappingResult.status === "fulfilled") {
+          const mapping = mappingResult.value;
+          setAgentMapping(mapping);
+          setExternalAgentId(mapping?.externalAgentId ?? "");
+          setExternalAgentNumber(mapping?.externalAgentNumber ?? "");
+          setMappingActive(mapping?.active ?? true);
+        } else {
+          console.error("Failed to load agent mapping", mappingResult.reason);
+          // Agent mapping is per-user self-service (isAuthenticated), but if backend ever enforces admin:settings,
+          // EMPLOYEE will get 403 which is expected — don't break the whole connector details flow.
+          const isForbidden =
+            (mappingResult.reason as any)?.response?.status === 403 ||
+            String((mappingResult.reason as any)?.message || "").includes("Unexpected API response format");
+          if (!isForbidden) {
+            toast.error("Unable to load your calling configuration.");
+          }
+          setAgentMapping(null);
+          setExternalAgentId("");
+          setExternalAgentNumber("");
+          setMappingActive(true);
+        }
 
         setCredentialValues({});
       } catch (error) {
+        // Fallback for unexpected errors outside allSettled
         console.error("Failed to load calling configuration", error);
-
         toast.error("Unable to load your calling configuration.");
       } finally {
         setLoadingDetails(false);
@@ -282,12 +313,12 @@ export default function MyCallingSettingsPage() {
             <h1 className="text-2xl font-semibold tracking-tight">My calling settings</h1>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Configure your personal calling credentials and provider agent identity.
+              Configure your personal calling credentials, connector instances, and provider agent identity.
             </p>
           </div>
 
           <div className="w-full md:w-[320px]">
-            <Label htmlFor="callingConnector">Calling provider</Label>
+            <Label htmlFor="callingConnector">Connector Instances</Label>
 
             <Select value={selectedConnectorId} onValueChange={setSelectedConnectorId}>
               <SelectTrigger id="callingConnector" className="mt-2">
