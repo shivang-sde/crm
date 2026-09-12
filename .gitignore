@@ -39,3 +39,7 @@ Thumbs.db
 
 # Testing
 test-results/
+
+
+# db dumps
+*.dump
