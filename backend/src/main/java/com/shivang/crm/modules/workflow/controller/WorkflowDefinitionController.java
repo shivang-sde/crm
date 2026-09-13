@@ -118,6 +118,7 @@ public class WorkflowDefinitionController {
             version.getStatus(),
             version.getTriggerEntityType(),
             version.getTriggerEventType(),
+            version.getTriggerFilter(),
             version.getCreatedAt(),
             version.getUpdatedAt()
         )));

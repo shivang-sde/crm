@@ -39,7 +39,7 @@ public class WorkflowMetadataService {
     private List<EntityMetadata> entities() {
         return List.of(
             entityWithRelationships("LEAD", "Lead", List.of(
-                event("CREATED", "Created"),
+                event("CREATED", "Created", "createdVia", "ingestionConfigId", "ingestionEventId"),
                 event("STATUS_CHANGED", "Status Changed",
                     "previousStatusId", "newStatusId", "previousStatus", "newStatus"),
                 event("OWNER_CHANGED", "Owner Changed", "previousOwnerId", "newOwnerId"),

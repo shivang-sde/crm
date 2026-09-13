@@ -139,6 +139,9 @@ public class LeadService {
         HistoryService.logEntityCreated(tenantId, savedLead.getId(), "LEAD", userId);
         Map<String, Object> eventMetadata = new HashMap<>();
         eventMetadata.put("source", "MANUAL");
+        eventMetadata.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.MANUAL.name());
+        eventMetadata.put("ingestionConfigId", "");
+        eventMetadata.put("ingestionEventId", "");
         eventMetadata.put("actorId", userId.toString());
         eventMetadata.put("actorType", "USER");
         canonicalCrmEventPublisher.publishLeadCreated(
@@ -195,6 +198,15 @@ public class LeadService {
         HistoryService.logEntityCreated(tenantId, savedLead.getId(), "LEAD", createdBy);
         Map<String, Object> enrichedEventMetadata = new HashMap<>();
         if (eventMetadata != null) enrichedEventMetadata.putAll(eventMetadata);
+        if (!enrichedEventMetadata.containsKey("createdVia")) {
+            // Ensure authoritative origin is always present; fallback preserves backward compat
+            Object src = enrichedEventMetadata.get("source");
+            if ("UNIVERSAL_LEAD_INGESTION".equals(src)) {
+                enrichedEventMetadata.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.LEAD_INGESTION.name());
+            } else {
+                enrichedEventMetadata.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.MANUAL.name());
+            }
+        }
         enrichedEventMetadata.put("actorId", createdBy.toString());
         enrichedEventMetadata.put("actorType", "SYSTEM");
         canonicalCrmEventPublisher.publishLeadCreated(

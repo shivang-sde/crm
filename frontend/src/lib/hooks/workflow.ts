@@ -4,6 +4,7 @@ import { dealCustomFieldApi } from "@/lib/api/deal-custom-fields";
 import { dealStageApi } from "@/lib/api/deal-stages";
 import { leadApi } from "@/lib/api/leads";
 import { userApi } from "@/lib/api/users";
+import { acquisitionApi } from "@/lib/api/acquisition";
 import { api } from "@/lib/api/client";
 import { ApiResponse } from "@/types/auth";
 import {
@@ -261,6 +262,12 @@ function useEntityTypeReferenceData(
     enabled: enabled && entityType === "LEAD",
     staleTime: 5 * 60 * 1000,
   });
+  const ingestionConfigs = useQuery({
+    queryKey: [...workflowKeys.referenceData("LEAD"), "ingestionConfigs"],
+    queryFn: () => acquisitionApi.listConfigs(),
+    enabled: enabled && entityType === "LEAD",
+    staleTime: 5 * 60 * 1000,
+  });
   const dealStages = useQuery({
     queryKey: [...workflowKeys.referenceData("DEAL"), "stages"],
     queryFn: () => dealStageApi.listStages(),
@@ -341,6 +348,23 @@ function useEntityTypeReferenceData(
     if (sourceById.length > 0) {
       optionsByField["entity.sourceId"] = sourceById;
       optionsByField["entity.source"] = sourceByName;
+    }
+    // Created Via — stable enum for trigger metadata (human labels, persisted values)
+    optionsByField["trigger.metadata.createdVia"] = [
+      { value: "MANUAL", label: "Manual" },
+      { value: "LEAD_INGESTION", label: "Lead Ingestion" },
+      { value: "IMPORT", label: "Import" },
+    ];
+    const rawIngestionData = ingestionConfigs.data as unknown;
+    const ingestionArray: { id: string; name: string }[] = Array.isArray(rawIngestionData)
+      ? (rawIngestionData as { id: string; name: string }[])
+      : ((rawIngestionData as { data?: { id: string; name: string }[] })?.data ?? []);
+    const mappedIngestionOptions = ingestionArray.map((cfg) => ({
+      value: String(cfg.id),
+      label: String(cfg.name),
+    }));
+    if (mappedIngestionOptions.length > 0) {
+      optionsByField["trigger.metadata.ingestionConfigId"] = mappedIngestionOptions;
     }
   }
 

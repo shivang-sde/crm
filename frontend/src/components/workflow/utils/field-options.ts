@@ -66,6 +66,12 @@ function titleCase(value: string): string {
     .replace(/^./, (char) => char.toUpperCase());
 }
 
+const TRIGGER_METADATA_LABELS: Record<string, string> = {
+  createdVia: "Created Via",
+  ingestionConfigId: "Ingestion Configuration",
+  ingestionEventId: "Ingestion Event",
+};
+
 export function findEntityMetadata(
   metadata: WorkflowMetadataResponse | undefined,
   entityType?: string
@@ -155,9 +161,10 @@ export function buildFieldOptions({
     for (const field of candidate.metadataFields) {
       if (seen.has(field)) continue;
       seen.add(field);
+      const label = TRIGGER_METADATA_LABELS[field] ?? titleCase(field);
       options.push(
         withValueOptions(
-          { field: `trigger.metadata.${field}`, label: titleCase(field), group: "metadata", groupLabel: "Trigger Metadata" },
+          { field: `trigger.metadata.${field}`, label, group: "metadata", groupLabel: "Trigger Metadata" },
           [referenceData?.optionsByField[`trigger.metadata.${field}`]]
         )
       );

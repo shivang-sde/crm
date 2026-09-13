@@ -14,6 +14,9 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.shivang.crm.modules.acquisition.repository.LeadIngestionConfigRepository;
+import com.shivang.crm.modules.lead.entity.LeadCreationOrigin;
+import com.shivang.crm.modules.lead.repository.LeadSourceRepository;
 import com.shivang.crm.modules.workflow.dto.WorkflowGraphValidationError;
 import com.shivang.crm.modules.workflow.entity.WorkflowEdge;
 import com.shivang.crm.modules.workflow.entity.WorkflowNode;
@@ -32,6 +35,8 @@ public class WorkflowGraphValidationService {
     private final WorkflowVersionRepository workflowVersionRepository;
     private final WorkflowNodeRepository workflowNodeRepository;
     private final WorkflowEdgeRepository workflowEdgeRepository;
+    private final LeadIngestionConfigRepository leadIngestionConfigRepository;
+    private final LeadSourceRepository leadSourceRepository;
 
     @Transactional(readOnly = true)
     public List<WorkflowGraphValidationError> validate(UUID tenantId, UUID versionId) {
@@ -379,6 +384,7 @@ public class WorkflowGraphValidationService {
 
         if (triggers.size() == 1) {
             validateTriggerConfiguration(version, triggers.get(0), errors);
+            validateTriggerFilter(version, triggers.get(0), tenantId, errors);
         }
         return errors;
     }
@@ -393,6 +399,180 @@ public class WorkflowGraphValidationService {
         String eventType = String.valueOf(configuration.get("eventType"));
         if (!version.getTriggerEntityType().equals(entityType) || !version.getTriggerEventType().equals(eventType)) {
             errors.add(errorForNode("WORKFLOW_TRIGGER_MISMATCH", "TRIGGER configuration must match workflow version trigger fields", trigger));
+        }
+    }
+
+    private void validateTriggerFilter(WorkflowVersion version, WorkflowNode trigger, UUID tenantId, List<WorkflowGraphValidationError> errors) {
+        Map<String, Object> filter = version.getTriggerFilter();
+        // Also check node-level filter for consistency (authoritative is version, but node may have stale)
+        Map<String, Object> nodeFilter = null;
+        if (trigger.getConfiguration() != null && trigger.getConfiguration().get("triggerFilter") instanceof Map<?,?> m) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> nf = (Map<String, Object>) m;
+            nodeFilter = nf;
+            // If version has no filter but node does, treat as version filter (defensive)
+            if (filter == null) filter = nodeFilter;
+        }
+        if (filter == null || filter.isEmpty()) return; // every
+
+        Object logicObj = filter.get("logic");
+        Object conditionsObj = filter.get("conditions");
+
+        String logic = logicObj == null ? "" : String.valueOf(logicObj).trim().toUpperCase();
+        if (!"AND".equals(logic) && !"OR".equals(logic)) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter logic must be AND or OR", trigger));
+            return;
+        }
+        if (!(conditionsObj instanceof List<?> conditions) || conditions.isEmpty()) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter conditions must be a non-empty list", trigger));
+            return;
+        }
+
+        // Allowed fields for LEAD.CREATED — reuse metadata declaration + entity fields
+        // For LEAD.CREATED, allow trigger.metadata.createdVia/ingestionConfigId/ingestionEventId and entity.source/sourceId/status/statusId
+        // For other triggers, allow any trigger.metadata.* and entity.* that are declared
+        Set<String> allowedFields = Set.of(
+                "trigger.metadata.createdVia",
+                "trigger.metadata.ingestionConfigId",
+                "trigger.metadata.ingestionEventId",
+                "entity.source",
+                "entity.sourceId",
+                "entity.status",
+                "entity.statusId",
+                "entity.ownerId",
+                "entity.email",
+                "entity.phone"
+        );
+        // If trigger is not LEAD.CREATED, allow any trigger.metadata/entity field that would be resolvable, but for now restrict to allowed set for LEAD.CREATED
+        boolean isLeadCreated = "LEAD".equals(version.getTriggerEntityType()) && "CREATED".equals(version.getTriggerEventType());
+
+        for (Object rawCond : conditions) {
+            if (!(rawCond instanceof Map<?,?> cond)) {
+                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Each trigger filter condition must be an object", trigger));
+                continue;
+            }
+            Object fieldObj = cond.get("field");
+            Object operatorObj = cond.get("operator");
+            Object valueObj = cond.get("value");
+
+            String field = fieldObj == null ? "" : String.valueOf(fieldObj).trim();
+            String operator = operatorObj == null ? "" : String.valueOf(operatorObj).trim().toUpperCase();
+
+            if (field.isBlank()) {
+                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter condition field is required", trigger));
+                continue;
+            }
+            if (isLeadCreated && !allowedFields.contains(field)) {
+                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter contains an unsupported field for Lead Created: " + field, trigger));
+                continue;
+            }
+            if (!WorkflowConditionEvaluator.SUPPORTED_OPERATORS.contains(operator)) {
+                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter contains an unsupported operator: " + operator, trigger));
+                continue;
+            }
+            // IS_NULL / IS_NOT_NULL do not require value
+            if ("IS_NULL".equals(operator) || "IS_NOT_NULL".equals(operator)) {
+                continue;
+            }
+            if (valueObj == null || (valueObj instanceof String s && s.isBlank()) || (valueObj instanceof List<?> l && l.isEmpty())) {
+                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter condition value is required for field " + field, trigger));
+                continue;
+            }
+
+            // Field-specific value validation
+            if ("trigger.metadata.createdVia".equals(field)) {
+                String val = String.valueOf(valueObj).trim().toUpperCase();
+                if (operator.equals("IN") || operator.equals("NOT_IN")) {
+                    if (!(valueObj instanceof List<?> list)) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Created Via with IN requires a list", trigger));
+                    } else {
+                        for (Object v : list) {
+                            String vs = String.valueOf(v).trim().toUpperCase();
+                            if (!Set.of("MANUAL","LEAD_INGESTION","IMPORT").contains(vs)) {
+                                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter contains an invalid Created Via value: " + v, trigger));
+                            }
+                        }
+                    }
+                } else {
+                    if (!Set.of("MANUAL","LEAD_INGESTION","IMPORT").contains(val)) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter contains an invalid Created Via value: " + valueObj, trigger));
+                    }
+                    if ("UNIVERSAL_LEAD_INGESTION".equals(val)) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Created Via must use LeadCreationOrigin values (MANUAL/LEAD_INGESTION/IMPORT), not UNIVERSAL_LEAD_INGESTION", trigger));
+                    }
+                }
+            } else if ("trigger.metadata.ingestionConfigId".equals(field) || "trigger.metadata.ingestionEventId".equals(field)) {
+                // Validate UUID format and tenant ownership for ingestionConfigId
+                if (operator.equals("IN") || operator.equals("NOT_IN")) {
+                    if (!(valueObj instanceof List<?> list)) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter ingestionConfigId with IN requires a list", trigger));
+                    } else {
+                        for (Object v : list) validateIngestionConfigId(String.valueOf(v), tenantId, trigger, errors);
+                    }
+                } else {
+                    validateIngestionConfigId(String.valueOf(valueObj), tenantId, trigger, errors);
+                }
+            } else if ("entity.sourceId".equals(field)) {
+                if (operator.equals("IN") || operator.equals("NOT_IN")) {
+                    if (!(valueObj instanceof List<?> list)) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Lead Source with IN requires a list", trigger));
+                    } else {
+                        for (Object v : list) validateLeadSourceId(String.valueOf(v), tenantId, trigger, errors);
+                    }
+                } else {
+                    validateLeadSourceId(String.valueOf(valueObj), tenantId, trigger, errors);
+                }
+            } else if ("entity.source".equals(field)) {
+                // Name-based — just check non-blank and length, tenant check via name is looser (allow any string, but warn if not found?)
+                String vs = String.valueOf(valueObj).trim();
+                if (vs.isBlank()) {
+                    errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Lead Source name must not be blank", trigger));
+                }
+            }
+            // Other entity.* fields (status etc.) — rely on existing condition value semantics, no extra tenant check
+        }
+    }
+
+    private void validateIngestionConfigId(String rawValue, UUID tenantId, WorkflowNode trigger, List<WorkflowGraphValidationError> errors) {
+        String v = rawValue == null ? "" : rawValue.trim();
+        if (v.isBlank()) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter ingestion configuration must not be blank", trigger));
+            return;
+        }
+        UUID id;
+        try {
+            id = UUID.fromString(v);
+        } catch (IllegalArgumentException ex) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter ingestion configuration must be a valid UUID", trigger));
+            return;
+        }
+        boolean exists = leadIngestionConfigRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId).isPresent();
+        if (!exists) {
+            // Generic message to avoid leaking cross-tenant existence
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter references an ingestion configuration that does not belong to this tenant", trigger));
+        } else {
+            // Optionally check active — follow existing reference-data policy (currently listConfigs shows all, but we allow inactive with warning)
+            // For validation, allow inactive but not deleted (already checked deletedFalse)
+        }
+    }
+
+    private void validateLeadSourceId(String rawValue, UUID tenantId, WorkflowNode trigger, List<WorkflowGraphValidationError> errors) {
+        String v = rawValue == null ? "" : rawValue.trim();
+        if (v.isBlank()) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Lead Source must not be blank", trigger));
+            return;
+        }
+        UUID id;
+        try {
+            id = UUID.fromString(v);
+        } catch (IllegalArgumentException ex) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Lead Source must be a valid UUID", trigger));
+            return;
+        }
+        var opt = leadSourceRepository.findByIdAndTenantId(id, tenantId);
+        boolean exists = opt.isPresent() && !Boolean.TRUE.equals(opt.get().getDeleted());
+        if (!exists) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter references a Lead Source that does not belong to this tenant", trigger));
         }
     }
 

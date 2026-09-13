@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.shivang.crm.modules.acquisition.config.LeadIngestionTransportType;
 import com.shivang.crm.modules.acquisition.dto.MappedLeadData;
 import com.shivang.crm.modules.acquisition.dto.ValidatedLeadIngestionData;
 import com.shivang.crm.modules.acquisition.event.LeadIngestionEvent;
@@ -19,6 +20,7 @@ import com.shivang.crm.modules.acquisition.repository.LeadIngestionEventReposito
 import com.shivang.crm.modules.lead.dto.LeadCreateRequest;
 import com.shivang.crm.modules.lead.dto.LeadResponse;
 import com.shivang.crm.modules.lead.entity.Lead;
+import com.shivang.crm.modules.lead.entity.LeadCreationOrigin;
 import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.modules.lead.service.LeadService;
 import com.shivang.crm.shared.exception.BusinessException;
@@ -110,11 +112,12 @@ public class LeadIngestionProcessingService {
         }
 
         UUID systemActorId = leadIngestionSystemActorService.ensureSystemActor(tenantId);
+        String createdVia = resolveCreatedVia(tenantId, configId);
         LeadResponse created;
         try {
             created = leadService.createLeadInternal(
                 tenantId, systemActorId, request,
-                Map.of("source", "UNIVERSAL_LEAD_INGESTION", "ingestionConfigId", configId, "ingestionEventId", eventId)
+                Map.of("source", "UNIVERSAL_LEAD_INGESTION", "createdVia", createdVia, "ingestionConfigId", configId, "ingestionEventId", eventId)
             );
         } catch (BusinessException ex) {
             if ("DUPLICATE".equals(ex.getErrorCode())) {
@@ -217,6 +220,7 @@ public class LeadIngestionProcessingService {
         }
 
         UUID systemActorId = leadIngestionSystemActorService.ensureSystemActor(tenantId);
+        String createdVia = resolveCreatedVia(tenantId, configId);
         LeadResponse created;
         try {
             created = leadService.createLeadInternal(
@@ -225,6 +229,7 @@ public class LeadIngestionProcessingService {
                 request,
                 Map.of(
                     "source", "UNIVERSAL_LEAD_INGESTION",
+                    "createdVia", createdVia,
                     "ingestionConfigId", configId,
                     "ingestionEventId", eventId
                 )
@@ -390,5 +395,13 @@ public class LeadIngestionProcessingService {
         // For other unexpected, generic friendly but keep short raw if useful and not technical
         if (raw.length() > 200) return "We couldn't process this lead right now.";
         return raw;
+    }
+
+    private String resolveCreatedVia(UUID tenantId, UUID configId) {
+        return leadIngestionConfigRepository.findByIdAndTenantIdAndDeletedFalse(configId, tenantId)
+                .map(cfg -> cfg.getTransportType() == LeadIngestionTransportType.IMPORT
+                        ? LeadCreationOrigin.IMPORT.name()
+                        : LeadCreationOrigin.LEAD_INGESTION.name())
+                .orElse(LeadCreationOrigin.LEAD_INGESTION.name());
     }
 }

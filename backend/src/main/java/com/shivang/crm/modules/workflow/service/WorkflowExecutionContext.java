@@ -32,9 +32,33 @@ public class WorkflowExecutionContext {
         this.identity = new WorkflowExecutionIdentity(
             execution.getTenantId(), execution.getActorId(), execution.getActorType()
         );
-        this.triggerContext = execution.getTriggerContext() == null
+        Map<String, Object> rawTriggerContext = execution.getTriggerContext() == null
             ? Map.of()
-            : Map.copyOf(execution.getTriggerContext());
+            : execution.getTriggerContext();
+        // Replay compatibility: old LEAD.CREATED executions (pre-WF-36) lack createdVia.
+        // Normalize at the context boundary so existing condition engine evaluates predictably
+        // without a generic evaluator change or DB backfill. Missing createdVia is inferred
+        // from legacy `source` (MANUAL vs UNIVERSAL_LEAD_INGESTION) to preserve separate
+        // business-source vs origin semantics. Missing ingestion IDs are materialized as empty
+        // strings so `trigger.metadata.ingestionConfigId` EQUALS does not throw FIELD_NOT_FOUND
+        // but evaluates false for manual leads.
+        Map<String, Object> normalized = new LinkedHashMap<>(rawTriggerContext);
+        if (!normalized.containsKey("createdVia")) {
+            Object legacySource = normalized.get("source");
+            if ("UNIVERSAL_LEAD_INGESTION".equals(legacySource)) {
+                normalized.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.LEAD_INGESTION.name());
+            } else if ("MANUAL".equals(legacySource)) {
+                normalized.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.MANUAL.name());
+            } else if (normalized.containsKey("ingestionConfigId")) {
+                normalized.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.LEAD_INGESTION.name());
+            } else {
+                // Default for old manual or unknown source — keep as MANUAL to avoid breaking existing no-condition workflows
+                normalized.put("createdVia", com.shivang.crm.modules.lead.entity.LeadCreationOrigin.MANUAL.name());
+            }
+        }
+        normalized.putIfAbsent("ingestionConfigId", "");
+        normalized.putIfAbsent("ingestionEventId", "");
+        this.triggerContext = Map.copyOf(normalized);
         Map<String, Object> triggerData = new LinkedHashMap<>();
         triggerData.put("eventId", execution.getTriggerEventId());
         triggerData.put("tenantId", execution.getTenantId());

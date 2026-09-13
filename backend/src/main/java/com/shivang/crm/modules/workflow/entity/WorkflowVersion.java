@@ -4,6 +4,11 @@ import java.util.UUID;
 
 import com.shivang.crm.shared.base.BaseEntity;
 
+import java.util.Map;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -47,4 +52,8 @@ public class WorkflowVersion extends BaseEntity {
 
     @Column(name = "trigger_event_type", nullable = false, length = 100)
     private String triggerEventType;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "trigger_filter", columnDefinition = "jsonb")
+    private Map<String, Object> triggerFilter;
 }

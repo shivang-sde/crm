@@ -39,6 +39,11 @@ export interface WorkflowResponse {
   updatedAt: string;
 }
 
+export interface WorkflowTriggerFilter {
+  logic: "AND" | "OR";
+  conditions: Array<{ field: string; operator: string; value: unknown }>;
+}
+
 export interface WorkflowVersionResponse {
   id: string;
   workflowId: string;
@@ -46,6 +51,7 @@ export interface WorkflowVersionResponse {
   status: WorkflowVersionStatus;
   triggerEntityType: string;
   triggerEventType: string;
+  triggerFilter?: WorkflowTriggerFilter | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,6 +100,7 @@ export interface WorkflowCreateRequest {
 export interface WorkflowVersionCreateRequest {
   triggerEntityType: string;
   triggerEventType: string;
+  triggerFilter?: WorkflowTriggerFilter | null;
 }
 
 export interface WorkflowNodeRequest {

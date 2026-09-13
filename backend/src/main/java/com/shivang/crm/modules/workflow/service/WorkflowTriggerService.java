@@ -34,6 +34,8 @@ public class WorkflowTriggerService {
     private final WorkflowVersionRepository workflowVersionRepository;
     private final WorkflowExecutionRepository workflowExecutionRepository;
     private final ObjectMapper objectMapper;
+    private final WorkflowConditionEvaluator conditionEvaluator;
+    private final WorkflowEntityContextProviderRegistry entityContextProviderRegistry;
 
     @Value("${app.workflow-runtime.max-chain-depth:${WORKFLOW_MAX_CHAIN_DEPTH:5}}")
     private int maxChainDepth;
@@ -55,6 +57,13 @@ public class WorkflowTriggerService {
         Lineage lineage = readLineage(event.metadata());
 
         for (WorkflowVersion version : matches) {
+            // WF-38: optional trigger filter predicate (RUN WHEN) — reuses existing condition engine.
+            // Null/empty = every legitimate event matches (backward compat). Evaluated before execution creation.
+            if (!matchesTriggerFilter(event, version)) {
+                log.info("Trigger filter did not match: workflow={} version={} event={} entity={}",
+                    version.getWorkflow().getId(), version.getId(), event.eventId(), event.entityId());
+                continue;
+            }
             if (lineage != null) {
                 // Self-recursion: a workflow never chains into itself.
                 if (lineage.causedByWorkflowId().equals(version.getWorkflow().getId())) {
@@ -123,6 +132,82 @@ public class WorkflowTriggerService {
                 );
             }
         }
+    }
+
+    private boolean matchesTriggerFilter(CanonicalCrmEvent event, WorkflowVersion version) {
+        Map<String, Object> filter = version.getTriggerFilter();
+        if (filter == null || filter.isEmpty()) return true;
+        Object conditionsObj = filter.get("conditions");
+        if (!(conditionsObj instanceof List<?> conditions) || conditions.isEmpty()) return true;
+        String logic = filter.get("logic") == null ? "AND" : String.valueOf(filter.get("logic")).trim().toUpperCase();
+        if (!"AND".equals(logic) && !"OR".equals(logic)) logic = "AND";
+
+        Map<String, Object> rawTriggerContext = event.metadata() == null ? Map.of() : event.metadata();
+        java.util.Map<String, Object> normalizedTriggerContext = new java.util.LinkedHashMap<>(rawTriggerContext);
+        if (!normalizedTriggerContext.containsKey("createdVia")) {
+            Object src = normalizedTriggerContext.get("source");
+            if ("UNIVERSAL_LEAD_INGESTION".equals(src)) normalizedTriggerContext.put("createdVia", "LEAD_INGESTION");
+            else if ("MANUAL".equals(src)) normalizedTriggerContext.put("createdVia", "MANUAL");
+            else if (normalizedTriggerContext.containsKey("ingestionConfigId")) normalizedTriggerContext.put("createdVia", "LEAD_INGESTION");
+            else normalizedTriggerContext.put("createdVia", "MANUAL");
+        }
+        normalizedTriggerContext.putIfAbsent("ingestionConfigId", "");
+        normalizedTriggerContext.putIfAbsent("ingestionEventId", "");
+
+        com.shivang.crm.modules.workflow.entity.WorkflowExecution dummyExec = new com.shivang.crm.modules.workflow.entity.WorkflowExecution();
+        dummyExec.setTenantId(event.tenantId());
+        dummyExec.setEntityType(event.entityType());
+        dummyExec.setEntityId(event.entityId());
+        dummyExec.setEventType(event.eventType());
+        dummyExec.setTriggerEventId(event.eventId());
+        dummyExec.setTriggerContext(normalizedTriggerContext);
+        dummyExec.setActorId(readActorId(event.metadata()));
+        try {
+            Object at = event.metadata() == null ? null : event.metadata().get("actorType");
+            if (at != null) dummyExec.setActorType(com.shivang.crm.modules.workflow.entity.WorkflowActorType.valueOf(String.valueOf(at).trim().toUpperCase()));
+        } catch (Exception ignored) {}
+        com.shivang.crm.modules.workflow.entity.Workflow dummyWorkflow = new com.shivang.crm.modules.workflow.entity.Workflow();
+        dummyWorkflow.setId(version.getWorkflow().getId());
+        dummyWorkflow.setTenantId(event.tenantId());
+        com.shivang.crm.modules.workflow.entity.WorkflowVersion dummyVersion = new com.shivang.crm.modules.workflow.entity.WorkflowVersion();
+        dummyVersion.setId(version.getId());
+        dummyVersion.setTenantId(event.tenantId());
+        dummyVersion.setWorkflow(dummyWorkflow);
+        dummyExec.setWorkflow(dummyWorkflow);
+        dummyExec.setWorkflowVersion(dummyVersion);
+        dummyExec.setId(UUID.randomUUID());
+
+        com.shivang.crm.modules.workflow.service.WorkflowExecutionContext ctx;
+        try {
+            ctx = new com.shivang.crm.modules.workflow.service.WorkflowExecutionContext(dummyExec, entityContextProviderRegistry);
+        } catch (Exception ex) {
+            log.warn("Trigger filter context creation failed for workflow {}: {}", version.getId(), ex.getMessage());
+            return false;
+        }
+
+        boolean result = "AND".equals(logic);
+        for (Object condObj : conditions) {
+            if (!(condObj instanceof Map<?, ?> cond)) continue;
+            boolean passed;
+            try {
+                passed = conditionEvaluator.evaluate(cond, ctx);
+            } catch (com.shivang.crm.modules.workflow.service.WorkflowRuntimeException ex) {
+                if ("WORKFLOW_CONDITION_FIELD_NOT_FOUND".equals(ex.getErrorCode()) || "WORKFLOW_CONDITION_VALUE_INVALID".equals(ex.getErrorCode())) {
+                    log.debug("Trigger filter field not found for workflow {}: {}", version.getId(), ex.getMessage());
+                    passed = false;
+                } else {
+                    throw ex;
+                }
+            }
+            if ("AND".equals(logic)) {
+                result = result && passed;
+                if (!result) break;
+            } else {
+                result = result || passed;
+                if (result) break;
+            }
+        }
+        return result;
     }
 
     private record Lineage(UUID causedByExecutionId, UUID causedByWorkflowId, int chainDepth) {

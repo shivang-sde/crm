@@ -128,6 +128,7 @@ public class WorkflowDefinitionService {
             version.getStatus(),
             version.getTriggerEntityType(),
             version.getTriggerEventType(),
+            version.getTriggerFilter(),
             version.getCreatedAt(),
             version.getUpdatedAt()
         );
@@ -172,6 +173,7 @@ public class WorkflowDefinitionService {
                 .status(WorkflowVersionStatus.DRAFT)
                 .triggerEntityType(request.getTriggerEntityType().trim().toUpperCase())
                 .triggerEventType(request.getTriggerEventType().trim().toUpperCase())
+                .triggerFilter(normalizeTriggerFilter(request.getTriggerFilter()))
                 .build()).getId();
         } catch (DataIntegrityViolationException ex) {
             throw new BusinessException("WORKFLOW_CONCURRENT_DRAFT", "Another version was created concurrently. Refresh and try again.");
@@ -203,6 +205,7 @@ public class WorkflowDefinitionService {
                 .status(WorkflowVersionStatus.DRAFT)
                 .triggerEntityType(source.getTriggerEntityType())
                 .triggerEventType(source.getTriggerEventType())
+                .triggerFilter(source.getTriggerFilter() == null ? null : new java.util.HashMap<>(source.getTriggerFilter()))
                 .build());
         } catch (DataIntegrityViolationException ex) {
             throw new BusinessException("WORKFLOW_CONCURRENT_DRAFT", "Another version was created concurrently. Refresh and try again.");
@@ -257,6 +260,7 @@ public class WorkflowDefinitionService {
         }
         version.setTriggerEntityType(entityType);
         version.setTriggerEventType(eventType);
+        version.setTriggerFilter(normalizeTriggerFilter(request.getTriggerFilter()));
         workflowVersionRepository.save(version);
         // Also keep TRIGGER node in sync if it exists — single trigger invariant
         workflowNodeRepository.findByTenantIdAndWorkflowVersionIdAndDeletedFalse(tenantId, versionId).stream()
@@ -266,9 +270,43 @@ public class WorkflowDefinitionService {
                 java.util.Map<String, Object> cfg = trigger.getConfiguration() == null ? new java.util.HashMap<>() : new java.util.HashMap<>(trigger.getConfiguration());
                 cfg.put("entityType", entityType);
                 cfg.put("eventType", eventType);
+                if (request.getTriggerFilter() != null) {
+                    cfg.put("triggerFilter", normalizeTriggerFilter(request.getTriggerFilter()));
+                } else {
+                    cfg.remove("triggerFilter");
+                }
                 trigger.setConfiguration(cfg);
                 workflowNodeRepository.save(trigger);
             });
+    }
+
+    private Map<String, Object> normalizeTriggerFilter(Map<String, Object> raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        Object logicObj = raw.get("logic");
+        Object conditionsObj = raw.get("conditions");
+        if (!(conditionsObj instanceof java.util.List<?> conditions) || conditions.isEmpty()) {
+            return null;
+        }
+        String logic = logicObj == null ? "AND" : String.valueOf(logicObj).trim().toUpperCase();
+        if (!"AND".equals(logic) && !"OR".equals(logic)) logic = "AND";
+        // Keep only well-formed conditions; validation will catch the rest
+        java.util.List<Map<String, Object>> normalizedConditions = new java.util.ArrayList<>();
+        for (Object cond : conditions) {
+            if (!(cond instanceof Map<?,?> map)) continue;
+            Object field = map.get("field");
+            Object operator = map.get("operator");
+            if (field == null || String.valueOf(field).isBlank() || operator == null || String.valueOf(operator).isBlank()) continue;
+            java.util.Map<String, Object> nc = new java.util.HashMap<>();
+            nc.put("field", String.valueOf(field).trim());
+            nc.put("operator", String.valueOf(operator).trim().toUpperCase());
+            nc.put("value", map.get("value"));
+            normalizedConditions.add(nc);
+        }
+        if (normalizedConditions.isEmpty()) return null;
+        java.util.Map<String, Object> out = new java.util.HashMap<>();
+        out.put("logic", logic);
+        out.put("conditions", normalizedConditions);
+        return out;
     }
 
     public UUID addNode(UUID tenantId, UUID versionId, WorkflowNodeRequest request) {

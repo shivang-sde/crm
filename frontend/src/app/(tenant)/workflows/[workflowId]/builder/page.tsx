@@ -220,6 +220,7 @@ function BuilderInner() {
     if (!hasTrigger && versionTrigger) {
       const entityType = versionTrigger.triggerEntityType ?? "";
       const eventType = versionTrigger.triggerEventType ?? "";
+      const triggerFilter = (versionTrigger as unknown as { triggerFilter?: unknown }).triggerFilter;
       const existingKeys = flowNodes.map((n) => n.data.nodeKey);
       const nodeKey = generateNodeKey("TRIGGER", existingKeys);
       const pos = { x: 400, y: 60 };
@@ -234,11 +235,22 @@ function BuilderInner() {
           configuration: {
             entityType,
             eventType,
+            ...(triggerFilter ? { triggerFilter } : {}),
             position: { x: Math.round(pos.x), y: Math.round(pos.y) },
           },
         },
       };
       flowNodes = [synth, ...flowNodes];
+    } else if (hasTrigger && versionTrigger) {
+      // Hydrate existing trigger node with version-level triggerFilter if node lacks it (backward compat)
+      const versionFilter = (versionTrigger as unknown as { triggerFilter?: unknown }).triggerFilter;
+      if (versionFilter && !flowNodes.some((n) => n.data.nodeType === "TRIGGER" && (n.data.configuration as Record<string, unknown>).triggerFilter)) {
+        flowNodes = flowNodes.map((n) =>
+          n.data.nodeType === "TRIGGER"
+            ? { ...n, data: { ...n.data, configuration: { ...n.data.configuration, triggerFilter: versionFilter } } }
+            : n
+        );
+      }
     }
     setNodes(flowNodes);
     setEdges(flowEdges);
@@ -924,9 +936,18 @@ function BuilderInner() {
     const cfgEvent = String((triggerNode.data.configuration.eventType as string) ?? "").trim().toUpperCase();
     const verEntity = String(version.triggerEntityType ?? "").trim().toUpperCase();
     const verEvent = String(version.triggerEventType ?? "").trim().toUpperCase();
-    if (cfgEntity && cfgEvent && (cfgEntity !== verEntity || cfgEvent !== verEvent)) {
+    const cfgFilter = triggerNode.data.configuration.triggerFilter as unknown;
+    const verFilter = (version as unknown as { triggerFilter?: unknown }).triggerFilter;
+    const cfgFilterStr = cfgFilter ? JSON.stringify(cfgFilter) : "";
+    const verFilterStr = verFilter ? JSON.stringify(verFilter) : "";
+    const filterChanged = cfgFilterStr !== verFilterStr;
+    if (cfgEntity && cfgEvent && (cfgEntity !== verEntity || cfgEvent !== verEvent || filterChanged)) {
       try {
-        await updateVersion.mutateAsync({ triggerEntityType: cfgEntity, triggerEventType: cfgEvent });
+        await updateVersion.mutateAsync({
+          triggerEntityType: cfgEntity,
+          triggerEventType: cfgEvent,
+          triggerFilter: (cfgFilter as never) ?? null,
+        });
         await queryClient.invalidateQueries({ queryKey: workflowKeys.version(versionId) });
         await queryClient.invalidateQueries({ queryKey: workflowKeys.graph(versionId) });
         await queryClient.invalidateQueries({ queryKey: workflowKeys.versions(workflowId) });

@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConditionRulesEditor } from "./ConditionRulesEditor";
@@ -274,12 +274,164 @@ function TriggerConfig({
         </div>
       )}
 
+      {selectedEntity?.entityType === "LEAD" && selectedEvent?.eventType === "CREATED" && (
+        <TriggerFilterConfig
+          configuration={configuration}
+          readOnly={readOnly}
+          onChange={onChange}
+          metadataQuery={metadataQuery}
+        />
+      )}
+
       {!metadataQuery.isLoading && !metadataQuery.data && (
         <p className="text-xs text-orange-600">
           Workflow metadata is unavailable â€” existing values are preserved.
         </p>
       )}
     </>
+  );
+}
+
+function TriggerFilterConfig({
+  configuration,
+  readOnly,
+  onChange,
+  metadataQuery,
+}: {
+  configuration: Record<string, unknown>;
+  readOnly: boolean;
+  onChange: (configuration: Record<string, unknown>) => void;
+  metadataQuery: MetadataQuery;
+}) {
+  const rawFilter = configuration.triggerFilter as Record<string, unknown> | undefined;
+  const hasFilter = rawFilter != null && Array.isArray((rawFilter as { conditions?: unknown[] }).conditions) && ((rawFilter as { conditions: unknown[] }).conditions.length > 0);
+  const deserialized = (() => {
+    try {
+      const logic = typeof rawFilter?.logic === "string" ? String(rawFilter.logic).toUpperCase() : "AND";
+      const conditions = Array.isArray(rawFilter?.conditions) ? (rawFilter.conditions as Array<Record<string, unknown>>) : [];
+      return {
+        logic: logic === "OR" ? "OR" : "AND" as "AND" | "OR",
+        conditions: conditions.map((c) => ({
+          field: typeof c.field === "string" ? c.field : "",
+          operator: typeof c.operator === "string" ? c.operator : "EQUALS",
+          value: (c.value as string | string[] | undefined) ?? "",
+        })),
+      };
+    } catch {
+      return { logic: "AND" as const, conditions: [] as Array<{ field: string; operator: string; value: string | string[] }> };
+    }
+  })();
+
+  const [mode, setMode] = useState<"every" | "filtered">(hasFilter ? "filtered" : "every");
+  // Keep mode in sync when configuration changes externally (e.g., version switch)
+  useEffect(() => {
+    setMode(hasFilter ? "filtered" : "every");
+  }, [hasFilter]);
+
+  const referenceData = useWorkflowReferenceData("LEAD");
+  const entityMetadata = metadataQuery.data?.entities.find((e) => e.entityType === "LEAD");
+  const relationshipData = useWorkflowRelationshipReferenceData(entityMetadata?.relationships);
+  const fieldOptions: WorkflowFieldOption[] = [
+    ...buildFieldOptions({
+      metadata: metadataQuery.data,
+      triggerEntityType: "LEAD",
+      referenceData,
+      relationshipData,
+    }).filter((opt) => {
+      // For trigger filter, only expose relevant fields: Created Via / Ingestion Configuration / Lead Source + a few trigger.metadata
+      const allowed = [
+        "trigger.metadata.createdVia",
+        "trigger.metadata.ingestionConfigId",
+        "trigger.metadata.ingestionEventId",
+        "entity.source",
+        "entity.sourceId",
+        "entity.status",
+        "entity.statusId",
+      ];
+      return allowed.includes(opt.field) || opt.field.startsWith("trigger.metadata.") || opt.field.startsWith("entity.");
+    }),
+  ];
+
+  const resolveValueOptions = (field: string) => fieldOptions.find((o) => o.field === field)?.valueOptions ?? null;
+
+  const handleModeChange = (next: "every" | "filtered") => {
+    setMode(next);
+    if (next === "every") {
+      const { triggerFilter: _ignored, ...rest } = configuration;
+      onChange(rest);
+    } else {
+      // Initialize with one empty condition for Created Via
+      if (!hasFilter) {
+        onChange({
+          ...configuration,
+          triggerFilter: {
+            logic: "AND",
+            conditions: [{ field: "trigger.metadata.createdVia", operator: "EQUALS", value: "LEAD_INGESTION" }],
+          },
+        });
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border bg-amber-50/50 p-3 dark:bg-amber-950/20">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Run When</p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant={mode === "every" ? "default" : "outline"}
+          size="sm"
+          disabled={readOnly}
+          onClick={() => handleModeChange("every")}
+          className="flex-1"
+        >
+          Every Lead Created
+        </Button>
+        <Button
+          type="button"
+          variant={mode === "filtered" ? "default" : "outline"}
+          size="sm"
+          disabled={readOnly}
+          onClick={() => handleModeChange("filtered")}
+          className="flex-1"
+        >
+          Only when conditions match
+        </Button>
+      </div>
+      {mode === "filtered" && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            Filters use the same condition engine as downstream IF / ELSE. Empty = every lead. Example: <span className="font-mono">Created Via = Lead Ingestion</span> or <span className="font-mono">Lead Source = Facebook</span>.
+          </p>
+          <ConditionRulesEditor
+            logic={deserialized.logic}
+            rules={deserialized.conditions}
+            readOnly={readOnly}
+            fieldOptions={fieldOptions}
+            resolveValueOptions={resolveValueOptions}
+            triggerEntityType="LEAD"
+            onChange={(logic, rules) => {
+              if (rules.length === 0) {
+                const { triggerFilter: _ignored, ...rest } = configuration;
+                onChange(rest);
+                setMode("every");
+              } else {
+                onChange({
+                  ...configuration,
+                  triggerFilter: {
+                    logic,
+                    conditions: rules.map(({ field, operator, value }) => ({ field, operator, value })),
+                  },
+                });
+              }
+            }}
+          />
+        </div>
+      )}
+      {mode === "every" && (
+        <p className="text-[11px] text-muted-foreground">No filters — every legitimate <span className="font-mono">LEAD.CREATED</span> will run this workflow.</p>
+      )}
+    </div>
   );
 }
 
