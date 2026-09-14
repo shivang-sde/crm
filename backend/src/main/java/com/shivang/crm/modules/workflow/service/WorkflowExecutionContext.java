@@ -58,7 +58,7 @@ public class WorkflowExecutionContext {
         }
         normalized.putIfAbsent("ingestionConfigId", "");
         normalized.putIfAbsent("ingestionEventId", "");
-        this.triggerContext = Map.copyOf(normalized);
+        this.triggerContext = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(normalized));
         Map<String, Object> triggerData = new LinkedHashMap<>();
         triggerData.put("eventId", execution.getTriggerEventId());
         triggerData.put("tenantId", execution.getTenantId());
@@ -68,7 +68,7 @@ public class WorkflowExecutionContext {
         triggerData.put("actorId", execution.getActorId());
         triggerData.put("actorType", execution.getActorType());
         triggerData.put("metadata", this.triggerContext);
-        this.trigger = Map.copyOf(triggerData);
+        this.trigger = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(triggerData));
         this.entity = loadEntity();
     }
 

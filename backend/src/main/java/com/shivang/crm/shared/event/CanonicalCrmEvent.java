@@ -21,6 +21,8 @@ public record CanonicalCrmEvent(
     public static final String TASK_ENTITY_TYPE = "TASK";
     public static final String MEETING_ENTITY_TYPE = "MEETING";
     public static final String CALL_ENTITY_TYPE = "CALL";
+    public static final String RECORD_ENTITY_TYPE = "RECORD";
+    public static final String RECEIVED_EVENT_TYPE = "RECEIVED";
     public static final String CREATED_EVENT_TYPE = "CREATED";
     public static final String UPDATED_EVENT_TYPE = "UPDATED";
     public static final String COMPLETED_EVENT_TYPE = "COMPLETED";

@@ -82,6 +82,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/webhooks/connectors/**",
+                                "/api/v1/records/webhooks/**",
                                 "/actuator/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

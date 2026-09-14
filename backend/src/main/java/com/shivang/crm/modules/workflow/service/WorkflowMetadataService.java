@@ -132,6 +132,11 @@ public class WorkflowMetadataService {
             ), List.of(
                 relationship("related", "Related Record", null,
                     List.of("id", "type", "name", "disposition", "ownerId", "customFields"), true)
+            )),
+            entity("RECORD", "Record", List.of(
+                event("RECEIVED", "Received", "recordTypeId", "webhookId", "deliveryId")
+            ), List.of(
+                "id", "recordTypeId", "data", "ownerId", "createdBy", "createdAt", "updatedAt"
             ))
         );
     }

@@ -17,6 +17,7 @@ import com.shivang.crm.modules.acquisition.config.LeadIngestionConfig;
 import com.shivang.crm.modules.acquisition.repository.LeadIngestionConfigRepository;
 import com.shivang.crm.modules.lead.entity.LeadSource;
 import com.shivang.crm.modules.lead.repository.LeadSourceRepository;
+import com.shivang.crm.modules.records.repository.RecordTypeRepository;
 import com.shivang.crm.modules.workflow.entity.Workflow;
 import com.shivang.crm.modules.workflow.entity.WorkflowNode;
 import com.shivang.crm.modules.workflow.entity.WorkflowNodeType;
@@ -34,6 +35,7 @@ public class WorkflowTriggerFilterValidationTest {
     private WorkflowEdgeRepository edgeRepo;
     private LeadIngestionConfigRepository ingestionRepo;
     private LeadSourceRepository sourceRepo;
+    private RecordTypeRepository recordTypeRepo;
     private WorkflowGraphValidationService service;
 
     private UUID tenantA;
@@ -54,7 +56,8 @@ public class WorkflowTriggerFilterValidationTest {
         edgeRepo = mock(WorkflowEdgeRepository.class);
         ingestionRepo = mock(LeadIngestionConfigRepository.class);
         sourceRepo = mock(LeadSourceRepository.class);
-        service = new WorkflowGraphValidationService(versionRepo, nodeRepo, edgeRepo, ingestionRepo, sourceRepo);
+        recordTypeRepo = mock(RecordTypeRepository.class);
+        service = new WorkflowGraphValidationService(versionRepo, nodeRepo, edgeRepo, ingestionRepo, sourceRepo, recordTypeRepo);
 
         tenantA = UUID.randomUUID();
         tenantB = UUID.randomUUID();

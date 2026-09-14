@@ -44,7 +44,7 @@ public class RbacFilter extends OncePerRequestFilter {
     //   endpoints secured by provider signing secrets, not by user permissions
     private static final Set<String> EXCLUDED_PATHS = Set.of(
             "/api/v1/auth", "/actuator", "/api/v1/public", "/api/v1/webhooks",
-            "/swagger", "/v3/api-docs");
+            "/api/v1/records/webhooks", "/swagger", "/v3/api-docs");
 
     // Calling configuration endpoints are administrative / self-service and use
     // explicit controller authorization (CallingAdminController: admin:settings,

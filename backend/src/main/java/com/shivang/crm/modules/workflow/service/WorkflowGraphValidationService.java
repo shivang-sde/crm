@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.shivang.crm.modules.acquisition.repository.LeadIngestionConfigRepository;
 import com.shivang.crm.modules.lead.entity.LeadCreationOrigin;
 import com.shivang.crm.modules.lead.repository.LeadSourceRepository;
+import com.shivang.crm.modules.records.repository.RecordTypeRepository;
 import com.shivang.crm.modules.workflow.dto.WorkflowGraphValidationError;
 import com.shivang.crm.modules.workflow.entity.WorkflowEdge;
 import com.shivang.crm.modules.workflow.entity.WorkflowNode;
@@ -37,6 +38,7 @@ public class WorkflowGraphValidationService {
     private final WorkflowEdgeRepository workflowEdgeRepository;
     private final LeadIngestionConfigRepository leadIngestionConfigRepository;
     private final LeadSourceRepository leadSourceRepository;
+    private final RecordTypeRepository recordTypeRepository;
 
     @Transactional(readOnly = true)
     public List<WorkflowGraphValidationError> validate(UUID tenantId, UUID versionId) {
@@ -443,8 +445,14 @@ public class WorkflowGraphValidationService {
                 "entity.email",
                 "entity.phone"
         );
+        Set<String> allowedRecordFields = Set.of(
+                "trigger.metadata.recordTypeId",
+                "trigger.metadata.webhookId",
+                "trigger.metadata.deliveryId"
+        );
         // If trigger is not LEAD.CREATED, allow any trigger.metadata/entity field that would be resolvable, but for now restrict to allowed set for LEAD.CREATED
         boolean isLeadCreated = "LEAD".equals(version.getTriggerEntityType()) && "CREATED".equals(version.getTriggerEventType());
+        boolean isRecordReceived = "RECORD".equals(version.getTriggerEntityType()) && "RECEIVED".equals(version.getTriggerEventType());
 
         for (Object rawCond : conditions) {
             if (!(rawCond instanceof Map<?,?> cond)) {
@@ -464,6 +472,10 @@ public class WorkflowGraphValidationService {
             }
             if (isLeadCreated && !allowedFields.contains(field)) {
                 errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter contains an unsupported field for Lead Created: " + field, trigger));
+                continue;
+            }
+            if (isRecordReceived && !allowedRecordFields.contains(field)) {
+                errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter contains an unsupported field for Record Received: " + field, trigger));
                 continue;
             }
             if (!WorkflowConditionEvaluator.SUPPORTED_OPERATORS.contains(operator)) {
@@ -528,6 +540,24 @@ public class WorkflowGraphValidationService {
                 if (vs.isBlank()) {
                     errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Lead Source name must not be blank", trigger));
                 }
+            } else if ("trigger.metadata.recordTypeId".equals(field)) {
+                if (operator.equals("IN") || operator.equals("NOT_IN")) {
+                    if (!(valueObj instanceof List<?> list)) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Record Type with IN requires a list", trigger));
+                    } else {
+                        for (Object v : list) validateRecordTypeId(String.valueOf(v), tenantId, trigger, errors);
+                    }
+                } else {
+                    validateRecordTypeId(String.valueOf(valueObj), tenantId, trigger, errors);
+                }
+            } else if ("trigger.metadata.webhookId".equals(field) || "trigger.metadata.deliveryId".equals(field)) {
+                // Allow any UUID value for webhook/delivery, but validate UUID format + tenant not needed (already in metadata)
+                String vs = String.valueOf(valueObj).trim();
+                if (!vs.isBlank()) {
+                    try { UUID.fromString(vs); } catch (Exception ex) {
+                        errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter " + field + " must be a valid UUID", trigger));
+                    }
+                }
             }
             // Other entity.* fields (status etc.) — rely on existing condition value semantics, no extra tenant check
         }
@@ -573,6 +603,29 @@ public class WorkflowGraphValidationService {
         boolean exists = opt.isPresent() && !Boolean.TRUE.equals(opt.get().getDeleted());
         if (!exists) {
             errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter references a Lead Source that does not belong to this tenant", trigger));
+        }
+    }
+
+    private void validateRecordTypeId(String rawValue, UUID tenantId, WorkflowNode trigger, List<WorkflowGraphValidationError> errors) {
+        String v = rawValue == null ? "" : rawValue.trim();
+        if (v.isBlank()) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Record Type must not be blank", trigger));
+            return;
+        }
+        UUID id;
+        try {
+            id = UUID.fromString(v);
+        } catch (IllegalArgumentException ex) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter Record Type must be a valid UUID", trigger));
+            return;
+        }
+        var opt = recordTypeRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId);
+        if (opt.isEmpty()) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter references a Record Type that does not belong to this tenant", trigger));
+            return;
+        }
+        if (Boolean.FALSE.equals(opt.get().getIsActive())) {
+            errors.add(errorForNode("WORKFLOW_TRIGGER_FILTER_INVALID", "Trigger filter references an inactive Record Type", trigger));
         }
     }
 
