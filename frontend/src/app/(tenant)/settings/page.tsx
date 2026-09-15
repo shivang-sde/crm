@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Phone, Globe, Database, Settings, ChevronRight, Key } from "lucide-react";
+import { Phone, Globe, Database, Settings, Settings2, ChevronRight, Key, Webhook } from "lucide-react";
 import { useAuthStore } from "@/lib/store/authStore";
 
 import { usePermissions } from "@/lib/hooks/usePermissions";
@@ -86,6 +86,60 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
            )}
+
+            <Card className="border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-indigo-600" />
+                  Record Types
+                </CardTitle>
+                <CardDescription>Define canonical record schemas and tenant-owned fields (e.g. CDR, Payment).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/settings/records"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  Open <ChevronRight className="h-4 w-4" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings2 className="h-5 w-5 text-indigo-600" />
+                  Mapping Profiles
+                </CardTitle>
+                <CardDescription>Map external payloads to canonical record fields (e.g. Sellspark → CDR).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/settings/record-mappings"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  Open <ChevronRight className="h-4 w-4" />
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Webhook className="h-5 w-5 text-indigo-600" />
+                  Incoming Webhooks
+                </CardTitle>
+                <CardDescription>Define ingestion channels: webhook key → Record Type + Mapping.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/settings/record-webhooks"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  Open <ChevronRight className="h-4 w-4" />
+                </Link>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>

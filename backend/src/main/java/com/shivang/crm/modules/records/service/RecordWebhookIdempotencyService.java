@@ -35,18 +35,34 @@ public class RecordWebhookIdempotencyService {
                                                 String status, UUID recordId,
                                                 Integer responseStatus, Map<String, Object> responseBody,
                                                 String errorCode, String errorMessage) {
+        return createDelivery(tenantId, webhookId, webhookKey, idempotencyKey, payloadHash, status, recordId, responseStatus, responseBody, errorCode, errorMessage, null, null, null, null);
+    }
+
+    @Transactional
+    public RecordWebhookDelivery createDelivery(UUID tenantId, UUID webhookId, String webhookKey,
+                                                String idempotencyKey, String payloadHash,
+                                                String status, UUID recordId,
+                                                Integer responseStatus, Map<String, Object> responseBody,
+                                                String errorCode, String errorMessage,
+                                                UUID recordTypeId, UUID mappingProfileId, UUID eventId, String failureStage) {
+        String safeKey = idempotencyKey != null ? idempotencyKey.trim() : "";
+        if (safeKey.isEmpty()) safeKey = "no-key-" + UUID.randomUUID();
         RecordWebhookDelivery delivery = RecordWebhookDelivery.builder()
                 .tenantId(tenantId)
                 .webhookId(webhookId)
                 .webhookKey(webhookKey)
-                .idempotencyKey(idempotencyKey.trim())
+                .idempotencyKey(safeKey)
                 .payloadHash(payloadHash)
                 .status(status)
                 .recordId(recordId)
                 .responseStatus(responseStatus)
                 .responseBody(responseBody)
                 .errorCode(errorCode)
-                .errorMessage(errorMessage)
+                .errorMessage(sanitizeErrorMessage(errorMessage))
+                .recordTypeId(recordTypeId)
+                .mappingProfileId(mappingProfileId)
+                .eventId(eventId)
+                .failureStage(failureStage)
                 .receivedAt(Instant.now())
                 .build();
         try {
@@ -94,5 +110,17 @@ public class RecordWebhookIdempotencyService {
 
     public static String hashPayload(String rawBody) {
         return hashPayload(rawBody != null ? rawBody.getBytes(StandardCharsets.UTF_8) : new byte[0]);
+    }
+
+    private String sanitizeErrorMessage(String msg) {
+        if (msg == null) return null;
+        String lower = msg.toLowerCase();
+        // Redact secrets
+        if (lower.contains("api-key") || lower.contains("apikey") || lower.contains("hmac") || lower.contains("secret") || lower.contains("authorization") || lower.contains("signature") || lower.contains("credential")) {
+            return "Authentication failed";
+        }
+        // Truncate
+        if (msg.length() > 500) return msg.substring(0, 500);
+        return msg;
     }
 }

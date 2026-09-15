@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.records.entity.RecordWebhook;
 import com.shivang.crm.modules.records.entity.WebhookAuthMode;
 import com.shivang.crm.modules.records.repository.RecordWebhookRepository;
@@ -86,13 +86,21 @@ public class RecordWebhookIngressController {
             authenticated = false;
         }
 
+        String payloadHashForFailure = RecordWebhookIdempotencyService.hashPayload(rawBody);
+        // Derive idempotencyKey early for failure observability (headers + payload idempotencyKey if JSON parsable)
+        String earlyIdempotencyKey = null;
+        if (idempotencyKeyHeader != null && !idempotencyKeyHeader.isBlank()) earlyIdempotencyKey = idempotencyKeyHeader.trim();
+        else if (xIdempotencyKeyHeader != null && !xIdempotencyKeyHeader.isBlank()) earlyIdempotencyKey = xIdempotencyKeyHeader.trim();
+
         if (!authenticated) {
             log.info("Webhook ingress unauthorized for key={} mode={}", maskKey(webhookKey), mode);
+            persistFailure(webhook, payloadHashForFailure, earlyIdempotencyKey, "AUTHENTICATION", "UNAUTHORIZED", "Invalid webhook key or credentials", webhook.getRecordTypeId(), webhook.getMappingProfileId());
             return unauthorized();
         }
 
         if (rawBody != null && rawBody.length > MAX_PAYLOAD_BYTES) {
             log.warn("Webhook payload too large for key={} size={}", maskKey(webhookKey), rawBody.length);
+            persistFailure(webhook, payloadHashForFailure, earlyIdempotencyKey, "VALIDATION", "PAYLOAD_TOO_LARGE", "Payload exceeds 1MB limit", webhook.getRecordTypeId(), webhook.getMappingProfileId());
             return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                     .body(ApiResponse.<Map<String, Object>>error("PAYLOAD_TOO_LARGE", "Payload exceeds 1MB limit"));
         }
@@ -104,12 +112,14 @@ public class RecordWebhookIngressController {
             } else {
                 JsonNode root = objectMapper.readTree(rawBody);
                 if (root.isNull() || !root.isObject()) {
+                    persistFailure(webhook, payloadHashForFailure, earlyIdempotencyKey, "VALIDATION", "INVALID_PAYLOAD", "Payload must be a JSON object", webhook.getRecordTypeId(), webhook.getMappingProfileId());
                     return badRequest("INVALID_PAYLOAD", "Payload must be a JSON object");
                 }
                 payloadMap = objectMapper.convertValue(root, new TypeReference<Map<String, Object>>() {});
             }
         } catch (Exception e) {
             log.debug("Invalid JSON payload for webhook key={}: {}", maskKey(webhookKey), e.getMessage());
+            persistFailure(webhook, payloadHashForFailure, earlyIdempotencyKey, "VALIDATION", "INVALID_JSON", "Invalid JSON payload", webhook.getRecordTypeId(), webhook.getMappingProfileId());
             return badRequest("INVALID_JSON", "Invalid JSON payload");
         }
 
@@ -155,23 +165,20 @@ public class RecordWebhookIngressController {
             return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(data));
         } catch (BusinessException e) {
             log.debug("Webhook ingestion failed for {}: {} - {}", webhook.getId(), e.getErrorCode(), e.getMessage());
-            // Store failed delivery for idempotency if key present
-            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-                try {
-                    idempotencyService.createDelivery(webhook.getTenantId(), webhook.getId(), webhook.getWebhookKey(), idempotencyKey, payloadHash, "FAILED", null, 400, null, e.getErrorCode(), e.getMessage());
-                } catch (Exception ex) {
-                    log.warn("Failed to store failed delivery for idempotency: {}", ex.getMessage());
-                }
+            String stage = mapFailureStage(e.getErrorCode());
+            // Always persist for observability, even without idempotencyKey
+            try {
+                idempotencyService.createDelivery(webhook.getTenantId(), webhook.getId(), webhook.getWebhookKey(), idempotencyKey, payloadHash, "FAILED", null, 400, null, e.getErrorCode(), e.getMessage(), webhook.getRecordTypeId(), webhook.getMappingProfileId(), null, stage);
+            } catch (Exception ex) {
+                log.warn("Failed to store failed delivery: {}", ex.getMessage());
             }
             return badRequest(e.getErrorCode(), e.getMessage());
         } catch (Exception e) {
             log.error("Webhook ingestion failed for {}", webhook.getId(), e);
-            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-                try {
-                    idempotencyService.createDelivery(webhook.getTenantId(), webhook.getId(), webhook.getWebhookKey(), idempotencyKey, payloadHash, "FAILED", null, 500, null, "INTERNAL_ERROR", "Failed to create record");
-                } catch (Exception ex) {
-                    log.warn("Failed to store failed delivery: {}", ex.getMessage());
-                }
+            try {
+                idempotencyService.createDelivery(webhook.getTenantId(), webhook.getId(), webhook.getWebhookKey(), idempotencyKey, payloadHash, "FAILED", null, 500, null, "INTERNAL_ERROR", "Failed to create record", webhook.getRecordTypeId(), webhook.getMappingProfileId(), null, "EVENT_PUBLICATION");
+            } catch (Exception ex) {
+                log.warn("Failed to store failed delivery: {}", ex.getMessage());
             }
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.<Map<String, Object>>error("INTERNAL_ERROR", "Failed to create record"));
@@ -186,6 +193,25 @@ public class RecordWebhookIngressController {
     private ResponseEntity<ApiResponse<Map<String, Object>>> badRequest(String code, String message) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.<Map<String, Object>>error(code, message));
+    }
+
+    private String mapFailureStage(String errorCode) {
+        if (errorCode == null) return "VALIDATION";
+        String c = errorCode.toUpperCase();
+        if (c.contains("MAPPING") || c.contains("TRANSFORM")) return "MAPPING";
+        if (c.contains("RECORD") || c.contains("REQUIRED") || c.contains("UNKNOWN_FIELD")) return "RECORD_CREATION";
+        if (c.contains("INVALID_CONFIGURATION") || c.contains("REFERENCE") || c.contains("DUPLICATE")) return "VALIDATION";
+        if (c.contains("AUTH") || c.contains("UNAUTHORIZED")) return "AUTHENTICATION";
+        if (c.contains("PAYLOAD") || c.contains("JSON")) return "VALIDATION";
+        return "VALIDATION";
+    }
+
+    private void persistFailure(RecordWebhook webhook, String payloadHash, String idempotencyKey, String stage, String code, String message, java.util.UUID recordTypeId, java.util.UUID mappingProfileId) {
+        try {
+            idempotencyService.createDelivery(webhook.getTenantId(), webhook.getId(), webhook.getWebhookKey(), idempotencyKey, payloadHash, "FAILED", null, stage.equals("AUTHENTICATION") ? 401 : 400, null, code, message, recordTypeId, mappingProfileId, null, stage);
+        } catch (Exception ex) {
+            log.warn("Failed to persist failure delivery for webhook {}: {}", webhook.getId(), ex.getMessage());
+        }
     }
 
     private String maskKey(String key) {

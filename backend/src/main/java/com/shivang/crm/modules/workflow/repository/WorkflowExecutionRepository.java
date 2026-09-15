@@ -76,6 +76,11 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
         Pageable pageable
     );
 
+    List<WorkflowExecution> findByTenantIdAndTriggerEventIdAndDeletedFalse(UUID tenantId, UUID triggerEventId);
+
+    @Query("SELECT e FROM WorkflowExecution e JOIN FETCH e.workflow w JOIN FETCH e.workflowVersion v WHERE e.tenantId = :tenantId AND e.triggerEventId = :triggerEventId AND e.deleted = false")
+    List<WorkflowExecution> findWithWorkflowByTenantIdAndTriggerEventId(@Param("tenantId") UUID tenantId, @Param("triggerEventId") UUID triggerEventId);
+
     @Modifying
     @org.springframework.data.jpa.repository.Query(value = """
         INSERT INTO workflow_executions (

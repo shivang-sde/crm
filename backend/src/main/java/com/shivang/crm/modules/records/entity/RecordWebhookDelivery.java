@@ -68,6 +68,18 @@ public class RecordWebhookDelivery extends BaseEntity {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @Column(name = "record_type_id")
+    private UUID recordTypeId;
+
+    @Column(name = "mapping_profile_id")
+    private UUID mappingProfileId;
+
+    @Column(name = "event_id")
+    private UUID eventId;
+
+    @Column(name = "failure_stage", length = 30)
+    private String failureStage;
+
     @Column(name = "received_at", nullable = false)
     @Builder.Default
     private Instant receivedAt = Instant.now();

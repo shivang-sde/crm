@@ -12,7 +12,8 @@ import {
   Boxes,
   Webhook,
   Workflow,
-  FileText
+  FileText,
+  Database
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -308,6 +309,9 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
 
   const canViewWorkflows = hasGrant(permissions, "workflow:read");
 
+  // WF-45: Records are tenant-authenticated; permission deferred, visible to all tenant users
+  const canViewRecords = true;
+
   return [
     ...baseItems,
     ...(canViewLeads ? [{ name: "Leads", href: "/leads", icon: Target, show: true }] : []),
@@ -317,6 +321,7 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
     ...(canViewAcquisition ? [{ name: "Acquisition", href: "/acquisition", icon: Webhook, show: true }] : []),
     // ...(canViewForms ? [{ name: "Forms", href: "/forms", icon: FileText, show: true }] : []),
     ...(canViewWorkflows ? [{ name: "Workflows", href: "/workflows", icon: Workflow, show: true }] : []),
+    ...(canViewRecords ? [{ name: "Records", href: "/records", icon: Database, show: true }] : []),
     ...(canViewContacts ? [{ name: "Contacts", href: "/contacts", icon: Users, show: true }] : []),
     ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),
     ...(canViewTasks ? [{ name: "Tasks", href: "/tasks", icon: CheckSquare, show: true }] : []),

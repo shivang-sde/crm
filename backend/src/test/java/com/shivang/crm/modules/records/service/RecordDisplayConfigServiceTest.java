@@ -8,7 +8,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.records.dto.display.DisplayConfigRequest;
 import com.shivang.crm.modules.records.dto.display.DisplayConfigResponse;
 import com.shivang.crm.modules.records.entity.RecordDisplayConfig;

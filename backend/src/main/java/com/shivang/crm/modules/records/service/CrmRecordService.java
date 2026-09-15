@@ -87,17 +87,39 @@ public class CrmRecordService {
 
     @Transactional(readOnly = true)
     public Page<CrmRecordResponse> list(UUID tenantId, UUID recordTypeId, int page, int size) {
-        Page<CrmRecord> p;
+        return list(tenantId, recordTypeId, null, null, null, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CrmRecordResponse> list(UUID tenantId, UUID recordTypeId, String search, String sort, String direction, int page, int size) {
         if (recordTypeId != null) {
-            // verify type belongs to tenant
             recordTypeRepository.findByIdAndTenantIdAndDeletedFalse(recordTypeId, tenantId)
                     .orElseThrow(() -> new NotFoundException("RecordType", recordTypeId.toString()));
-            p = crmRecordRepository.findByTenantIdAndRecordTypeIdAndDeletedFalse(tenantId, recordTypeId,
-                    PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
-        } else {
-            p = crmRecordRepository.findByTenantIdAndDeletedFalse(tenantId,
-                    PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
         }
+        // normalize search
+        String normalizedSearch = null;
+        if (search != null) {
+            String trimmed = search.trim();
+            if (!trimmed.isEmpty()) {
+                if (trimmed.length() > 100) trimmed = trimmed.substring(0, 100);
+                normalizedSearch = trimmed;
+            }
+        }
+        // normalize sort
+        String sortField = "createdAt";
+        if (sort != null) {
+            String s = sort.trim();
+            if ("createdAt".equalsIgnoreCase(s) || "created_at".equalsIgnoreCase(s)) sortField = "createdAt";
+            else if ("updatedAt".equalsIgnoreCase(s) || "updated_at".equalsIgnoreCase(s)) sortField = "updatedAt";
+            else if ("id".equalsIgnoreCase(s)) sortField = "id";
+        }
+        Sort.Direction dir = Sort.Direction.DESC;
+        if (direction != null && "asc".equalsIgnoreCase(direction.trim())) dir = Sort.Direction.ASC;
+        // clamp pagination
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(50, Math.max(1, size));
+        PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by(dir, sortField));
+        Page<CrmRecord> p = crmRecordRepository.search(tenantId, recordTypeId, normalizedSearch, pageable);
         return p.map(rec -> {
             RecordType rt = recordTypeRepository.findByIdAndTenantIdAndDeletedFalse(rec.getRecordTypeId(), tenantId).orElse(null);
             return toResponse(rec, rt);

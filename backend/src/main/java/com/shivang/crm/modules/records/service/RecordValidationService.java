@@ -14,12 +14,24 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
+import com.shivang.crm.modules.account.repository.AccountRepository;
+import com.shivang.crm.modules.contact.repository.ContactRepository;
+import com.shivang.crm.modules.deal.repository.DealRepository;
+import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.modules.records.entity.RecordField;
 import com.shivang.crm.modules.records.entity.RecordFieldType;
 import com.shivang.crm.shared.exception.BusinessException;
 
+import lombok.RequiredArgsConstructor;
+
 @Service
+@RequiredArgsConstructor
 public class RecordValidationService {
+
+    private final LeadRepository leadRepository;
+    private final ContactRepository contactRepository;
+    private final AccountRepository accountRepository;
+    private final DealRepository dealRepository;
 
     public void validateAndNormalize(UUID tenantId, List<RecordField> activeFields, Map<String, Object> data) {
         Map<String, RecordField> fieldByKey = activeFields.stream()
@@ -61,7 +73,7 @@ public class RecordValidationService {
                 }
                 continue;
             }
-            validateType(field, value);
+            validateType(tenantId, field, value);
         }
     }
 
@@ -70,7 +82,7 @@ public class RecordValidationService {
         return false;
     }
 
-    private void validateType(RecordField field, Object value) {
+    private void validateType(UUID tenantId, RecordField field, Object value) {
         RecordFieldType type = field.getFieldType();
         String key = field.getFieldKey();
         switch (type) {
@@ -190,9 +202,51 @@ public class RecordValidationService {
                     }
                     return;
                 }
-                try { UUID.fromString(trimmed); } catch (IllegalArgumentException e) {
+                UUID refId;
+                try { refId = UUID.fromString(trimmed); } catch (IllegalArgumentException e) {
                     throw new BusinessException("INVALID_FIELD_TYPE", "Field '" + key + "' must be a valid UUID (reference to " + field.getReferenceEntityType() + ")");
                 }
+                validateReferenceExists(tenantId, field, refId);
+            }
+        }
+    }
+
+    private void validateReferenceExists(UUID tenantId, RecordField field, UUID refId) {
+        String entityType = field.getReferenceEntityType();
+        if (entityType == null || entityType.isBlank()) return;
+        String normalized = entityType.trim().toUpperCase();
+        String fieldKey = field.getFieldKey();
+        switch (normalized) {
+            case "LEAD" -> {
+                var opt = leadRepository.findByIdAndTenantId(refId, tenantId);
+                if (opt.isEmpty() || Boolean.TRUE.equals(opt.get().getDeleted())) {
+                    throw new BusinessException("INVALID_REFERENCE",
+                            "Invalid reference for field '" + fieldKey + "': referenced LEAD does not exist or is not accessible");
+                }
+            }
+            case "CONTACT" -> {
+                var opt = contactRepository.findByIdAndTenantId(refId, tenantId);
+                if (opt.isEmpty() || Boolean.TRUE.equals(opt.get().getDeleted())) {
+                    throw new BusinessException("INVALID_REFERENCE",
+                            "Invalid reference for field '" + fieldKey + "': referenced CONTACT does not exist or is not accessible");
+                }
+            }
+            case "ACCOUNT" -> {
+                var opt = accountRepository.findByIdAndTenantId(refId, tenantId);
+                if (opt.isEmpty() || Boolean.TRUE.equals(opt.get().getDeleted())) {
+                    throw new BusinessException("INVALID_REFERENCE",
+                            "Invalid reference for field '" + fieldKey + "': referenced ACCOUNT does not exist or is not accessible");
+                }
+            }
+            case "DEAL" -> {
+                var opt = dealRepository.findByIdAndTenantId(refId, tenantId);
+                if (opt.isEmpty() || Boolean.TRUE.equals(opt.get().getDeleted())) {
+                    throw new BusinessException("INVALID_REFERENCE",
+                            "Invalid reference for field '" + fieldKey + "': referenced DEAL does not exist or is not accessible");
+                }
+            }
+            default -> {
+                // TASK, MEETING, CALL and unknown: preserve UUID-only validation (no existence check)
             }
         }
     }

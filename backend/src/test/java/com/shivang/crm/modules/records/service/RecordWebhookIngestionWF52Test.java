@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.records.dto.CrmRecordResponse;
 import com.shivang.crm.modules.records.entity.RecordField;
 import com.shivang.crm.modules.records.entity.RecordFieldType;
@@ -91,6 +91,26 @@ public class RecordWebhookIngestionWF52Test {
                     .build();
             return d;
         });
+        lenient().when(idempotencyService.createDelivery(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenAnswer(inv -> {
+            RecordWebhookDelivery d = RecordWebhookDelivery.builder()
+                    .id(deliveryId).tenantId(tenantA).webhookId(webhookId).webhookKey("test")
+                    .idempotencyKey((String)inv.getArgument(3)).payloadHash((String)inv.getArgument(4))
+                    .status((String)inv.getArgument(5)).recordId((UUID)inv.getArgument(6))
+                    .responseStatus((Integer)inv.getArgument(7)).responseBody((Map)inv.getArgument(8))
+                    .build();
+            // set operational fields if provided
+            try {
+                if (inv.getArgument(11) != null) d.setRecordTypeId((UUID)inv.getArgument(11));
+                if (inv.getArgument(12) != null) d.setMappingProfileId((UUID)inv.getArgument(12));
+                if (inv.getArgument(13) != null) d.setEventId((UUID)inv.getArgument(13));
+                if (inv.getArgument(14) != null) d.setFailureStage((String)inv.getArgument(14));
+            } catch (Exception ignored) {}
+            return d;
+        });
+        lenient().when(eventPublisher.publishAndReturn(any(), any(), any(), any(), any())).thenAnswer(inv -> {
+            Map<String,Object> meta = (Map<String,Object>) inv.getArgument(4);
+            return CanonicalCrmEvent.forEntity((String)inv.getArgument(1), (String)inv.getArgument(2), (UUID)inv.getArgument(0), (UUID)inv.getArgument(3), meta);
+        });
     }
 
     @Test
@@ -126,7 +146,7 @@ public class RecordWebhookIngestionWF52Test {
         assertEquals(CanonicalCrmEvent.RECORD_ENTITY_TYPE, result.event.entityType());
         assertEquals(CanonicalCrmEvent.RECEIVED_EVENT_TYPE, result.event.eventType());
         assertEquals(tenantA, result.event.tenantId());
-        verify(eventPublisher).publish(eq(tenantA), eq(CanonicalCrmEvent.RECORD_ENTITY_TYPE), eq(CanonicalCrmEvent.RECEIVED_EVENT_TYPE), any(), argThat(m -> m.containsKey("webhookId") && m.containsKey("deliveryId") && m.containsKey("recordTypeId")));
+        verify(eventPublisher).publishAndReturn(eq(tenantA), eq(CanonicalCrmEvent.RECORD_ENTITY_TYPE), eq(CanonicalCrmEvent.RECEIVED_EVENT_TYPE), any(), argThat(m -> m.containsKey("webhookId") && m.containsKey("deliveryId") && m.containsKey("recordTypeId")));
     }
 
     @Test
@@ -136,7 +156,6 @@ public class RecordWebhookIngestionWF52Test {
         Map<String,Object> metadata = Map.of("recordTypeId", typeId.toString(), "webhookId", webhookId.toString(), "deliveryId", deliveryId.toString());
         CanonicalCrmEvent event = CanonicalCrmEvent.forEntity(CanonicalCrmEvent.RECORD_ENTITY_TYPE, CanonicalCrmEvent.RECEIVED_EVENT_TYPE, tenantId, recordId, metadata);
         ObjectMapper om = new ObjectMapper();
-        om.findAndRegisterModules();
         String payloadStr = om.writeValueAsString(event);
         assertFalse(payloadStr.toLowerCase().contains("secret"));
         assertFalse(payloadStr.toLowerCase().contains("api-key"));
@@ -164,7 +183,7 @@ public class RecordWebhookIngestionWF52Test {
         Map<String,Object> payload = Map.of("call_id","abc","phone","+919999999999");
         var result1 = ingestionService.ingestNew(webhook, payload, "{}".getBytes(), "idem-key", "hash1");
         assertNotNull(result1.record);
-        verify(eventPublisher, times(1)).publish(any(), eq(CanonicalCrmEvent.RECORD_ENTITY_TYPE), eq(CanonicalCrmEvent.RECEIVED_EVENT_TYPE), any(), any());
+        verify(eventPublisher, times(1)).publishAndReturn(any(), eq(CanonicalCrmEvent.RECORD_ENTITY_TYPE), eq(CanonicalCrmEvent.RECEIVED_EVENT_TYPE), any(), any());
         // Second call with same idempotency key should be handled by controller's idempotency check, not by ingestionService
         // Here we simulate controller's duplicate path: it would return cached without calling ingestionService
         // So we verify that ingestionService is not called again for duplicate
@@ -179,7 +198,7 @@ public class RecordWebhookIngestionWF52Test {
         when(crmRecordService.create(any(), any(), any())).thenThrow(new com.shivang.crm.shared.exception.BusinessException("REQUIRED_FIELD_MISSING","phone required"));
         Map<String,Object> payload = Map.of("call_id","abc"); // missing phone
         assertThrows(com.shivang.crm.shared.exception.BusinessException.class, () -> ingestionService.ingestNew(webhook, payload, "{}".getBytes(), "key2", "hash2"));
-        verify(eventPublisher, never()).publish(any(), any(), any(), any(), any());
+        verify(eventPublisher, never()).publishAndReturn(any(), any(), any(), any(), any());
     }
 
     @Test

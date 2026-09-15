@@ -39,6 +39,16 @@ public class CanonicalCrmEventPublisher {
         UUID entityId,
         Map<String, Object> metadata
     ) {
+        publishAndReturn(tenantId, entityType, eventType, entityId, metadata);
+    }
+
+    public CanonicalCrmEvent publishAndReturn(
+        UUID tenantId,
+        String entityType,
+        String eventType,
+        UUID entityId,
+        Map<String, Object> metadata
+    ) {
         CausalEventContext.Lineage lineage = CausalEventContext.get();
         Map<String, Object> effectiveMetadata = metadata;
         if (lineage != null) {
@@ -47,9 +57,9 @@ public class CanonicalCrmEventPublisher {
             effectiveMetadata.put(CausalEventContext.METADATA_CAUSED_BY_WORKFLOW_ID, lineage.workflowId().toString());
             effectiveMetadata.put(CausalEventContext.METADATA_CHAIN_DEPTH, lineage.chainDepth());
         }
-        canonicalCrmEventOutboxService.enqueue(
-            CanonicalCrmEvent.forEntity(entityType, eventType, tenantId, entityId, effectiveMetadata)
-        );
+        CanonicalCrmEvent event = CanonicalCrmEvent.forEntity(entityType, eventType, tenantId, entityId, effectiveMetadata);
+        canonicalCrmEventOutboxService.enqueue(event);
+        return event;
     }
 
     public void publishLeadCreated(UUID tenantId, UUID leadId, UUID ingestionConfigId, UUID ingestionEventId) {

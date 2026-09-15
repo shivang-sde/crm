@@ -10,7 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.shivang.crm.modules.records.dto.CrmRecordResponse;
 import com.shivang.crm.modules.records.entity.RecordWebhook;
 import com.shivang.crm.modules.records.entity.WebhookAuthMode;

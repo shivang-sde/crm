@@ -48,13 +48,16 @@ public class CrmRecordController {
     }
 
     @GetMapping
-    @Operation(summary = "List records (optionally by recordTypeId)")
+    @Operation(summary = "List records (optionally by recordTypeId, search, sort)")
     public ResponseEntity<ApiResponse<java.util.List<CrmRecordResponse>>> list(
             @RequestParam(required = false) UUID recordTypeId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         UUID tenantId = tenantContext.requireTenantId();
-        Page<CrmRecordResponse> p = crmRecordService.list(tenantId, recordTypeId, page, size);
+        Page<CrmRecordResponse> p = crmRecordService.list(tenantId, recordTypeId, search, sort, direction, page, size);
         Map<String, Object> meta = Map.of(
                 "page", p.getNumber(),
                 "size", p.getSize(),

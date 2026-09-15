@@ -8,6 +8,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.shivang.crm.modules.account.repository.AccountRepository;
+import com.shivang.crm.modules.contact.repository.ContactRepository;
+import com.shivang.crm.modules.deal.repository.DealRepository;
+import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.modules.records.dto.CrmRecordCreateRequest;
 import com.shivang.crm.modules.records.entity.CrmRecord;
 import com.shivang.crm.modules.records.entity.RecordField;
@@ -42,7 +46,11 @@ public class CrmRecordServiceTest {
         recordRepo = mock(CrmRecordRepository.class);
         typeRepo = mock(RecordTypeRepository.class);
         fieldRepo = mock(RecordFieldRepository.class);
-        validationService = new RecordValidationService();
+        LeadRepository leadRepo = mock(LeadRepository.class);
+        ContactRepository contactRepo = mock(ContactRepository.class);
+        AccountRepository accountRepo = mock(AccountRepository.class);
+        DealRepository dealRepo = mock(DealRepository.class);
+        validationService = new RecordValidationService(leadRepo, contactRepo, accountRepo, dealRepo);
         mapper = mock(CrmRecordMapper.class);
         service = new CrmRecordService(recordRepo, typeRepo, fieldRepo, validationService, mapper);
 

@@ -37,8 +37,11 @@ import {
 } from "./utils/node-config";
 import { findEntityMetadata } from "./utils/field-options";
 import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipReferenceData, useWorkflowHttpConnections, useCallingProviders, useHttpCredentialTenantStatus, useHttpCredentialUserStatus } from "@/lib/hooks/workflow";
+import { useRecordTypes } from "@/lib/hooks/records";
+import { recordFieldApi } from "@/lib/api/records";
 import { PickerField, WorkflowValuePicker } from "./WorkflowValuePicker";
 import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
+import { useQueries } from "@tanstack/react-query";
 
 const TASK_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "WAITING_ON_SOMEONE", "DEFERRED", "COMPLETED"];
 const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
@@ -283,6 +286,15 @@ function TriggerConfig({
         />
       )}
 
+      {selectedEntity?.entityType === "RECORD" && selectedEvent?.eventType === "RECEIVED" && (
+        <TriggerFilterConfig
+          configuration={configuration}
+          readOnly={readOnly}
+          onChange={onChange}
+          metadataQuery={metadataQuery}
+        />
+      )}
+
       {!metadataQuery.isLoading && !metadataQuery.data && (
         <p className="text-xs text-orange-600">
           Workflow metadata is unavailable â€” existing values are preserved.
@@ -323,34 +335,68 @@ function TriggerFilterConfig({
   })();
 
   const [mode, setMode] = useState<"every" | "filtered">(hasFilter ? "filtered" : "every");
-  // Keep mode in sync when configuration changes externally (e.g., version switch)
   useEffect(() => {
     setMode(hasFilter ? "filtered" : "every");
   }, [hasFilter]);
 
-  const referenceData = useWorkflowReferenceData("LEAD");
-  const entityMetadata = metadataQuery.data?.entities.find((e) => e.entityType === "LEAD");
+  const entityType = typeof configuration.entityType === "string" ? String(configuration.entityType).toUpperCase() : "";
+  const isRecord = entityType === "RECORD";
+  const triggerEntityForOptions = isRecord ? "RECORD" : "LEAD";
+  const referenceData = useWorkflowReferenceData(triggerEntityForOptions);
+  const entityMetadata = metadataQuery.data?.entities.find((e) => e.entityType === triggerEntityForOptions);
   const relationshipData = useWorkflowRelationshipReferenceData(entityMetadata?.relationships);
-  const fieldOptions: WorkflowFieldOption[] = [
-    ...buildFieldOptions({
-      metadata: metadataQuery.data,
-      triggerEntityType: "LEAD",
-      referenceData,
-      relationshipData,
-    }).filter((opt) => {
-      // For trigger filter, only expose relevant fields: Created Via / Ingestion Configuration / Lead Source + a few trigger.metadata
-      const allowed = [
-        "trigger.metadata.createdVia",
-        "trigger.metadata.ingestionConfigId",
-        "trigger.metadata.ingestionEventId",
-        "entity.source",
-        "entity.sourceId",
-        "entity.status",
-        "entity.statusId",
-      ];
-      return allowed.includes(opt.field) || opt.field.startsWith("trigger.metadata.") || opt.field.startsWith("entity.");
-    }),
-  ];
+  const recordTypesQuery = useRecordTypes(0, 100);
+  const fieldOptions: WorkflowFieldOption[] = (() => {
+    if (isRecord) {
+      // For RECORD.RECEIVED, only expose recordTypeId (and optionally webhookId/deliveryId but keep minimal per spec)
+      const base = buildFieldOptions({
+        metadata: metadataQuery.data,
+        triggerEntityType: "RECORD",
+        referenceData,
+        relationshipData,
+      }).filter((opt) => opt.field === "trigger.metadata.recordTypeId");
+      // If not found (metadata not yet loaded), fallback to manual option
+      if (base.length === 0) {
+        return [
+          {
+            field: "trigger.metadata.recordTypeId",
+            label: "Record Type",
+            group: "metadata" as const,
+            groupLabel: "Trigger Metadata",
+            valueOptions: (recordTypesQuery.data?.data ?? []).filter((rt) => rt.isActive).map((rt) => ({ value: rt.id, label: `${rt.name} (${rt.key})` })),
+          },
+        ];
+      }
+      // Attach RecordType valueOptions for the recordTypeId field
+      return base.map((opt) =>
+        opt.field === "trigger.metadata.recordTypeId"
+          ? {
+              ...opt,
+              valueOptions: (recordTypesQuery.data?.data ?? []).filter((rt) => rt.isActive).map((rt) => ({ value: rt.id, label: `${rt.name} (${rt.key})` })),
+            }
+          : opt
+      );
+    }
+    return [
+      ...buildFieldOptions({
+        metadata: metadataQuery.data,
+        triggerEntityType: "LEAD",
+        referenceData,
+        relationshipData,
+      }).filter((opt) => {
+        const allowed = [
+          "trigger.metadata.createdVia",
+          "trigger.metadata.ingestionConfigId",
+          "trigger.metadata.ingestionEventId",
+          "entity.source",
+          "entity.sourceId",
+          "entity.status",
+          "entity.statusId",
+        ];
+        return allowed.includes(opt.field) || opt.field.startsWith("trigger.metadata.") || opt.field.startsWith("entity.");
+      }),
+    ];
+  })();
 
   const resolveValueOptions = (field: string) => fieldOptions.find((o) => o.field === field)?.valueOptions ?? null;
 
@@ -360,15 +406,25 @@ function TriggerFilterConfig({
       const { triggerFilter: _ignored, ...rest } = configuration;
       onChange(rest);
     } else {
-      // Initialize with one empty condition for Created Via
       if (!hasFilter) {
-        onChange({
-          ...configuration,
-          triggerFilter: {
-            logic: "AND",
-            conditions: [{ field: "trigger.metadata.createdVia", operator: "EQUALS", value: "LEAD_INGESTION" }],
-          },
-        });
+        if (isRecord) {
+          const firstRecordType = (recordTypesQuery.data?.data ?? []).find((rt) => rt.isActive);
+          onChange({
+            ...configuration,
+            triggerFilter: {
+              logic: "AND",
+              conditions: [{ field: "trigger.metadata.recordTypeId", operator: "EQUALS", value: firstRecordType ? firstRecordType.id : "" }],
+            },
+          });
+        } else {
+          onChange({
+            ...configuration,
+            triggerFilter: {
+              logic: "AND",
+              conditions: [{ field: "trigger.metadata.createdVia", operator: "EQUALS", value: "LEAD_INGESTION" }],
+            },
+          });
+        }
       }
     }
   };
@@ -385,7 +441,7 @@ function TriggerFilterConfig({
           onClick={() => handleModeChange("every")}
           className="flex-1"
         >
-          Every Lead Created
+          {isRecord ? "Every Record Received" : "Every Lead Created"}
         </Button>
         <Button
           type="button"
@@ -401,7 +457,11 @@ function TriggerFilterConfig({
       {mode === "filtered" && (
         <div className="space-y-2">
           <p className="text-[11px] text-muted-foreground">
-            Filters use the same condition engine as downstream IF / ELSE. Empty = every lead. Example: <span className="font-mono">Created Via = Lead Ingestion</span> or <span className="font-mono">Lead Source = Facebook</span>.
+            {isRecord ? (
+              <>Filters use the same condition engine as downstream IF / ELSE. Empty = every record. Example: <span className="font-mono">Record Type = CDR</span>.</>
+            ) : (
+              <>Filters use the same condition engine as downstream IF / ELSE. Empty = every lead. Example: <span className="font-mono">Created Via = Lead Ingestion</span> or <span className="font-mono">Lead Source = Facebook</span>.</>
+            )}
           </p>
           <ConditionRulesEditor
             logic={deserialized.logic}
@@ -409,7 +469,7 @@ function TriggerFilterConfig({
             readOnly={readOnly}
             fieldOptions={fieldOptions}
             resolveValueOptions={resolveValueOptions}
-            triggerEntityType="LEAD"
+            triggerEntityType={isRecord ? "RECORD" : "LEAD"}
             onChange={(logic, rules) => {
               if (rules.length === 0) {
                 const { triggerFilter: _ignored, ...rest } = configuration;
@@ -429,7 +489,7 @@ function TriggerFilterConfig({
         </div>
       )}
       {mode === "every" && (
-        <p className="text-[11px] text-muted-foreground">No filters — every legitimate <span className="font-mono">LEAD.CREATED</span> will run this workflow.</p>
+        <p className="text-[11px] text-muted-foreground">No filters — every legitimate <span className="font-mono">{isRecord ? "RECORD.RECEIVED" : "LEAD.CREATED"}</span> will run this workflow.</p>
       )}
     </div>
   );
@@ -466,6 +526,64 @@ function ContextAwareConditionConfig({
     entityMetadata?.relationships
   );
 
+  // WF-54: For RECORD, expose entity.data.<fieldKey> per tenant RecordFields (union across active types)
+  const recordTypesForDataFields = useRecordTypes(0, 100);
+  const recordFieldQueries = useQueries({
+    queries: (recordTypesForDataFields.data?.data ?? [])
+      .filter((rt) => rt.isActive)
+      .slice(0, 20)
+      .map((rt) => ({
+        queryKey: ["record-fields", rt.id],
+        queryFn: () => recordFieldApi.list(rt.id),
+        enabled: entityType === "RECORD",
+      })),
+  });
+  const recordDataFieldOptions: WorkflowFieldOption[] = (() => {
+    if (entityType !== "RECORD") return [];
+    const seen = new Set<string>();
+    const out: WorkflowFieldOption[] = [];
+    const titleCase = (v: string) => v.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+    for (const q of recordFieldQueries) {
+      const raw = (q as { data?: unknown }).data;
+      const fields = Array.isArray(raw) ? (raw as Array<{ fieldKey: string; fieldLabel: string; fieldType: string; referenceEntityType?: string }>) : [];
+      for (const f of fields) {
+        if (f.fieldType === "REFERENCE" && f.referenceEntityType) {
+          const refType = f.referenceEntityType.trim().toUpperCase();
+          const relatedKey = refType.toLowerCase();
+          const relatedMeta = metadata?.entities.find((e) => e.entityType === refType);
+          if (relatedMeta) {
+            for (const rf of relatedMeta.fields) {
+              if (relatedMeta.relationships.some((r) => r.key === rf)) continue;
+              const path = `entity.${relatedKey}.${rf}`;
+              if (seen.has(path)) continue;
+              seen.add(path);
+              out.push({ field: path, label: `${relatedMeta.label} → ${titleCase(rf)}`, group: `rel:${relatedKey}` as const, groupLabel: relatedMeta.label });
+            }
+            if (relatedMeta.customFieldsSupported) {
+              const path = `entity.${relatedKey}.customFields.*`;
+              if (!seen.has(path)) {
+                seen.add(path);
+                out.push({ field: path, label: `${relatedMeta.label} → Custom Fields`, group: `rel:${relatedKey}` as const, groupLabel: relatedMeta.label });
+              }
+            }
+          } else {
+            const path = `entity.${relatedKey}.id`;
+            if (!seen.has(path)) {
+              seen.add(path);
+              out.push({ field: path, label: `${refType} → ID`, group: `rel:${relatedKey}` as const, groupLabel: refType });
+            }
+          }
+        } else {
+          const path = `entity.data.${f.fieldKey}`;
+          if (seen.has(path)) continue;
+          seen.add(path);
+          out.push({ field: path, label: `Data → ${f.fieldLabel} (${f.fieldKey})`, group: "entity" as const, groupLabel: "Record Data" });
+        }
+      }
+    }
+    return out;
+  })();
+
   const fieldOptions: WorkflowFieldOption[] = [
     ...buildFieldOptions({
       metadata,
@@ -473,6 +591,7 @@ function ContextAwareConditionConfig({
       referenceData,
       relationshipData,
     }),
+    ...recordDataFieldOptions,
     // Previous Node Outputs — one entry per other node key.
     ...nodeKeys
       .filter((key) => key !== "trigger")

@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { User, Briefcase, Settings, ChevronRight, Phone, Globe, Database, Target, Package, Key } from "lucide-react";
+import { User, Briefcase, Settings, Settings2, ChevronRight, Phone, Globe, Database, Target, Package, Key, Webhook } from "lucide-react";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { SettingsNavItem } from "./SettingsNavItem";
 import { SettingsSection } from "./SettingsSection";
@@ -26,6 +26,9 @@ const MY_SETTINGS_ITEMS: SettingsNavItemConfig[] = [
 ];
 
 const WORKSPACE_ITEMS: SettingsNavItemConfig[] = [
+  { href: "/settings/records", label: "Record Types", description: "Define canonical record schemas and tenant-owned fields." },
+  { href: "/settings/record-mappings", label: "Mapping Profiles", description: "Map external payloads to canonical record fields." },
+  { href: "/settings/record-webhooks", label: "Incoming Webhooks", description: "Define ingestion channels for external payloads." },
   { href: "/settings/http-connections", label: "HTTP Connections", description: "Manage outbound HTTP connections used by integrations and workflows.", permission: { module: "workflow", action: "read" } },
   { href: "/settings/http-credentials", label: "HTTP Credentials", description: "Manage encrypted credentials for generic HTTP workflows (workspace and per-user).", permission: { module: "workflow", action: "read" } },
   { href: "/settings/demo-data", label: "Demo Workspace", description: "Populate this tenant with realistic sample CRM data.", permission: { module: "tenant", action: "write" } },
@@ -64,6 +67,9 @@ export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
     .filter((item) => !item.permission || hasPermission(item.permission.module, item.permission.action))
     .map((item) => {
       let icon = Briefcase;
+      if (item.href === "/settings/records") icon = Database;
+      if (item.href === "/settings/record-mappings") icon = Settings2;
+      if (item.href === "/settings/record-webhooks") icon = Webhook;
       if (item.href === "/settings/http-connections") icon = Globe;
       if (item.href === "/settings/http-credentials") icon = Key;
       if (item.href === "/settings/demo-data") icon = Database;
