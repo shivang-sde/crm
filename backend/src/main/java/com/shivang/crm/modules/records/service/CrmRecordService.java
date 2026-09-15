@@ -106,15 +106,15 @@ public class CrmRecordService {
             }
         }
         // normalize sort
-        String sortField = "createdAt";
-        if (sort != null) {
-            String s = sort.trim();
-            if ("createdAt".equalsIgnoreCase(s) || "created_at".equalsIgnoreCase(s)) sortField = "createdAt";
-            else if ("updatedAt".equalsIgnoreCase(s) || "updated_at".equalsIgnoreCase(s)) sortField = "updatedAt";
-            else if ("id".equalsIgnoreCase(s)) sortField = "id";
-        }
-        Sort.Direction dir = Sort.Direction.DESC;
-        if (direction != null && "asc".equalsIgnoreCase(direction.trim())) dir = Sort.Direction.ASC;
+       String sortField = "created_at";
+if (sort != null) {
+    String s = sort.trim();
+    if ("createdAt".equalsIgnoreCase(s) || "created_at".equalsIgnoreCase(s)) sortField = "created_at";
+    else if ("updatedAt".equalsIgnoreCase(s) || "updated_at".equalsIgnoreCase(s)) sortField = "updated_at";
+    else if ("id".equalsIgnoreCase(s)) sortField = "id";
+}
+        Sort.Direction dir = "asc".equalsIgnoreCase(direction != null ? direction.trim() : "") 
+        ? Sort.Direction.ASC : Sort.Direction.DESC;
         // clamp pagination
         int safePage = Math.max(0, page);
         int safeSize = Math.min(50, Math.max(1, size));
