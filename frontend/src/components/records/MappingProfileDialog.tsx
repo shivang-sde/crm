@@ -231,7 +231,7 @@ export function MappingProfileDialog({ open, onOpenChange, editing, onSubmit, is
           <Field>
             <FieldLabel>Mapping key *</FieldLabel>
             <Input value={mappingKey} onChange={(e) => setMappingKey(e.target.value.toLowerCase())} placeholder="e.g. sellspark_cdr" disabled={!!editing} className="font-mono text-sm" />
-            <p className="text-xs text-muted-foreground">Stable tenant-scoped key for webhook routing. {editing ? "Immutable." : "Lowercase, numbers, underscores."}</p>
+            <p className="text-xs text-muted-foreground">Stable key for webhook routing. {editing ? "Immutable." : "Lowercase, numbers, underscores."}</p>
             {touched && keyError && <FieldError>{keyError}</FieldError>}
           </Field>
           <Field>

@@ -70,6 +70,4 @@ public class RecordMappingProfile extends TenantOwnedEntity {
     @Builder.Default
     private Boolean isActive = true;
 
-    @Column(name = "updated_by")
-    private UUID updatedBy;
 }
