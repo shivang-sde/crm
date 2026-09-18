@@ -27,6 +27,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.shivang.crm.modules.auth.security.JwtAuthenticationFilter;
 import com.shivang.crm.modules.auth.security.RestAuthenticationEntryPoint;
 import com.shivang.crm.modules.auth.security.TenantResolutionFilter;
+import com.shivang.crm.modules.commercial.security.CommercialIntegrationAuthFilter;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final TenantResolutionFilter tenantResolutionFilter;
+    private final CommercialIntegrationAuthFilter commercialIntegrationAuthFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final UserDetailsService userDetailsService;
     private final CorsProperties corsProperties;
@@ -91,8 +93,9 @@ public class SecurityConfig {
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
-                // Filter chain order: JwtAuthFilter → TenantResolutionFilter → Controller
+                // Filter chain order: CommercialIntegration → JwtAuthFilter → TenantResolutionFilter → Controller
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(commercialIntegrationAuthFilter, JwtAuthenticationFilter.class)
                 .addFilterAfter(tenantResolutionFilter, JwtAuthenticationFilter.class);
 
         return http.build();

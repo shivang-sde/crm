@@ -121,7 +121,6 @@ public class RecordMappingProfileService {
 
         if (req.getIsActive() != null) entity.setIsActive(req.getIsActive());
 
-        entity.setUpdatedBy(com.shivang.crm.util.UserUtil.currentUserId());
         RecordMappingProfile saved = mappingRepo.save(entity);
         return toResponse(saved);
     }

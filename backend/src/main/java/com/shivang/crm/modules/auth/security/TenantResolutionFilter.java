@@ -42,39 +42,50 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
             Authentication authentication =
                     SecurityContextHolder.getContext().getAuthentication();
 
-            if (authentication != null
+            boolean isIntegration = false;
+            if (authentication != null && authentication.getAuthorities() != null) {
+                isIntegration = authentication.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_INTEGRATION".equals(a.getAuthority()));
+            }
+            // Integration auth already set tenantContext; do not overwrite via JWT parsing
+            if (!isIntegration
+                    && authentication != null
                     && authentication.isAuthenticated()
                     && authentication.getCredentials() instanceof String token) {
+                try {
+                    String userId = jwtService.extractUserId(token);
+                    String tenantId = jwtService.extractTenantId(token);
+                    String roleId = jwtService.extractRoleId(token);
+                    String role = jwtService.extractRole(token);
+                    String userLevel = jwtService.extractUserLevel(token);
 
-                String userId = jwtService.extractUserId(token);
-                String tenantId = jwtService.extractTenantId(token);
-                String roleId = jwtService.extractRoleId(token);
-                String role = jwtService.extractRole(token);
-                String userLevel = jwtService.extractUserLevel(token);
+                    /*
+                     * Fallback because JwtAuthenticationFilter stores
+                     * the user ID as the Authentication principal.
+                     */
+                    if ((userId == null || userId.isBlank())
+                            && authentication.getPrincipal() != null) {
+                        userId = authentication.getPrincipal().toString();
+                    }
 
-                /*
-                 * Fallback because JwtAuthenticationFilter stores
-                 * the user ID as the Authentication principal.
-                 */
-                if ((userId == null || userId.isBlank())
-                        && authentication.getPrincipal() != null) {
-                    userId = authentication.getPrincipal().toString();
+                    tenantContext.setUserId(userId);
+                    tenantContext.setTenantId(tenantId);
+                    tenantContext.setRoleId(roleId);
+                    tenantContext.setRole(role);
+                    tenantContext.setUserLevel(userLevel);
+
+                    log.info(
+                            "Request context set: tenantId={}, userId={}, roleId={}, role={}, level={}",
+                            tenantContext.getTenantId(),
+                            tenantContext.getUserId(),
+                            tenantContext.getRoleId(),
+                            tenantContext.getRole(),
+                            tenantContext.getUserLevel()
+                    );
+                } catch (Exception e) {
+                    // Commercial integration keys are not JWTs; skip silently for those, log debug otherwise
+                    log.debug("Tenant resolution skipped for token: {}", e.getMessage());
                 }
-
-                tenantContext.setUserId(userId);
-                tenantContext.setTenantId(tenantId);
-                tenantContext.setRoleId(roleId);
-                tenantContext.setRole(role);
-                tenantContext.setUserLevel(userLevel);
-
-                log.info(
-                        "Request context set: tenantId={}, userId={}, roleId={}, role={}, level={}",
-                        tenantContext.getTenantId(),
-                        tenantContext.getUserId(),
-                        tenantContext.getRoleId(),
-                        tenantContext.getRole(),
-                        tenantContext.getUserLevel()
-                );
             }
 
             filterChain.doFilter(request, response);

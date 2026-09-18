@@ -32,7 +32,7 @@ import lombok.experimental.SuperBuilder;
     indexes = {
         @Index(name = "idx_mapping_profiles_tenant", columnList = "tenant_id"),
         @Index(name = "idx_mapping_profiles_tenant_type", columnList = "tenant_id, record_type_id"),
-        @Index(name = "idx_mapping_profiles_type", columnList = "record_type_id")
+        @Index(name = "idx_;mapping_profiles_type", columnList = "record_type_id")
     }
 )
 @AttributeOverrides({

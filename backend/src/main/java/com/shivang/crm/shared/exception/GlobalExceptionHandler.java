@@ -53,6 +53,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
         log.warn("Business error: {} - {}", ex.getErrorCode(), ex.getMessage());
+        // Feature flag disabled should be 403 (or 404) rather than 400
+        if ("FEATURE_DISABLED".equals(ex.getErrorCode())) {
+            return ResponseEntity
+                    .status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
+        }
+        if ("COMMERCIAL_DOCUMENT_CUSTOMER_CONFLICT".equals(ex.getErrorCode())) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
+        }
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
