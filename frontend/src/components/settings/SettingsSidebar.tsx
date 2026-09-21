@@ -34,6 +34,10 @@ const WORKSPACE_ITEMS: SettingsNavItemConfig[] = [
   { href: "/settings/demo-data", label: "Demo Workspace", description: "Populate this tenant with realistic sample CRM data.", permission: { module: "tenant", action: "write" } },
 ];
 
+const INTEGRATIONS_ITEMS: SettingsNavItemConfig[] = [
+  { href: "/settings/integrations/commercial-integration", label: "Commercial Integration", description: "Connect quotation/invoice platform via API key." },
+];
+
 const ADMIN_ITEMS: SettingsNavItemConfig[] = [
   { href: "/admin/settings", label: "Organization", description: "Manage organization-level calling configuration.", permission: { module: "admin", action: "settings" } },
   // { href: "/leads/settings", label: "Lead Settings", description: "Configure lead statuses, sources, and custom fields.", permission: { module: "lead", action: "write" } },
@@ -105,6 +109,17 @@ export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
       );
     });
 
+  const integrationsItems = INTEGRATIONS_ITEMS.map((item) => (
+    <SettingsNavItem
+      key={item.href}
+      href={item.href}
+      label={item.label}
+      description={item.description}
+      icon={Key}
+      isActive={isActive(item.href)}
+    />
+  ));
+
   const hasWorkspaceItems = workspaceItems.length > 0;
   const hasAdminItems = adminItems.length > 0;
 
@@ -125,6 +140,11 @@ export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
             {workspaceItems}
           </div>
         )}
+
+        <div className="mt-6 space-y-1">
+          <SettingsSection title="Integrations" />
+          {integrationsItems}
+        </div>
 
         {hasAdminItems && (
           <div className="mt-6 space-y-1">

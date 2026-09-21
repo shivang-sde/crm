@@ -1,20 +1,22 @@
 services:
   postgres:
-    image: 'postgres:latest'
+    image: 'postgres:17-alpine'
     env_file:
       - .env
     environment:
       - POSTGRES_DB=crm
     ports:
       - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '0.50'
+          memory: 300M
 
   rabbitmq:
-    image: 'rabbitmq:latest'
+    image: 'rabbitmq:3-management-alpine'
     env_file:
       - .env
     ports:
@@ -22,18 +24,18 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.50'
-          memory: 512M
+          cpus: '0.25'
+          memory: 256M
       
   redis:
-    image: 'redis:latest'
+    image: 'redis:alpine'
     ports:
       - '6379:6379'
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 256M
+          cpus: '0.15'
+          memory: 64M
 
 
 volumes:

@@ -25,6 +25,7 @@ import { AccountNotes } from "./AccountNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
 import { AccountEntitlementsSection } from "@/components/entitlements/AccountEntitlementsSection";
+import { CommercialDocumentsSection } from "@/components/commercial/CommercialDocumentsSection";
 
 interface AccountDetailProps {
   account: AccountResponse;
@@ -134,6 +135,7 @@ export function AccountDetail({ account }: AccountDetailProps) {
           </div>
 
           <AccountEntitlementsSection accountId={account.id} />
+          <CommercialDocumentsSection accountId={account.id} />
           <EntityDealsSection entityType="ACCOUNT" entityId={account.id} />
           <AccountContacts accountId={account.id} />
           <EntityCallHistory

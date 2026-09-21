@@ -16,6 +16,7 @@ const SECTION_LABELS: Record<string, string> = {
   "/settings/http-connections": "Settings / HTTP Connections",
   "/settings/http-credentials": "Settings / HTTP Credentials",
   "/settings/demo-data": "Settings / Demo Workspace",
+  "/settings/integrations/commercial-integration": "Settings / Integrations / Commercial Integration",
   "/admin/settings": "Settings / Administration / Organization",
   "/leads/settings": "Settings / Administration / Lead Settings",
   "/deals/settings": "Settings / Administration / Deal Settings",

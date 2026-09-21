@@ -55,7 +55,9 @@ public class RbacFilter extends OncePerRequestFilter {
             "/api/v1/call-settings",
             "/api/v1/calling-providers",
             "/api/v1/settings/connectors",
-            "/api/v1/notifications");
+            "/api/v1/notifications",
+            "/api/v1/admin/commercial",
+            "/api/v1/commercial-documents");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,

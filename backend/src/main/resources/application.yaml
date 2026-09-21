@@ -146,7 +146,7 @@ app:
       max-rows: 5000
       max-columns: 50
   commercial-integration:
-    enabled: ${COMMERCIAL_INTEGRATION_ENABLED:false}
+    enabled: ${COMMERCIAL_INTEGRATION_ENABLED:true}
 
 # ── JWT Configuration ──
 jwt:

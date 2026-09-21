@@ -177,6 +177,24 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+            <Card className="border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5 text-indigo-600" />
+                  Commercial Integration
+                </CardTitle>
+                <CardDescription>Connect quotation/invoice platform via API key.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/settings/integrations/commercial-integration"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  Open <ChevronRight className="h-4 w-4" />
+                </Link>
+              </CardContent>
+            </Card>
+
             {canInstallDemoData && (
               <Card>
                 <CardHeader>

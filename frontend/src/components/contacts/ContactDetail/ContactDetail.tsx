@@ -26,6 +26,7 @@ import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
 import { ContactEntitlementsSection } from "@/components/entitlements/ContactEntitlementsSection";
 import { EntityDealsSection } from "@/components/deals/EntityDealsSection";
+import { CommercialDocumentsSection } from "@/components/commercial/CommercialDocumentsSection";
 
 interface ContactDetailProps {
   contact: ContactResponse;
@@ -132,6 +133,7 @@ export function ContactDetail({ contact }: ContactDetailProps) {
       </div>
 
       <EntityDealsSection entityType="CONTACT" entityId={contact.id} />
+      <CommercialDocumentsSection contactId={contact.id} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_1fr]">
   <div className="space-y-6">
