@@ -164,7 +164,8 @@ public class RbacFilter extends OncePerRequestFilter {
     }
 
     /**
-     * GET /api/v1/roles/{roleId} where {roleId} equals the caller's own role id.
+     * GET /api/v1/roles/{roleId} where {roleId} equals the caller's own role
+     * id.
      */
     private boolean isSelfRoleRead(String path, String method, UUID ownRoleId) {
         if (!"GET".equals(method) || ownRoleId == null) {
@@ -289,6 +290,13 @@ public class RbacFilter extends OncePerRequestFilter {
             case "workflows", "workflow" -> "workflow";
             case "forms", "form" -> "acquisition";
             case "acquisition" -> "acquisition";
+            case "commercial-integration" -> "commercial-integration";
+            case "records", "record" -> "records";
+            case "record-types", "record-type" -> "records";
+            case "record-fields", "record-field" -> "records";
+            case "record-display-configs", "record-display-config" -> "records";
+            case "record-mappings", "record-mapping" -> "records";
+            case "record-webhooks", "record-webhook" -> "records";
             // Tenant-scoped configuration endpoints belong to their parent CRM
             // module and are governed by that module's existing permissions.
             case "lead-statuses", "lead-sources", "lead-custom-fields" -> "lead";
