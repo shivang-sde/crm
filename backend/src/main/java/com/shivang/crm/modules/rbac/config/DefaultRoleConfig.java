@@ -23,7 +23,8 @@ public class DefaultRoleConfig {
             "admin",
             "offering",
             "entitlement",
-            "acquisition"
+            "acquisition",
+            "records"
     );
 
     public static final Set<String> MANAGER_MODULES = Set.of(
