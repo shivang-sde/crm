@@ -14,11 +14,13 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipReferenceData } from "@/lib/hooks/workflow";
-import { buildFieldOptions, findEntityMetadata } from "./utils/field-options";
+import { buildFieldOptions, type WorkflowFieldOption, type RecordFieldMeta } from "./utils/field-options";
 import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
 import { useQuery } from "@tanstack/react-query";
 import { workflowApi } from "@/lib/api/workflow";
 import { workflowKeys } from "@/lib/hooks/workflow";
+import { recordFieldApi } from "@/lib/api/records";
+import { useQueries } from "@tanstack/react-query";
 
 interface WorkflowValuePickerProps {
   triggerEntityType?: string;
@@ -32,6 +34,12 @@ interface WorkflowValuePickerProps {
     credentialSource?: string;
     credentialSourceUserId?: string;
   };
+  /** Current node type for node-aware filtering */
+  nodeType?: string;
+  /** Current action type for node-aware filtering */
+  actionType?: string;
+  /** Whether this is a trigger configuration (different from runtime) */
+  isTriggerConfig?: boolean;
 }
 
 type PickerItem = {
@@ -77,13 +85,62 @@ export function WorkflowValuePicker({
   onSelect,
   align = "start",
   credentialContext,
+  nodeType,
+  actionType,
+  isTriggerConfig = false,
 }: WorkflowValuePickerProps) {
   const [open, setOpen] = useState(false);
   const metadataQuery = useWorkflowMetadata();
   const metadata = metadataQuery.data;
   const referenceData = useWorkflowReferenceData(triggerEntityType ?? "");
-  const entityMeta = findEntityMetadata(metadata, triggerEntityType);
+  const entityMeta = buildFieldOptions({ metadata, triggerEntityType }).hasEntity
+    ? metadata?.entities.find((e) => e.entityType === triggerEntityType)
+    : undefined;
   const relationshipData = useWorkflowRelationshipReferenceData(entityMeta?.relationships);
+
+  // Fetch Record dynamic fields when trigger entity is RECORD
+  const recordTypesQuery = useQuery({
+    queryKey: ["record-types", "active"],
+    queryFn: async () => {
+      const res = await workflowApi.listRecordTypes?.(0, 100) ?? { data: [] };
+      return (res.data ?? []).filter((rt: any) => rt.isActive);
+    },
+    enabled: triggerEntityType === "RECORD",
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const recordFieldQueries = useQueries({
+    queries: (recordTypesQuery.data ?? [])
+      .slice(0, 20)
+      .map((rt: any) => ({
+        queryKey: ["record-fields", rt.id],
+        queryFn: () => recordFieldApi.list(rt.id),
+        enabled: triggerEntityType === "RECORD" && !!rt.id,
+        staleTime: 5 * 60 * 1000,
+      })),
+  });
+
+  const recordFields: RecordFieldMeta[] = useMemo(() => {
+    if (triggerEntityType !== "RECORD") return [];
+    const seen = new Set<string>();
+    const out: RecordFieldMeta[] = [];
+    for (const q of recordFieldQueries) {
+      const raw = (q as { data?: unknown }).data;
+      const fields = Array.isArray(raw) ? (raw as Array<{ fieldKey: string; fieldLabel: string; fieldType: string; referenceEntityType?: string }>) : [];
+      for (const f of fields) {
+        const key = `${f.fieldKey}:${f.fieldType}:${f.referenceEntityType ?? ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          fieldKey: f.fieldKey,
+          fieldLabel: f.fieldLabel,
+          fieldType: f.fieldType,
+          referenceEntityType: f.referenceEntityType,
+        });
+      }
+    }
+    return out;
+  }, [recordFieldQueries, triggerEntityType]);
 
   // Dynamic credential keys — execution-time secrets, picker shows only key names
   const credentialSource = credentialContext?.credentialSource?.toUpperCase();
@@ -102,49 +159,34 @@ export function WorkflowValuePicker({
     staleTime: 30 * 1000,
   });
 
-  // DEBUG ONLY — trace credential picker data flow (key names only, never values)
-  // console.log("[CredentialPicker] context", {
-  //   authenticationMode: credentialContext?.authenticationMode,
-  //   credentialSource,
-  //   credentialUserId,
-  //   isCredentialMode,
-  //   shouldFetchDynamicKeys,
-  // });
-  // console.log("[CredentialPicker] query state", {
-  //   status: dynamicKeysQuery.status,
-  //   isLoading: dynamicKeysQuery.isLoading,
-  //   isFetching: dynamicKeysQuery.isFetching,
-  //   isError: dynamicKeysQuery.isError,
-  //   error: dynamicKeysQuery.error,
-  //   data: dynamicKeysQuery.data,
-  // });
-  // console.log("[CredentialPicker] dynamic credential keys", {
-  //   data: dynamicKeysQuery.data,
-  //   type: typeof dynamicKeysQuery.data,
-  //   isArray: Array.isArray(dynamicKeysQuery.data),
-  //   length: Array.isArray(dynamicKeysQuery.data) ? dynamicKeysQuery.data.length : undefined,
-  // });
-
-  const items: PickerItem[] = useMemo(() => {
-    const out: PickerItem[] = [];
-
-    // Current Record / Trigger via field-options
-    const fieldOptions = buildFieldOptions({
+  // Build canonical field options with node-aware filtering
+  const { groupedOptions, hasEntity } = useMemo(() =>
+    buildFieldOptions({
       metadata,
       triggerEntityType,
       referenceData,
       relationshipData,
-    });
+      recordFields,
+      nodeType,
+      actionType,
+      isTriggerConfig,
+    }), [metadata, triggerEntityType, referenceData, relationshipData, recordFields, nodeType, actionType, isTriggerConfig]);
 
-    for (const opt of fieldOptions) {
-      const insertion = `{{${opt.field}}}`;
-      out.push({
-        label: opt.label,
-        path: opt.field,
-        insertion,
-        group: opt.groupLabel,
-        keywords: `${opt.label} ${opt.field} ${opt.groupLabel}`.toLowerCase(),
-      });
+  const items: PickerItem[] = useMemo(() => {
+    const out: PickerItem[] = [];
+
+    // Entity / Record Data / Custom Fields / Related Records / Trigger Metadata
+    for (const { groupLabel, options } of groupedOptions) {
+      for (const opt of options) {
+        const insertion = `{{${opt.field}}}`;
+        out.push({
+          label: opt.label,
+          path: opt.field,
+          insertion,
+          group: groupLabel,
+          keywords: `${opt.label} ${opt.field} ${groupLabel}`.toLowerCase(),
+        });
+      }
     }
 
     // Credential namespace — only when CREDENTIAL mode; never show fake static keys
@@ -276,7 +318,7 @@ export function WorkflowValuePicker({
       }
     }
 
-    // Previous Nodes (graph-aware)
+    // Previous Nodes (graph-aware) — only when there are ancestors
     const ancestors = ancestorsOf(currentNodeId, nodes, edges);
     if (nodes && ancestors.size > 0) {
       for (const n of nodes) {
@@ -294,8 +336,8 @@ export function WorkflowValuePicker({
         // HTTP specific subfields - safe additive paths that runtime exposes as outputContext
         if (n.data.nodeType === "ACTION") {
           const cfg = n.data.configuration as Record<string, unknown>;
-          const actionType = typeof cfg.actionType === "string" ? cfg.actionType : "";
-          if (actionType === "HTTP_API") {
+          const at = typeof cfg.actionType === "string" ? cfg.actionType : "";
+          if (at === "HTTP_API") {
             out.push({
               label: `${name} → statusCode`,
               path: `nodeOutputs.${key}.statusCode`,
@@ -310,13 +352,8 @@ export function WorkflowValuePicker({
               group: "Previous Nodes",
               keywords: `${name} ${key} response http`.toLowerCase(),
             });
-            // Also expose generic response drill as placeholder for segment etc via advanced
           }
-        }
-        // For SET_CONTEXT_VALUE etc expose value path loosely
-        if (n.data.nodeType === "ACTION") {
-          const cfg = n.data.configuration as Record<string, unknown>;
-          const at = typeof cfg.actionType === "string" ? cfg.actionType : "";
+          // For SET_CONTEXT_VALUE etc expose value path loosely
           if (at === "SET_CONTEXT_VALUE") {
             const c = cfg.config as Record<string, unknown> | undefined;
             const k = typeof c?.key === "string" ? c.key : "";
@@ -332,16 +369,12 @@ export function WorkflowValuePicker({
           }
         }
       }
-    } else if (nodes) {
-      // Fallback if no graph-aware (e.g., before nodes loaded) - expose no previous nodes to avoid leaking future nodes
     }
 
     return out;
-  }, [metadata, triggerEntityType, referenceData, relationshipData, nodes, edges, currentNodeId, dynamicKeysQuery.data, dynamicKeysQuery.isLoading, dynamicKeysQuery.isError, credentialSource, credentialUserId, shouldFetchDynamicKeys]);
+  }, [groupedOptions, isCredentialMode, credentialSource, credentialUserId, dynamicKeysQuery.data, dynamicKeysQuery.isLoading, dynamicKeysQuery.isError, nodes, edges, currentNodeId]);
 
-  // console.log("[CredentialPicker] credential items", items.filter((item) => item.group.includes("Credentials")));
-
-  // Group items
+  // Group items — use the canonical group order from buildFieldOptions
   const grouped = useMemo(() => {
     const map = new Map<string, PickerItem[]>();
     for (const it of items) {
@@ -349,8 +382,40 @@ export function WorkflowValuePicker({
       arr.push(it);
       map.set(it.group, arr);
     }
-    return Array.from(map.entries());
-  }, [items]);
+    // Preserve the canonical group order
+    const groupOrder = [
+      hasEntity ? "Current Lead" : "",
+      hasEntity ? "Current Contact" : "",
+      hasEntity ? "Current Account" : "",
+      hasEntity ? "Current Deal" : "",
+      hasEntity ? "Current Task" : "",
+      hasEntity ? "Current Meeting" : "",
+      hasEntity ? "Current Call" : "",
+      hasEntity ? "Current Record" : "",
+      "Record Data",
+      "Custom Fields",
+      ...Array.from(map.keys()).filter((k) => k.startsWith("Related") || k.startsWith("Converted")),
+      "Trigger Metadata",
+      "Previous Nodes",
+      "Credentials — Workspace",
+      "Credentials — Specific user",
+      "Credentials — Workflow user (runtime)",
+      "Credentials — Record owner (runtime)",
+      "Credentials",
+    ].filter(Boolean);
+    const result: Array<[string, PickerItem[]]> = [];
+    for (const g of groupOrder) {
+      if (map.has(g)) {
+        result.push([g, map.get(g)!]);
+        map.delete(g);
+      }
+    }
+    // Any remaining groups
+    for (const [g, list] of map) {
+      result.push([g, list]);
+    }
+    return result;
+  }, [items, hasEntity]);
 
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
@@ -433,6 +498,9 @@ export function PickerField({
   onChange,
   inputType,
   credentialContext,
+  nodeType,
+  actionType,
+  isTriggerConfig,
 }: {
   label: string;
   value: string;
@@ -449,6 +517,9 @@ export function PickerField({
     credentialSource?: string;
     credentialSourceUserId?: string;
   };
+  nodeType?: string;
+  actionType?: string;
+  isTriggerConfig?: boolean;
 }) {
   const [hasInvalidRef, invalidRef] = useMemo(() => {
     if (!value) return [false, null] as const;
@@ -482,6 +553,9 @@ export function PickerField({
             nodes={nodes}
             edges={edges}
             credentialContext={credentialContext}
+            nodeType={nodeType}
+            actionType={actionType}
+            isTriggerConfig={isTriggerConfig}
             onSelect={(ins) => handleInsert(ins)}
           />
         )}

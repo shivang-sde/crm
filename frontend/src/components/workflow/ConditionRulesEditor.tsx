@@ -159,7 +159,7 @@ export function ConditionRulesEditor({
         </Select>
       </div>
 
-{rules.map((rule, index) => {
+      {rules.map((rule, index) => {
         const options = resolveValueOptions?.(rule.field) ?? null;
         const allowedOps = operatorsForField(rule.field, !!options);
         return (
@@ -205,7 +205,7 @@ export function ConditionRulesEditor({
                       <SelectItem value="__legacy__">{rule.field}</SelectItem>
                     </SelectGroup>
                   )}
-                </SelectContent>
+                </SelectContent              >
               </Select>
             ) : (
               <Input
@@ -222,7 +222,7 @@ export function ConditionRulesEditor({
                 onBlur={(event) => updateRule(index, { field: event.target.value })}
               />
             )}
-<Select
+            <Select
               value={allowedOps.includes(rule.operator) ? rule.operator : allowedOps[0] ?? rule.operator}
               disabled={readOnly}
               onValueChange={(value) => updateRule(index, { operator: value })}
@@ -271,6 +271,8 @@ export function ConditionRulesEditor({
                     currentNodeId={currentNodeId}
                     nodes={nodes}
                     edges={edges}
+                    nodeType="CONDITION"
+                    isTriggerConfig={false}
                     onSelect={(insertion) => {
                       if (isListOperator(rule.operator)) {
                         const current = Array.isArray(rule.value) ? (rule.value as unknown[]).map(String) : valueToDisplay(rule.value).split(",").map((s) => s.trim()).filter(Boolean);

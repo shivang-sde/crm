@@ -346,57 +346,55 @@ function TriggerFilterConfig({
   const entityMetadata = metadataQuery.data?.entities.find((e) => e.entityType === triggerEntityForOptions);
   const relationshipData = useWorkflowRelationshipReferenceData(entityMetadata?.relationships);
   const recordTypesQuery = useRecordTypes(0, 100);
-  const fieldOptions: WorkflowFieldOption[] = (() => {
-    if (isRecord) {
-      // For RECORD.RECEIVED, only expose recordTypeId (and optionally webhookId/deliveryId but keep minimal per spec)
-      const base = buildFieldOptions({
-        metadata: metadataQuery.data,
-        triggerEntityType: "RECORD",
-        referenceData,
-        relationshipData,
-      }).filter((opt) => opt.field === "trigger.metadata.recordTypeId");
-      // If not found (metadata not yet loaded), fallback to manual option
-      if (base.length === 0) {
-        return [
-          {
-            field: "trigger.metadata.recordTypeId",
-            label: "Record Type",
-            group: "metadata" as const,
-            groupLabel: "Trigger Metadata",
-            valueOptions: (recordTypesQuery.data?.data ?? []).filter((rt) => rt.isActive).map((rt) => ({ value: rt.id, label: `${rt.name} (${rt.key})` })),
-          },
-        ];
-      }
-      // Attach RecordType valueOptions for the recordTypeId field
-      return base.map((opt) =>
-        opt.field === "trigger.metadata.recordTypeId"
-          ? {
-              ...opt,
-              valueOptions: (recordTypesQuery.data?.data ?? []).filter((rt) => rt.isActive).map((rt) => ({ value: rt.id, label: `${rt.name} (${rt.key})` })),
-            }
-          : opt
-      );
+
+  // Use canonical field option builder with isTriggerConfig=true
+  const { groupedOptions } = buildFieldOptions({
+    metadata: metadataQuery.data,
+    triggerEntityType: triggerEntityForOptions,
+    referenceData,
+    relationshipData,
+    isTriggerConfig: true,
+  });
+
+  let fieldOptions: WorkflowFieldOption[] = groupedOptions.flatMap((g) => g.options);
+
+  if (isRecord) {
+    // For RECORD.RECEIVED, only expose recordTypeId
+    fieldOptions = fieldOptions.filter((opt) => opt.field === "trigger.metadata.recordTypeId");
+    // If not found (metadata not yet loaded), fallback to manual option
+    if (fieldOptions.length === 0) {
+      fieldOptions = [
+        {
+          field: "trigger.metadata.recordTypeId",
+          label: "Record Type",
+          group: "metadata" as const,
+          groupLabel: "Trigger Metadata",
+          valueOptions: (recordTypesQuery.data?.data ?? []).filter((rt) => rt.isActive).map((rt) => ({ value: rt.id, label: `${rt.name} (${rt.key})` })),
+        },
+      ];
     }
-    return [
-      ...buildFieldOptions({
-        metadata: metadataQuery.data,
-        triggerEntityType: "LEAD",
-        referenceData,
-        relationshipData,
-      }).filter((opt) => {
-        const allowed = [
-          "trigger.metadata.createdVia",
-          "trigger.metadata.ingestionConfigId",
-          "trigger.metadata.ingestionEventId",
-          "entity.source",
-          "entity.sourceId",
-          "entity.status",
-          "entity.statusId",
-        ];
-        return allowed.includes(opt.field) || opt.field.startsWith("trigger.metadata.") || opt.field.startsWith("entity.");
-      }),
+    // Attach RecordType valueOptions for the recordTypeId field
+    fieldOptions = fieldOptions.map((opt) =>
+      opt.field === "trigger.metadata.recordTypeId"
+        ? {
+            ...opt,
+            valueOptions: (recordTypesQuery.data?.data ?? []).filter((rt) => rt.isActive).map((rt) => ({ value: rt.id, label: `${rt.name} (${rt.key})` })),
+          }
+        : opt
+    );
+  } else {
+    // For LEAD.CREATED, filter to allowed fields
+    const allowed = [
+      "trigger.metadata.createdVia",
+      "trigger.metadata.ingestionConfigId",
+      "trigger.metadata.ingestionEventId",
+      "entity.source",
+      "entity.sourceId",
+      "entity.status",
+      "entity.statusId",
     ];
-  })();
+    fieldOptions = fieldOptions.filter((opt) => allowed.includes(opt.field) || opt.field.startsWith("trigger.metadata.") || opt.field.startsWith("entity."));
+  }
 
   const resolveValueOptions = (field: string) => fieldOptions.find((o) => o.field === field)?.valueOptions ?? null;
 
@@ -526,87 +524,35 @@ function ContextAwareConditionConfig({
     entityMetadata?.relationships
   );
 
-  // WF-54: For RECORD, expose entity.data.<fieldKey> per tenant RecordFields (union across active types)
-  const recordTypesForDataFields = useRecordTypes(0, 100);
-  const recordFieldQueries = useQueries({
-    queries: (recordTypesForDataFields.data?.data ?? [])
-      .filter((rt) => rt.isActive)
-      .slice(0, 20)
-      .map((rt) => ({
-        queryKey: ["record-fields", rt.id],
-        queryFn: () => recordFieldApi.list(rt.id),
-        enabled: entityType === "RECORD",
-      })),
+  // Use canonical field option builder — includes Record dynamic fields & relationships
+  const { groupedOptions, hasEntity } = buildFieldOptions({
+    metadata,
+    triggerEntityType: entityType,
+    referenceData,
+    relationshipData,
+    nodeType: "CONDITION",
+    isTriggerConfig: false,
   });
-  const recordDataFieldOptions: WorkflowFieldOption[] = (() => {
-    if (entityType !== "RECORD") return [];
-    const seen = new Set<string>();
-    const out: WorkflowFieldOption[] = [];
-    const titleCase = (v: string) => v.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
-    for (const q of recordFieldQueries) {
-      const raw = (q as { data?: unknown }).data;
-      const fields = Array.isArray(raw) ? (raw as Array<{ fieldKey: string; fieldLabel: string; fieldType: string; referenceEntityType?: string }>) : [];
-      for (const f of fields) {
-        if (f.fieldType === "REFERENCE" && f.referenceEntityType) {
-          const refType = f.referenceEntityType.trim().toUpperCase();
-          const relatedKey = refType.toLowerCase();
-          const relatedMeta = metadata?.entities.find((e) => e.entityType === refType);
-          if (relatedMeta) {
-            for (const rf of relatedMeta.fields) {
-              if (relatedMeta.relationships.some((r) => r.key === rf)) continue;
-              const path = `entity.${relatedKey}.${rf}`;
-              if (seen.has(path)) continue;
-              seen.add(path);
-              out.push({ field: path, label: `${relatedMeta.label} → ${titleCase(rf)}`, group: `rel:${relatedKey}` as const, groupLabel: relatedMeta.label });
-            }
-            if (relatedMeta.customFieldsSupported) {
-              const path = `entity.${relatedKey}.customFields.*`;
-              if (!seen.has(path)) {
-                seen.add(path);
-                out.push({ field: path, label: `${relatedMeta.label} → Custom Fields`, group: `rel:${relatedKey}` as const, groupLabel: relatedMeta.label });
-              }
-            }
-          } else {
-            const path = `entity.${relatedKey}.id`;
-            if (!seen.has(path)) {
-              seen.add(path);
-              out.push({ field: path, label: `${refType} → ID`, group: `rel:${relatedKey}` as const, groupLabel: refType });
-            }
-          }
-        } else {
-          const path = `entity.data.${f.fieldKey}`;
-          if (seen.has(path)) continue;
-          seen.add(path);
-          out.push({ field: path, label: `Data → ${f.fieldLabel} (${f.fieldKey})`, group: "entity" as const, groupLabel: "Record Data" });
-        }
-      }
-    }
-    return out;
-  })();
 
-  const fieldOptions: WorkflowFieldOption[] = [
-    ...buildFieldOptions({
-      metadata,
-      triggerEntityType: entityType,
-      referenceData,
-      relationshipData,
-    }),
-    ...recordDataFieldOptions,
-    // Previous Node Outputs — one entry per other node key.
-    ...nodeKeys
-      .filter((key) => key !== "trigger")
-      .map((key) => ({
-        field: `nodeOutputs.${key}`,
-        label: `Node output: ${key}`,
-        group: "nodeOutputs" as const,
-        groupLabel: "Previous Node Outputs",
-      })),
-  ];
+  // Build flat fieldOptions array for resolveValueOptions
+  const fieldOptions = groupedOptions.flatMap((g) => g.options);
+
+  // Add Previous Node Outputs
+  const previousNodeOptions: WorkflowFieldOption[] = nodeKeys
+    .filter((key) => key !== "trigger")
+    .map((key) => ({
+      field: `nodeOutputs.${key}`,
+      label: `Node output: ${key}`,
+      group: "nodeOutputs" as const,
+      groupLabel: "Previous Node Outputs",
+    }));
+
+  const allFieldOptions = [...fieldOptions, ...previousNodeOptions];
 
   const resolveValueOptions = (
     field: string
   ): Array<{ value: string; label: string }> | null =>
-    fieldOptions.find((option) => option.field === field)?.valueOptions ?? null;
+    allFieldOptions.find((option) => option.field === field)?.valueOptions ?? null;
 
   return (
     <div className="space-y-3">
@@ -622,7 +568,7 @@ function ContextAwareConditionConfig({
           value,
         }))}
         readOnly={readOnly}
-        fieldOptions={fieldOptions}
+        fieldOptions={allFieldOptions}
         resolveValueOptions={resolveValueOptions}
         triggerEntityType={entityType}
         currentNodeId={currentNodeId}
@@ -865,6 +811,8 @@ function ActionConfig({
             currentNodeId={currentNodeId}
             nodes={nodes}
             edges={edges}
+            nodeType="ACTION"
+            actionType="SET_CONTEXT_VALUE"
             onChange={(value) => setConfig({ value })}
           />
         </>
@@ -927,6 +875,8 @@ function ActionConfig({
             currentNodeId={currentNodeId}
             nodes={nodes}
             edges={edges}
+            nodeType="ACTION"
+            actionType="CREATE_TASK"
             onChange={(subject) => setConfig({ subject })}
           />
           <ConfigSelect
@@ -1301,6 +1251,8 @@ function HttpApiConfig({
                     nodes={nodes}
                     edges={edges}
                     credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
+                    nodeType="ACTION"
+                    actionType="HTTP_API"
                     onSelect={(ins) => {
                       const next = [...headerRows];
                       const cur = next[idx].value;
@@ -1371,6 +1323,8 @@ function HttpApiConfig({
                     nodes={nodes}
                     edges={edges}
                     credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
+                    nodeType="ACTION"
+                    actionType="HTTP_API"
                     onSelect={(ins) => {
                       const next = [...queryRows];
                       const cur = next[idx].value;
@@ -1414,6 +1368,8 @@ function HttpApiConfig({
               nodes={nodes}
               edges={edges}
               credentialContext={{ authenticationMode: authMode, credentialSource: credSource, credentialSourceUserId: credUserId }}
+              nodeType="ACTION"
+              actionType="HTTP_API"
               onSelect={(ins) => {
                 // Insert as quoted JSON string value for body object
                 const quoted = `"${ins}"`;
@@ -1503,23 +1459,30 @@ function UpdateEntityFieldGroup({
   const fieldValue = stringValue(config.field);
   const valueStr = stringValue(config.value);
 
-  // Reuse buildFieldOptions to get all field options including relationships
-  const fieldOptionsWithGroup = buildFieldOptions({
+  // Use canonical field option builder — includes target entity fields, custom fields, relationships
+  const { groupedOptions, hasEntity } = buildFieldOptions({
     metadata,
-    triggerEntityType,
-    referenceData: useWorkflowReferenceData(triggerEntityType),
-    relationshipData: useWorkflowRelationshipReferenceData(entityMeta?.relationships),
-  }).filter((opt) => {
-    // Filter out trigger metadata and previous node outputs for UPDATE_ENTITY_FIELD
-    return opt.group !== "metadata" && opt.group !== "nodeOutputs";
+    triggerEntityType: effectiveTarget,
+    referenceData: targetReference,
+    relationshipData,
+    nodeType: "ACTION",
+    actionType: "UPDATE_ENTITY_FIELD",
   });
 
-  const fieldOptions: Array<{ value: string; label: string; group: string }> = fieldOptionsWithGroup.map(opt => ({
+  // Filter out trigger metadata and previous node outputs for UPDATE_ENTITY_FIELD
+  const filteredGroupedOptions = groupedOptions.filter(
+    (g) => g.group !== "metadata" && g.group !== "nodeOutputs"
+  );
+  const fieldOptions: WorkflowFieldOption[] = filteredGroupedOptions.flatMap((g) => g.options);
+
+  // Build options for the field select
+  const fieldSelectOptions: Array<{ value: string; label: string; group: string }> = fieldOptions.map(opt => ({
     value: opt.field,
     label: opt.label,
     group: opt.groupLabel
   }));
 
+  // Resolve value options for the selected field
   const resolveUpdateValueOptions = (): Array<{ value: string; label: string }> | null => {
     if (!fieldValue) return null;
     // Relationship field like entity.account.industry
@@ -1531,7 +1494,7 @@ function UpdateEntityFieldGroup({
         const relData = relationshipData[relKey];
         const candidateKeys = [`entity.${field}`, field, `entity.${relKey}.${field}`, fieldValue];
         for (const ck of candidateKeys) {
-          const opts = relationshipData[relKey]?.optionsByField[ck] ?? targetReference.optionsByField[ck];
+          const opts = relData?.optionsByField[ck] ?? targetReference.optionsByField[ck];
           if (opts && opts.length > 0) return opts;
         }
       }
@@ -1566,9 +1529,9 @@ function UpdateEntityFieldGroup({
       />
       <div className="space-y-1">
         <Label>Field *</Label>
-        {fieldOptions.length > 0 ? (
+        {fieldSelectOptions.length > 0 ? (
           <Select
-            value={fieldOptions.some((o) => o.value === fieldValue) ? fieldValue : fieldValue ? "__legacy__" : ""}
+            value={fieldSelectOptions.some((o) => o.value === fieldValue) ? fieldValue : fieldValue ? "__legacy__" : ""}
             disabled={readOnly}
             onValueChange={(v) => onChange({ field: v === "__legacy__" ? fieldValue : v })}
           >
@@ -1576,10 +1539,10 @@ function UpdateEntityFieldGroup({
               <SelectValue placeholder="Select field" />
             </SelectTrigger>
             <SelectContent>
-              {Array.from(new Set(fieldOptions.map((o) => o.group))).map((group) => (
+              {Array.from(new Set(fieldSelectOptions.map((o) => o.group))).map((group) => (
                 <SelectGroup key={group}>
                   <SelectLabel>{group}</SelectLabel>
-                  {fieldOptions
+                  {fieldSelectOptions
                     .filter((o) => o.group === group)
                     .map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
@@ -1588,13 +1551,13 @@ function UpdateEntityFieldGroup({
                     ))}
                 </SelectGroup>
               ))}
-              {fieldValue && !fieldOptions.some((o) => o.value === fieldValue) && (
+              {fieldValue && !fieldSelectOptions.some((o) => o.value === fieldValue) && (
                 <SelectGroup>
                   <SelectLabel>Current</SelectLabel>
                   <SelectItem value="__legacy__">{fieldValue}</SelectItem>
                 </SelectGroup>
               )}
-            </SelectContent>
+            </SelectContent          >
           </Select>
         ) : (
           <Input
@@ -1608,37 +1571,19 @@ function UpdateEntityFieldGroup({
       </div>
       <div className="space-y-1">
         <Label>Value *</Label>
-        {valueOptions && valueOptions.length > 0 ? (
-          <Select
-            value={valueOptions.some((o) => o.value === valueStr) ? valueStr : valueStr ? "__legacy_val__" : ""}
-            disabled={readOnly}
-            onValueChange={(v) => onChange({ value: v === "__legacy_val__" ? valueStr : v })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select value" />
-            </SelectTrigger>
-            <SelectContent>
-              {valueOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-              {valueStr && !valueOptions.some((o) => o.value === valueStr) && (
-                <SelectGroup>
-                  <SelectLabel>Current</SelectLabel>
-                  <SelectItem value="__legacy_val__">{valueStr}</SelectItem>
-                </SelectGroup>
-              )}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Input
-            value={valueStr}
-            placeholder="Literal or {{...}} token"
-            disabled={readOnly}
-            onChange={(e) => onChange({ value: e.target.value })}
-          />
-        )}
+        <PickerField
+          label="Value"
+          value={valueStr}
+          placeholder="Literal or {{...}} token"
+          readOnly={readOnly}
+          triggerEntityType={effectiveTarget}
+          currentNodeId={currentNodeId}
+          nodes={nodes}
+          edges={edges}
+          nodeType="ACTION"
+          actionType="UPDATE_ENTITY_FIELD"
+          onChange={(value) => onChange({ value })}
+        />
         <p className="text-[11px] text-muted-foreground">Supports literals or tokens like {"{{entity.email}}"}.</p>
       </div>
     </>
@@ -1883,6 +1828,8 @@ function ClickToCallConfig({
         currentNodeId={currentNodeId}
         nodes={nodes}
         edges={edges}
+        nodeType="ACTION"
+        actionType="CLICK_TO_CALL"
         onChange={(phoneNumber) => onChange({ phoneNumber })}
       />
       <PickerField
@@ -1894,6 +1841,8 @@ function ClickToCallConfig({
         currentNodeId={currentNodeId}
         nodes={nodes}
         edges={edges}
+        nodeType="ACTION"
+        actionType="CLICK_TO_CALL"
         onChange={(subject) => onChange({ subject })}
       />
       <div className="space-y-1">
