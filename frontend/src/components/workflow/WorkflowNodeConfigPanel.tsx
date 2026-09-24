@@ -15,9 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { insertAtCursor } from "./utils/cursor-insert";
 import { ConditionRulesEditor } from "./ConditionRulesEditor";
 import { BuilderNodeData } from "./utils/graph-mapper";
 import {
@@ -40,6 +41,7 @@ import { useWorkflowMetadata, useWorkflowReferenceData, useWorkflowRelationshipR
 import { useRecordTypes } from "@/lib/hooks/records";
 import { recordFieldApi } from "@/lib/api/records";
 import { PickerField, WorkflowValuePicker } from "./WorkflowValuePicker";
+import { EntityTargetSelector } from "./EntityTargetSelector";
 import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
 import { useQueries } from "@tanstack/react-query";
 
@@ -59,6 +61,7 @@ interface WorkflowNodeConfigPanelProps {
   edges?: BuilderEdge[];
   isDisconnected?: boolean;
   onChange: (configuration: Record<string, unknown>, name?: string) => void;
+  onDelete?: (nodeId: string) => void;
 }
 
 export function WorkflowNodeConfigPanel({
@@ -71,6 +74,7 @@ export function WorkflowNodeConfigPanel({
   edges,
   isDisconnected = false,
   onChange,
+  onDelete,
 }: WorkflowNodeConfigPanelProps) {
   const metadataQuery = useWorkflowMetadata();
 
@@ -119,6 +123,11 @@ export function WorkflowNodeConfigPanel({
           onChange={(event) => onChange(node.data.configuration, event.target.value)}
         />
       </div>
+      {node.data.nodeType !== "TRIGGER" && !readOnly && onDelete && (
+        <Button variant="outline" size="sm" className="w-full text-destructive hover:text-destructive" onClick={() => onDelete(node.id)}>
+          Delete node
+        </Button>
+      )}
 
       {node.data.nodeType === "TRIGGER" && (
         <TriggerConfig
@@ -833,25 +842,20 @@ function ActionConfig({
 
       {actionType === "ASSIGN_OWNER" && (
         <>
-          <ConfigSelect
-            label="Target entity"
-            value={targetEntityType}
-            readOnly={readOnly}
-            rawOptions={[
-              { value: "LEAD", label: "Lead" },
-              { value: "CONTACT", label: "Contact" },
-              { value: "ACCOUNT", label: "Account" },
-              { value: "DEAL", label: "Deal" },
-            ]}
-            fallback={entityType ? { value: entityType, label: entityType } : null}
-            onValueChange={(value) => setConfig({ entityType: value })}
-          />
-          <TargetRecordField
-            label="Record"
-            value={stringValue(config.entityId)}
-            readOnly={readOnly}
+          <EntityTargetSelector
+            targetEntity={targetEntityType as any}
+            onTargetEntityChange={(entity) => setConfig({ entityType: entity })}
+            targetRecordMode={config.entityId && String(config.entityId).startsWith("{{") ? "current" : "specific"}
+            onTargetRecordModeChange={(mode) => {
+              if (mode === "current") {
+                setConfig({ entityId: "{{entity.id}}" });
+              }
+            }}
+            specificRecordId={config.entityId && !String(config.entityId).startsWith("{{") ? String(config.entityId) : null}
+            onSpecificRecordIdChange={(id) => setConfig({ entityId: id ?? "" })}
             triggerEntityType={entityType}
-            onChange={(entityId) => setConfig({ entityId })}
+            disabled={readOnly}
+            recordLabel="Record"
           />
           <ConfigSelect
             label="Owner"
@@ -895,26 +899,20 @@ function ActionConfig({
             fallback={config.priority ? { value: stringValue(config.priority), label: stringValue(config.priority) } : null}
             onValueChange={(priority) => setConfig({ priority })}
           />
-          <ConfigSelect
-            label="Related entity (optional)"
-            value={stringValue(config.entityType)}
-            readOnly={readOnly}
-            rawOptions={[
-              { value: "", label: "None" },
-              { value: "LEAD", label: "Lead" },
-              { value: "CONTACT", label: "Contact" },
-              { value: "ACCOUNT", label: "Account" },
-              { value: "DEAL", label: "Deal" },
-            ]}
-            fallback={config.entityType ? { value: stringValue(config.entityType), label: stringValue(config.entityType) } : null}
-            onValueChange={(entityType) => setConfig({ entityType: entityType || undefined })}
-          />
-          <TargetRecordField
-            label="Record"
-            value={stringValue(config.entityId)}
-            readOnly={readOnly}
+          <EntityTargetSelector
+            targetEntity={config.entityType as any || "LEAD"}
+            onTargetEntityChange={(entity) => setConfig({ entityType: entity })}
+            targetRecordMode={config.entityId && String(config.entityId).startsWith("{{") ? "current" : "specific"}
+            onTargetRecordModeChange={(mode) => {
+              if (mode === "current") {
+                setConfig({ entityId: "{{entity.id}}" });
+              }
+            }}
+            specificRecordId={config.entityId && !String(config.entityId).startsWith("{{") ? String(config.entityId) : null}
+            onSpecificRecordIdChange={(id) => setConfig({ entityId: id ?? "" })}
             triggerEntityType={entityType}
-            onChange={(entityId) => setConfig({ entityId })}
+            disabled={readOnly}
+            recordLabel="Related Record"
           />
           <ConfigSelect
             label="Owner (assignee)"
@@ -1004,6 +1002,18 @@ function HttpApiConfig({
     config.idempotency && typeof config.idempotency === "object"
       ? (config.idempotency as Record<string, unknown>)
       : {};
+
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodySelRef = useRef<{ start: number; end: number } | null>(null);
+  const captureBodySel = () => {
+    const el = bodyRef.current;
+    if (!el) return;
+    bodySelRef.current = { start: el.selectionStart ?? bodyText.length, end: el.selectionEnd ?? el.selectionStart ?? bodyText.length };
+  };
+  const headerRefs = useRef<Map<number, HTMLInputElement>>(new Map());
+  const headerSelRefs = useRef<Map<number, { start: number; end: number }>>(new Map());
+  const queryRefs = useRef<Map<number, HTMLInputElement>>(new Map());
+  const querySelRefs = useRef<Map<number, { start: number; end: number }>>(new Map());
 
   const headersObj = (config.headers && typeof config.headers === "object" ? (config.headers as Record<string, string>) : {}) as Record<string, string>;
   const queryObj = (config.queryParams && typeof config.queryParams === "object" ? (config.queryParams as Record<string, string>) : {}) as Record<string, string>;
@@ -1233,6 +1243,10 @@ function HttpApiConfig({
               />
               <div className="flex flex-1 gap-1">
                 <Input
+                  ref={(el) => {
+                    if (el) headerRefs.current.set(idx, el as HTMLInputElement);
+                    else headerRefs.current.delete(idx);
+                  }}
                   placeholder="Value"
                   value={row.value}
                   disabled={readOnly}
@@ -1240,6 +1254,31 @@ function HttpApiConfig({
                     const next = [...headerRows];
                     next[idx] = { ...row, value: e.target.value };
                     updateHeaders(next);
+                  }}
+                  onSelect={() => {
+                    const el = headerRefs.current.get(idx);
+                    if (!el) return;
+                    headerSelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onClick={() => {
+                    const el = headerRefs.current.get(idx);
+                    if (!el) return;
+                    headerSelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onKeyUp={() => {
+                    const el = headerRefs.current.get(idx);
+                    if (!el) return;
+                    headerSelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onFocus={() => {
+                    const el = headerRefs.current.get(idx);
+                    if (!el) return;
+                    headerSelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onBlur={() => {
+                    const el = headerRefs.current.get(idx);
+                    if (!el) return;
+                    headerSelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
                   }}
                   className="flex-1"
                   aria-label={`Header ${idx + 1} value`}
@@ -1254,11 +1293,21 @@ function HttpApiConfig({
                     nodeType="ACTION"
                     actionType="HTTP_API"
                     onSelect={(ins) => {
+                      const sel = headerSelRefs.current.get(idx);
+                      const el = headerRefs.current.get(idx);
+                      const start = sel?.start ?? el?.selectionStart ?? row.value.length;
+                      const end = sel?.end ?? el?.selectionEnd ?? start;
+                      const { next: newVal, cursor } = insertAtCursor(row.value, ins, start, end);
                       const next = [...headerRows];
-                      const cur = next[idx].value;
-                      const insertion = cur ? (cur.endsWith(" ") ? cur + ins : cur + " " + ins) : ins;
-                      next[idx] = { ...row, value: insertion };
+                      next[idx] = { ...row, value: newVal };
                       updateHeaders(next);
+                      requestAnimationFrame(() => {
+                        const target = headerRefs.current.get(idx);
+                        if (!target) return;
+                        target.focus();
+                        try { target.setSelectionRange(cursor, cursor); } catch {}
+                        headerSelRefs.current.set(idx, { start: cursor, end: cursor });
+                      });
                     }}
                   />
                 )}
@@ -1305,6 +1354,10 @@ function HttpApiConfig({
               />
               <div className="flex flex-1 gap-1">
                 <Input
+                  ref={(el) => {
+                    if (el) queryRefs.current.set(idx, el as HTMLInputElement);
+                    else queryRefs.current.delete(idx);
+                  }}
                   placeholder="Value"
                   value={row.value}
                   disabled={readOnly}
@@ -1312,6 +1365,31 @@ function HttpApiConfig({
                     const next = [...queryRows];
                     next[idx] = { ...row, value: e.target.value };
                     updateQuery(next);
+                  }}
+                  onSelect={() => {
+                    const el = queryRefs.current.get(idx);
+                    if (!el) return;
+                    querySelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onClick={() => {
+                    const el = queryRefs.current.get(idx);
+                    if (!el) return;
+                    querySelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onKeyUp={() => {
+                    const el = queryRefs.current.get(idx);
+                    if (!el) return;
+                    querySelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onFocus={() => {
+                    const el = queryRefs.current.get(idx);
+                    if (!el) return;
+                    querySelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
+                  }}
+                  onBlur={() => {
+                    const el = queryRefs.current.get(idx);
+                    if (!el) return;
+                    querySelRefs.current.set(idx, { start: el.selectionStart ?? row.value.length, end: el.selectionEnd ?? el.selectionStart ?? row.value.length });
                   }}
                   className="flex-1"
                   aria-label={`Query param ${idx + 1} value`}
@@ -1326,11 +1404,21 @@ function HttpApiConfig({
                     nodeType="ACTION"
                     actionType="HTTP_API"
                     onSelect={(ins) => {
+                      const sel = querySelRefs.current.get(idx);
+                      const el = queryRefs.current.get(idx);
+                      const start = sel?.start ?? el?.selectionStart ?? row.value.length;
+                      const end = sel?.end ?? el?.selectionEnd ?? start;
+                      const { next: newVal, cursor } = insertAtCursor(row.value, ins, start, end);
                       const next = [...queryRows];
-                      const cur = next[idx].value;
-                      const insertion = cur ? (cur.endsWith(" ") ? cur + ins : cur + " " + ins) : ins;
-                      next[idx] = { ...row, value: insertion };
+                      next[idx] = { ...row, value: newVal };
                       updateQuery(next);
+                      requestAnimationFrame(() => {
+                        const target = queryRefs.current.get(idx);
+                        if (!target) return;
+                        target.focus();
+                        try { target.setSelectionRange(cursor, cursor); } catch {}
+                        querySelRefs.current.set(idx, { start: cursor, end: cursor });
+                      });
                     }}
                   />
                 )}
@@ -1371,11 +1459,19 @@ function HttpApiConfig({
               nodeType="ACTION"
               actionType="HTTP_API"
               onSelect={(ins) => {
-                // Insert as quoted JSON string value for body object
-                const quoted = `"${ins}"`;
-                const cur = bodyText ?? "";
-                const insertion = cur ? (cur.endsWith(" ") || cur.endsWith("\n") ? cur + quoted : cur + " " + quoted) : quoted;
-                handleBodyChange(insertion);
+                const el = bodyRef.current;
+                const sel = bodySelRef.current;
+                const start = sel?.start ?? el?.selectionStart ?? bodyText.length;
+                const end = sel?.end ?? el?.selectionEnd ?? start;
+                const { next: newVal, cursor } = insertAtCursor(bodyText ?? "", ins, start, end);
+                handleBodyChange(newVal);
+                requestAnimationFrame(() => {
+                  const target = bodyRef.current;
+                  if (!target) return;
+                  target.focus();
+                  try { target.setSelectionRange(cursor, cursor); } catch {}
+                  bodySelRef.current = { start: cursor, end: cursor };
+                });
               }}
             />
           )}
@@ -1383,9 +1479,15 @@ function HttpApiConfig({
         <Textarea
           id="http-body"
           rows={6}
+          ref={bodyRef}
           disabled={readOnly}
           value={bodyText}
           onChange={(event) => handleBodyChange(event.target.value)}
+          onSelect={captureBodySel}
+          onClick={captureBodySel}
+          onKeyUp={captureBodySel}
+          onFocus={captureBodySel}
+          onBlur={captureBodySel}
           placeholder={'{\n  "userId": "{{credential.admin_user}}",\n  "password": "{{credential.admin_pass}}"\n}  — object only'}
           aria-invalid={bodyError ? true : undefined}
           aria-describedby={bodyError ? "http-body-error" : undefined}
@@ -1452,14 +1554,56 @@ function UpdateEntityFieldGroup({
   onChange: (patch: Record<string, unknown>) => void;
 }) {
   const metadata = useWorkflowMetadata().data;
-  const targetReference = useWorkflowReferenceData(targetEntityType || triggerEntityType);
+  const [targetRecordMode, setTargetRecordMode] = useState<"current" | "specific">(
+    config.entityId && String(config.entityId).startsWith("{{") ? "current" : "specific"
+  );
+  const [specificRecordId, setSpecificRecordId] = useState<string | null>(
+    config.entityId && !String(config.entityId).startsWith("{{") ? String(config.entityId) : null
+  );
+  const [recordTypeId, setRecordTypeId] = useState<string | undefined>(
+    config.recordTypeId as string | undefined
+  );
+
+  const recordTypesQuery = useRecordTypes(0, 100);
+  const recordTypes = recordTypesQuery.data?.data ?? [];
+
+  const handleTargetEntityChange = (entity: "LEAD" | "CONTACT" | "ACCOUNT" | "DEAL" | "RECORD") => {
+    onChange({ entityType: entity });
+    // Reset target record mode when entity changes
+    setTargetRecordMode(entity === triggerEntityType ? "current" : "specific");
+    setSpecificRecordId(null);
+    setRecordTypeId(undefined);
+  };
+
+  const handleTargetRecordModeChange = (mode: "current" | "specific") => {
+    setTargetRecordMode(mode);
+    if (mode === "current") {
+      setSpecificRecordId(null);
+      onChange({ entityId: "{{entity.id}}" });
+    } else {
+      onChange({ entityId: specificRecordId ?? "" });
+    }
+  };
+
+  const handleSpecificRecordIdChange = (id: string | null) => {
+    setSpecificRecordId(id);
+    onChange({ entityId: id ?? "" });
+  };
+
+  const handleRecordTypeIdChange = (id: string | undefined) => {
+    setRecordTypeId(id);
+    onChange({ recordTypeId: id });
+    setSpecificRecordId(null);
+  };
+
   const effectiveTarget = targetEntityType || triggerEntityType || "";
+  const targetReference = useWorkflowReferenceData(effectiveTarget);
   const entityMeta = findEntityMetadata(metadata, effectiveTarget);
   const relationshipData = useWorkflowRelationshipReferenceData(entityMeta?.relationships);
   const fieldValue = stringValue(config.field);
   const valueStr = stringValue(config.value);
 
-  // Use canonical field option builder — includes target entity fields, custom fields, relationships
+  // Use canonical field option builder for target entity fields
   const { groupedOptions, hasEntity } = buildFieldOptions({
     metadata,
     triggerEntityType: effectiveTarget,
@@ -1507,25 +1651,19 @@ function UpdateEntityFieldGroup({
 
   return (
     <>
-      <ConfigSelect
-        label="Target entity *"
-        value={targetEntityType}
-        readOnly={readOnly}
-        rawOptions={[
-          { value: "LEAD", label: "Lead" },
-          { value: "CONTACT", label: "Contact" },
-          { value: "ACCOUNT", label: "Account" },
-          { value: "DEAL", label: "Deal" },
-        ]}
-        fallback={triggerEntityType ? { value: triggerEntityType, label: triggerEntityType } : null}
-        onValueChange={(value) => onChange({ entityType: value })}
-      />
-      <TargetRecordField
-        label="Record *"
-        value={stringValue(config.entityId)}
-        readOnly={readOnly}
+      <EntityTargetSelector
+        targetEntity={targetEntityType as any}
+        onTargetEntityChange={handleTargetEntityChange}
+        targetRecordMode={targetRecordMode}
+        onTargetRecordModeChange={handleTargetRecordModeChange}
+        specificRecordId={specificRecordId}
+        onSpecificRecordIdChange={handleSpecificRecordIdChange}
         triggerEntityType={triggerEntityType}
-        onChange={(entityId) => onChange({ entityId })}
+        disabled={readOnly}
+        recordLabel="Record"
+        recordTypeId={recordTypeId}
+        onRecordTypeIdChange={handleRecordTypeIdChange}
+        recordTypes={recordTypes}
       />
       <div className="space-y-1">
         <Label>Field *</Label>
@@ -1812,12 +1950,20 @@ function ClickToCallConfig({
         fallback={null}
         onValueChange={(value) => onChange({ entityType: value })}
       />
-      <TargetRecordField
-        label="Record"
-        value={stringValue(config.entityId)}
-        readOnly={readOnly}
+      <EntityTargetSelector
+        targetEntity={targetEntityType as any || "LEAD"}
+        onTargetEntityChange={(entity) => onChange({ entityType: entity })}
+        targetRecordMode={config.entityId && String(config.entityId).startsWith("{{") ? "current" : "specific"}
+        onTargetRecordModeChange={(mode) => {
+          if (mode === "current") {
+            onChange({ entityId: "{{entity.id}}" });
+          }
+        }}
+        specificRecordId={config.entityId && !String(config.entityId).startsWith("{{") ? String(config.entityId) : null}
+        onSpecificRecordIdChange={(id) => onChange({ entityId: id ?? "" })}
         triggerEntityType={triggerEntityType}
-        onChange={(entityId) => onChange({ entityId })}
+        disabled={readOnly}
+        recordLabel="Record"
       />
       <PickerField
         label="Phone number override"

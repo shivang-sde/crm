@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { insertAtCursor } from "./utils/cursor-insert";
 import { Braces, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,7 @@ import type { BuilderNode, BuilderEdge } from "./utils/graph-mapper";
 import { useQuery } from "@tanstack/react-query";
 import { workflowApi } from "@/lib/api/workflow";
 import { workflowKeys } from "@/lib/hooks/workflow";
-import { recordFieldApi } from "@/lib/api/records";
+import { recordFieldApi, recordTypeApi } from "@/lib/api/records";
 import { useQueries } from "@tanstack/react-query";
 
 interface WorkflowValuePickerProps {
@@ -102,7 +103,7 @@ export function WorkflowValuePicker({
   const recordTypesQuery = useQuery({
     queryKey: ["record-types", "active"],
     queryFn: async () => {
-      const res = await workflowApi.listRecordTypes?.(0, 100) ?? { data: [] };
+      const res = await recordTypeApi.list(0, 100);
       return (res.data ?? []).filter((rt: any) => rt.isActive);
     },
     enabled: triggerEntityType === "RECORD",
@@ -535,11 +536,41 @@ export function PickerField({
     return [false, null] as const;
   }, [value, nodes]);
 
+  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null as unknown as HTMLInputElement & HTMLTextAreaElement);
+  const selectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  const captureSelection = () => {
+    const el = inputRef.current as unknown as HTMLInputElement | HTMLTextAreaElement | null;
+    if (!el) return;
+    try {
+      const start = (el as HTMLInputElement).selectionStart ?? value.length;
+      const end = (el as HTMLInputElement).selectionEnd ?? start;
+      selectionRef.current = { start: start ?? value.length, end: end ?? start ?? value.length };
+    } catch {}
+  };
+
   const handleInsert = (insertion: string) => {
-    // Append with space if value already has content and not ending with space
-    if (!value) onChange(insertion);
-    else if (value.endsWith(" ") || value.endsWith("\n")) onChange(value + insertion);
-    else onChange(value + " " + insertion);
+    const el = inputRef.current as unknown as HTMLInputElement | HTMLTextAreaElement | null;
+    let start: number | null = null;
+    let end: number | null = null;
+    if (selectionRef.current) {
+      start = selectionRef.current.start;
+      end = selectionRef.current.end;
+    } else if (el && typeof (el as HTMLInputElement).selectionStart === "number") {
+      start = (el as HTMLInputElement).selectionStart;
+      end = (el as HTMLInputElement).selectionEnd;
+    }
+    const { next, cursor } = insertAtCursor(value, insertion, start, end);
+    onChange(next);
+    requestAnimationFrame(() => {
+      const target = inputRef.current as unknown as HTMLInputElement | HTMLTextAreaElement | null;
+      if (!target) return;
+      target.focus();
+      try {
+        (target as HTMLInputElement).setSelectionRange(cursor, cursor);
+      } catch {}
+      selectionRef.current = { start: cursor, end: cursor };
+    });
   };
 
   return (
@@ -562,15 +593,32 @@ export function PickerField({
       </div>
       {inputType === "textarea" ? (
         <textarea
+          ref={inputRef as unknown as React.RefObject<HTMLTextAreaElement>}
           value={value}
           placeholder={placeholder}
           disabled={readOnly}
           onChange={(e) => onChange(e.target.value)}
+          onSelect={captureSelection}
+          onClick={captureSelection}
+          onKeyUp={captureSelection}
+          onFocus={captureSelection}
+          onBlur={captureSelection}
           rows={3}
           className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         />
       ) : (
-        <Input value={value} placeholder={placeholder} disabled={readOnly} onChange={(e) => onChange(e.target.value)} />
+        <Input
+          ref={inputRef as unknown as React.RefObject<HTMLInputElement>}
+          value={value}
+          placeholder={placeholder}
+          disabled={readOnly}
+          onChange={(e) => onChange(e.target.value)}
+          onSelect={captureSelection as unknown as React.ReactEventHandler<HTMLInputElement>}
+          onClick={captureSelection as unknown as React.MouseEventHandler<HTMLInputElement>}
+          onKeyUp={captureSelection as unknown as React.KeyboardEventHandler<HTMLInputElement>}
+          onFocus={captureSelection as unknown as React.FocusEventHandler<HTMLInputElement>}
+          onBlur={captureSelection as unknown as React.FocusEventHandler<HTMLInputElement>}
+        />
       )}
       {hasInvalidRef && <p className="text-xs font-medium text-amber-600" role="alert">⚠ {invalidRef} — reference may be stale (node deleted).</p>}
       <p className="text-[11px] text-muted-foreground">Static text or <span className="font-mono">{"{{entity.*}}"}</span> tokens. Use Insert value to discover.</p>

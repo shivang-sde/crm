@@ -128,6 +128,96 @@ function getEntityGroupLabel(entityType: string): string {
   return `Current ${getEntityDisplayName(entityType)}`;
 }
 
+// Semantic field labels for better UX
+const SEMANTIC_FIELD_LABELS: Record<string, { label: string; keepIdSuffix?: boolean }> = {
+  // Lead fields
+  status: { label: "Status" },
+  statusId: { label: "Status ID" },
+  source: { label: "Source" },
+  sourceId: { label: "Source ID" },
+  ownerId: { label: "Owner ID" },
+  // Deal fields
+  stage: { label: "Stage" },
+  stageId: { label: "Stage ID" },
+  // Contact fields
+  // Account fields
+  // Generic
+  id: { label: "ID" },
+  fullName: { label: "Full Name" },
+  firstName: { label: "First Name" },
+  lastName: { label: "Last Name" },
+  email: { label: "Email" },
+  phone: { label: "Phone" },
+  company: { label: "Company" },
+  score: { label: "Score" },
+  isConverted: { label: "Converted" },
+  convertedAccountId: { label: "Converted Account ID" },
+  convertedContactId: { label: "Converted Contact ID" },
+  createdAt: { label: "Created At" },
+  updatedAt: { label: "Updated At" },
+  // Contact
+  accountId: { label: "Account ID" },
+  leadId: { label: "Lead ID" },
+  mobile: { label: "Mobile" },
+  jobTitle: { label: "Job Title" },
+  department: { label: "Department" },
+  isPrimary: { label: "Primary" },
+  isActive: { label: "Active" },
+  // Account
+  name: { label: "Name" },
+  website: { label: "Website" },
+  industry: { label: "Industry" },
+  annualRevenue: { label: "Annual Revenue" },
+  employeeCount: { label: "Employee Count" },
+  description: { label: "Description" },
+  country: { label: "Country" },
+  state: { label: "State" },
+  city: { label: "City" },
+  addressLine1: { label: "Address Line 1" },
+  postalCode: { label: "Postal Code" },
+  // Deal
+  amount: { label: "Amount" },
+  expectedCloseDate: { label: "Expected Close Date" },
+  probability: { label: "Probability" },
+  forecastCategory: { label: "Forecast Category" },
+  closedDate: { label: "Closed Date" },
+  wonReason: { label: "Won Reason" },
+  lostReason: { label: "Lost Reason" },
+  isWon: { label: "Won" },
+  isLost: { label: "Lost" },
+  isClosed: { label: "Closed" },
+  recordCategory: { label: "Record Category" },
+  // Task
+  subject: { label: "Subject" },
+  priority: { label: "Priority" },
+  entityType: { label: "Entity Type" },
+  entityId: { label: "Entity ID" },
+  dueDate: { label: "Due Date" },
+  remindAt: { label: "Remind At" },
+  completedAt: { label: "Completed At" },
+  // Meeting
+  meetingType: { label: "Meeting Type" },
+  startTime: { label: "Start Time" },
+  endTime: { label: "End Time" },
+  attendees: { label: "Attendees" },
+  assignedTo: { label: "Assigned To" },
+  // Call
+  callType: { label: "Call Type" },
+  phoneNumber: { label: "Phone Number" },
+  disposition: { label: "Disposition" },
+  notes: { label: "Notes" },
+  nextAction: { label: "Next Action" },
+  followUpAt: { label: "Follow Up At" },
+  // Record
+  recordTypeId: { label: "Record Type ID" },
+  data: { label: "Data" },
+  createdBy: { label: "Created By" },
+};
+
+function getSemanticLabel(field: string, defaultLabel: string): string {
+  return SEMANTIC_FIELD_LABELS[field]?.label || defaultLabel;
+}
+
 export interface BuildFieldOptionsResult {
   options: WorkflowFieldOption[];
   groupedOptions: Array<{ group: FieldGroup; groupLabel: string; options: WorkflowFieldOption[] }>;
@@ -171,7 +261,7 @@ export function buildFieldOptions({
         withValueOptions(
           {
             field: `entity.${field}`,
-            label: titleCase(field),
+            label: getSemanticLabel(field, titleCase(field)),
             group: "entity",
             groupLabel: entityGroupLabel,
           },
@@ -207,7 +297,7 @@ export function buildFieldOptions({
           withValueOptions(
             {
               field: `entity.${rel.key}.${field}`,
-              label: `${groupLabel} → ${titleCase(field)}`,
+              label: `${groupLabel} → ${getSemanticLabel(field, titleCase(field))}`,
               group,
               groupLabel,
             },
@@ -258,7 +348,7 @@ export function buildFieldOptions({
               withValueOptions(
                 {
                   field: `entity.${relatedKey}.${field}`,
-                  label: `${groupLabel} → ${titleCase(field)}`,
+                  label: `${groupLabel} → ${getSemanticLabel(field, titleCase(field))}`,
                   group,
                   groupLabel,
                 },

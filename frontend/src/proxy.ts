@@ -51,7 +51,7 @@ export function proxy(request: NextRequest) {
 
   // Root -> entry resolver (permission-driven redirect happens there)
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/home", request.url));
   }
 
   // Public routes stay open

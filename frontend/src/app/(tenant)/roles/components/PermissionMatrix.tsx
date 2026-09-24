@@ -34,6 +34,7 @@ interface PermissionMatrixProps {
   baseline?: RolePermission[];
   onScopeChange: (permissionId: string, scope: AccessScope) => void;
   onRemove: (permissionId: string) => void;
+  readOnly?: boolean;
 }
 
 /**
@@ -41,7 +42,7 @@ interface PermissionMatrixProps {
  * A cell renders only when the backend permission catalog defines that
  * module+action pair; "-" means the permission is not assigned to the role.
  */
-export function PermissionMatrix({ catalog, draft, baseline = [], onScopeChange, onRemove }: PermissionMatrixProps) {
+export function PermissionMatrix({ catalog, draft, baseline = [], onScopeChange, onRemove, readOnly = false }: PermissionMatrixProps) {
   const draftById = new Map(draft.map((p) => [p.id, p]));
   const baselineById = new Map(baseline.map((p) => [p.id, p]));
 
@@ -111,6 +112,7 @@ export function PermissionMatrix({ catalog, draft, baseline = [], onScopeChange,
                             <Select
                               value={assigned.accessScope}
                               onValueChange={(val) => onScopeChange(assigned.id, val as AccessScope)}
+                              disabled={readOnly}
                             >
                               <SelectTrigger
                                 title={
@@ -121,6 +123,7 @@ export function PermissionMatrix({ catalog, draft, baseline = [], onScopeChange,
                                     : undefined
                                 }
                                 className={`w-[92px] h-8 text-xs font-semibold ${SCOPE_COLORS[assigned.accessScope]} focus:ring-0 border-0`}
+                                disabled={readOnly}
                               >
                                 <SelectValue />
                               </SelectTrigger>
@@ -132,15 +135,17 @@ export function PermissionMatrix({ catalog, draft, baseline = [], onScopeChange,
                                 ))}
                               </SelectContent>
                             </Select>
-                            <button
-                              type="button"
-                              onClick={() => onRemove(assigned.id)}
-                              aria-label={`Remove ${module} ${action} permission`}
-                              title={`Remove ${module}:${action}`}
-                              className="text-gray-400 hover:text-red-600 transition-colors"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => onRemove(assigned.id)}
+                                aria-label={`Remove ${module} ${action} permission`}
+                                title={`Remove ${module}:${action}`}
+                                className="text-gray-400 hover:text-red-600 transition-colors"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             {diffIndicator(assigned) && (
                               <span
                                 className="text-xs font-semibold text-gray-500 w-2"

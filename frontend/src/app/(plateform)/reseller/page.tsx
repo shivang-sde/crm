@@ -5,8 +5,9 @@ import { AnalyticsDashboard } from "@/components/dashboard/AnalyticsDashboard";
 import { TenantSummary } from "@/components/dashboard/TenantSummary";
 import { TenantSelector } from "@/components/dashboard/TenantSelector";
 import { useTenants } from "@/lib/hooks/tenants";
+import { ProtectedRoute } from "@/components/shared/ProtectedRoute";
 
-export default function ResellerPage() {
+function ResellerContent() {
   const { data: tenants, isLoading: tenantsLoading, isError: tenantsError, refetch: refetchTenants } = useTenants();
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
 
@@ -43,5 +44,13 @@ export default function ResellerPage() {
         />
       </section>
     </div>
+  );
+}
+
+export default function ResellerPage() {
+  return (
+    <ProtectedRoute allowedRoles={["SUPERADMIN", "RESELLER"]}>
+      <ResellerContent />
+    </ProtectedRoute>
   );
 }

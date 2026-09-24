@@ -17,13 +17,14 @@ interface RolePermissionEditorProps {
   /** What the draft started from; enables Reset + change indicators. */
   baseline?: RolePermission[];
   onChange: (draft: RolePermission[]) => void;
+  readOnly?: boolean;
 }
 
 /**
  * Shared permission editing surface for role creation and role details.
  * Holds no persistence logic: callers own the draft and submit it.
  */
-export function RolePermissionEditor({ draft, baseline = [], onChange }: RolePermissionEditorProps) {
+export function RolePermissionEditor({ draft, baseline = [], onChange, readOnly = false }: RolePermissionEditorProps) {
   const [showBulk, setShowBulk] = useState(false);
 
   const {
@@ -100,6 +101,17 @@ export function RolePermissionEditor({ draft, baseline = [], onChange }: RolePer
       <div className="flex h-48 flex-col items-center justify-center gap-2 border rounded-lg bg-white">
         <p className="text-sm font-medium text-gray-700">Permission catalog unavailable</p>
         <p className="text-sm text-gray-500">No permissions are defined for this workspace.</p>
+      </div>
+    );
+  }
+
+  if (readOnly) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          Read-only view — you do not have permission to modify this role. Contact a SUPERADMIN.
+        </div>
+        <PermissionMatrix catalog={catalog} draft={draft} baseline={baseline} onScopeChange={() => {}} onRemove={() => {}} readOnly />
       </div>
     );
   }

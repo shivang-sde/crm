@@ -16,6 +16,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Role, RolePermission } from "@/types/rbac";
 import { RolePermissionEditor } from "../components/RolePermissionEditor";
+import { useAuthStore } from "@/lib/store/authStore";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,6 +65,10 @@ function RoleDetailContent() {
 function RoleDetailView({ role }: { role: Role }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const userRole = useAuthStore((s) => s.userRole);
+  const isAdminRole = role.name === "ADMIN";
+  const isSuperadmin = userRole === "SUPERADMIN";
+  const canEdit = !isAdminRole || isSuperadmin;
 
   // Local draft: edited freely, submitted as one complete set on save.
   const [name, setName] = useState(role.name);
@@ -129,6 +134,33 @@ function RoleDetailView({ role }: { role: Role }) {
     (description || "") !== (role.description || "") ||
     draft.length !== baseline.length ||
     draft.some((p) => baseline.find((b) => b.id === p.id)?.accessScope !== p.accessScope);
+
+  if (!canEdit) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-8">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">{role.name}</h1>
+              <Badge variant="secondary">Default</Badge>
+            </div>
+            <p className="text-sm text-gray-500">Manage role details and its permissions matrix.</p>
+          </div>
+        </div>
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-800">This role is restricted</p>
+          <p className="text-xs text-amber-700 mt-1">The ADMIN role can only be managed by a SUPERADMIN. Your current role ({userRole ?? "unknown"}) does not have permission to modify it. The backend will reject any direct API attempts with 403.</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg border shadow-sm opacity-60">
+          <p className="text-sm text-gray-500">Permission matrix is read-only.</p>
+          <RolePermissionEditor draft={draft} baseline={baseline} onChange={() => {}} readOnly />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">

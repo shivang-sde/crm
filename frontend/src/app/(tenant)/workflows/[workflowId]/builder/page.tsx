@@ -334,9 +334,35 @@ function BuilderInner() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      onNodesChangeBase(changes as NodeChange<BuilderNode>[]);
+      // Do not hijack Delete/Backspace while typing in inputs
+      const active = typeof document !== "undefined" ? document.activeElement : null;
+      const isTypingTarget =
+        active instanceof HTMLElement &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.isContentEditable ||
+          active.getAttribute("role") === "combobox" ||
+          active.closest("[data-radix-popper-content-wrapper]") !== null);
+      let effectiveChanges = changes;
+      if (isTypingTarget) {
+        effectiveChanges = changes.filter((c) => c.type !== "remove");
+        if (effectiveChanges.length === 0) return;
+        if (effectiveChanges.length !== changes.length) {
+          // swallow remove while typing, still allow other changes
+        }
+      }
+      // TRIGGER is not deletable — filter out any remove for TRIGGER nodes
+      const triggerIds = new Set(nodes.filter((n) => n.data.nodeType === "TRIGGER").map((n) => n.id));
+      const rawRemovedIds = effectiveChanges.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
+      const blockedTrigger = rawRemovedIds.filter((id) => triggerIds.has(id));
+      if (blockedTrigger.length > 0) {
+        toast.error("Trigger cannot be deleted");
+        effectiveChanges = effectiveChanges.filter((c) => !(c.type === "remove" && blockedTrigger.includes((c as { id: string }).id)));
+        if (effectiveChanges.length === 0) return;
+      }
+      const removedIds = effectiveChanges.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
+      onNodesChangeBase(effectiveChanges as NodeChange<BuilderNode>[]);
       // Safe deletion: remove edges that were attached to deleted nodes — never auto-invent A→C
-      const removedIds = changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id);
       if (removedIds.length > 0) {
         setEdges((cur) => cur.filter((e) => !removedIds.includes(e.source) && !removedIds.includes(e.target)));
         setSelectedNodeId((prev) => (prev && removedIds.includes(prev) ? null : prev));
@@ -350,7 +376,7 @@ function BuilderInner() {
       setNodes((currentNodes) => {
         let updated = false;
         const newNodes = currentNodes.map((node) => {
-          const change = changes.find(
+          const change = effectiveChanges.find(
             (c): c is NodeChange<BuilderNode> & { position: { x: number; y: number } } =>
               c.type === "position" && c.id === node.id && "position" in c && c.position !== undefined
           );
@@ -376,7 +402,25 @@ function BuilderInner() {
         return updated ? newNodes : currentNodes;
       });
     },
-    [onNodesChangeBase, readOnly, armedHandle]
+    [onNodesChangeBase, readOnly, armedHandle, nodes]
+  );
+
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      if (readOnly) return;
+      const target = nodes.find((n) => n.id === nodeId);
+      if (!target) return;
+      if (target.data.nodeType === "TRIGGER") {
+        toast.error("Trigger cannot be deleted");
+        return;
+      }
+      setNodes((cur) => cur.filter((n) => n.id !== nodeId));
+      setEdges((cur) => cur.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setSelectedNodeId((prev) => (prev === nodeId ? null : prev));
+      if (armedHandle?.nodeId === nodeId) setArmedHandle(null);
+      toast.success(`${target.data.name || target.data.nodeType} deleted — save to persist`);
+    },
+    [readOnly, nodes, armedHandle]
   );
 
   const handleConnect = useCallback(
@@ -1339,6 +1383,7 @@ function BuilderInner() {
                     edges={edges}
                     isDisconnected={selectedNode ? disconnectedIds.has(selectedNode.id) : false}
                     onChange={handleNodeConfigurationChange}
+                    onDelete={handleDeleteNode}
                   />
                 ) : (
                   <WorkflowEdgeConfigPanel
@@ -1476,6 +1521,7 @@ function BuilderInner() {
               edges={edges}
               isDisconnected={selectedNode ? disconnectedIds.has(selectedNode.id) : false}
               onChange={handleNodeConfigurationChange}
+              onDelete={handleDeleteNode}
             />
           ) : (
             <WorkflowEdgeConfigPanel

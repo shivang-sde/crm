@@ -62,21 +62,23 @@ public class RoleManagementService {
 
     public RoleResponse getRole(UUID roleId) {
         UUID tenantId = tenantContext.getTenantId();
+        UUID actorId = tenantContext.getUserId();
+        boolean isSuperadmin = actorId != null && permissionEvaluatorService.isSuperadmin(actorId);
 
            Role role = roleRepository.findById(roleId)
         .orElseThrow(() -> new ResourceNotFoundException("Role", roleId.toString()));
     
     // Permission check:
     // 1. If role has no tenant (platform role like SUPERADMIN) - only accessible by platform users
-    // 2. If role has tenant - must match current user's tenant
+    // 2. If role has tenant - must match current user's tenant (SUPERADMIN bypasses)
     if (role.getTenantId() == null) {
         // Platform role - only allow access if current user is platform user (tenantId is null)
         if (tenantId != null) {
             throw new BusinessException("FORBIDDEN", "Cannot access platform role from tenant context");
         }
     } else {
-        // Tenant role - must match current user's tenant
-        if (tenantId == null || !role.getTenantId().equals(tenantId)) {
+        // Tenant role - must match current user's tenant, except SUPERADMIN
+        if (!isSuperadmin && (tenantId == null || !role.getTenantId().equals(tenantId))) {
             throw new BusinessException("FORBIDDEN", "Cannot access cross-tenant roles");
         }
     }
@@ -135,12 +137,14 @@ public class RoleManagementService {
 
     public RoleResponse updateRole(UUID roleId, UpdateRoleRequest request) {
         UUID tenantId = parseTenantId();
+        UUID actorId = requireActorId();
+        boolean isSuperadmin = permissionEvaluatorService.isSuperadmin(actorId);
         
         Role role = roleRepository.findById(roleId)
             .orElseThrow(() -> new ResourceNotFoundException("Role", roleId.toString()));
             
         if (tenantId == null) {
-            if (role.getTenantId() != null) {
+            if (role.getTenantId() != null && !isSuperadmin) {
                 throw new BusinessException("FORBIDDEN", "Cannot modify tenant roles from platform context");
             }
         } else if (role.getTenantId() == null || !role.getTenantId().equals(tenantId)) {
@@ -148,7 +152,9 @@ public class RoleManagementService {
         }
 
         if (List.of("SUPERADMIN", "RESELLER", "ADMIN", "MANAGER", "EMPLOYEE").contains(role.getName())) {
-            throw new BusinessException("FORBIDDEN", "Cannot modify default system roles");
+            if (!isSuperadmin || List.of("SUPERADMIN", "RESELLER").contains(role.getName())) {
+                throw new BusinessException("FORBIDDEN", "Cannot modify default system roles");
+            }
         }
 
         // RBAC-6: delegation boundary on the resulting permission set
@@ -173,6 +179,8 @@ public class RoleManagementService {
     @Transactional(readOnly = true)
     public List<PermissionResponse> getRolePermissions(UUID roleId) {
         UUID tenantId = parseTenantId();
+        UUID actorId = tenantContext.getUserId();
+        boolean isSuperadmin = actorId != null && permissionEvaluatorService.isSuperadmin(actorId);
         Role role = roleRepository.findById(roleId)
             .orElseThrow(() -> new ResourceNotFoundException("Role", roleId.toString()));
 
@@ -181,7 +189,7 @@ public class RoleManagementService {
                 throw new BusinessException("FORBIDDEN", "Cannot access platform role from tenant context");
             }
         } else {
-            if (tenantId == null || !role.getTenantId().equals(tenantId)) {
+            if (!isSuperadmin && (tenantId == null || !role.getTenantId().equals(tenantId))) {
                 throw new BusinessException("FORBIDDEN", "Cannot access cross-tenant roles");
             }
         }
@@ -278,12 +286,14 @@ public class RoleManagementService {
 
     public void deleteRole(UUID roleId) {
         UUID tenantId = parseTenantId();
+        UUID actorId = requireActorId();
+        boolean isSuperadmin = permissionEvaluatorService.isSuperadmin(actorId);
 
         Role roleToDelete = roleRepository.findById(roleId)
             .orElseThrow(() -> new ResourceNotFoundException("Role", roleId.toString()));
 
         if (tenantId == null) {
-            if (roleToDelete.getTenantId() != null) {
+            if (roleToDelete.getTenantId() != null && !isSuperadmin) {
                 throw new BusinessException("FORBIDDEN", "Cannot delete tenant roles from platform context");
             }
         } else if (roleToDelete.getTenantId() == null || !roleToDelete.getTenantId().equals(tenantId)) {
@@ -291,7 +301,9 @@ public class RoleManagementService {
         }
 
         if (List.of("SUPERADMIN", "RESELLER", "ADMIN", "MANAGER", "EMPLOYEE").contains(roleToDelete.getName())) {
-            throw new BusinessException("FORBIDDEN", "Cannot delete default system roles");
+            if (!isSuperadmin || List.of("SUPERADMIN", "RESELLER").contains(roleToDelete.getName())) {
+                throw new BusinessException("FORBIDDEN", "Cannot delete default system roles");
+            }
         }
 
         // Ensure no users are assigned to this role

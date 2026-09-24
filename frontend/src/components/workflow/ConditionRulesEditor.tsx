@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { insertAtCursor } from "./utils/cursor-insert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -128,6 +129,23 @@ export function ConditionRulesEditor({
       onChange(logic, next);
     },
     [rules, logic, onChange]
+  );
+
+  const inputRefs = useRef<Map<number, HTMLInputElement>>(new Map());
+  const selRefs = useRef<Map<number, { start: number; end: number }>>(new Map());
+  const captureSel = useCallback(
+    (idx: number) => {
+      const el = inputRefs.current.get(idx);
+      if (!el) return;
+      try {
+        const curLen = (el.value ?? "").length;
+        selRefs.current.set(idx, {
+          start: el.selectionStart ?? curLen,
+          end: el.selectionEnd ?? el.selectionStart ?? curLen,
+        });
+      } catch {}
+    },
+    []
   );
 
   const orderedGroupsMemo = useMemo(
@@ -262,7 +280,18 @@ export function ConditionRulesEditor({
                   placeholder={isListOperator(rule.operator) ? "Value — comma separated" : "Value"}
                   defaultValue={valueToDisplay(rule.value)}
                   disabled={readOnly || NULL_OPERATORS.has(rule.operator)}
-                  onBlur={(event) => updateRule(index, { value: displayToValue(event.target.value, rule.operator) })}
+                  ref={(el) => {
+                    if (el) inputRefs.current.set(index, el as HTMLInputElement);
+                    else inputRefs.current.delete(index);
+                  }}
+                  onSelect={() => captureSel(index)}
+                  onClick={() => captureSel(index)}
+                  onKeyUp={() => captureSel(index)}
+                  onFocus={() => captureSel(index)}
+                  onBlur={(event) => {
+                    captureSel(index);
+                    updateRule(index, { value: displayToValue(event.target.value, rule.operator) });
+                  }}
                   className="flex-1"
                 />
                 {!readOnly && !NULL_OPERATORS.has(rule.operator) && (
@@ -274,13 +303,35 @@ export function ConditionRulesEditor({
                     nodeType="CONDITION"
                     isTriggerConfig={false}
                     onSelect={(insertion) => {
+                      const el = inputRefs.current.get(index);
+                      const sel = selRefs.current.get(index);
+                      const disp = valueToDisplay(rule.value);
+                      const start = sel?.start ?? el?.selectionStart ?? disp.length;
+                      const end = sel?.end ?? el?.selectionEnd ?? start;
                       if (isListOperator(rule.operator)) {
-                        const current = Array.isArray(rule.value) ? (rule.value as unknown[]).map(String) : valueToDisplay(rule.value).split(",").map((s) => s.trim()).filter(Boolean);
-                        const nextVal = [...current, insertion];
-                        updateRule(index, { value: nextVal });
+                        const { next: newDisp, cursor } = insertAtCursor(disp, insertion, start, end);
+                        updateRule(index, { value: displayToValue(newDisp, rule.operator) });
+                        requestAnimationFrame(() => {
+                          const target = inputRefs.current.get(index);
+                          if (!target) return;
+                          target.focus();
+                          try {
+                            target.setSelectionRange(cursor, cursor);
+                          } catch {}
+                          selRefs.current.set(index, { start: cursor, end: cursor });
+                        });
                       } else {
-                        const nextVal = rule.value ? `${valueToDisplay(rule.value)} ${insertion}` : insertion;
-                        updateRule(index, { value: nextVal });
+                        const { next: newVal, cursor } = insertAtCursor(disp, insertion, start, end);
+                        updateRule(index, { value: newVal });
+                        requestAnimationFrame(() => {
+                          const target = inputRefs.current.get(index);
+                          if (!target) return;
+                          target.focus();
+                          try {
+                            target.setSelectionRange(cursor, cursor);
+                          } catch {}
+                          selRefs.current.set(index, { start: cursor, end: cursor });
+                        });
                       }
                     }}
                   />
