@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ForecastCategory, RecordCategory } from "@/types/deal-stages";
+import { ForecastCategory } from "@/types/deal-stages";
 import { DealType } from "@/types/deals";
 
 const forecastCategoryEnum = z.enum(["PIPELINE", "BEST_CASE", "COMMIT", "CLOSED", "OMITTED"] as const satisfies readonly ForecastCategory[]);
@@ -8,7 +8,6 @@ const dealTypeEnum = z.enum(["NEW_BUSINESS", "EXISTING_BUSINESS", "RENEWAL", "UP
 export const dealFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   amount: z.coerce.number().optional().nullable(),
-  currency: z.string().optional().nullable(),
   stageId: z.string().min(1, "Stage is required"),
   accountId: z.string().optional().nullable(),
   contactId: z.string().optional().nullable(),

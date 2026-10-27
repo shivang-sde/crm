@@ -64,7 +64,7 @@ public class SalesDashboardService {
         return SalesDashboardResponse.builder()
             .deals(buildDealSummary(visibleDeals, today))
             .stages(buildStageBreakdown(tenantId, visibleDeals, today))
-            .owners(buildOwnerBreakdown(visibleDeals))
+            .owners(buildOwnerBreakdown(tenantId, visibleDeals))
             .leadFunnel(buildLeadFunnel(tenantId, currentUserId))
             .closing(buildClosingMetrics(visibleDeals, today))
             .build();
@@ -81,6 +81,7 @@ public class SalesDashboardService {
             : List.of();
 
         Specification<Deal> spec = DealSpecifications.byTenantId(tenantId)
+            .and(DealSpecifications.notDeleted())
             .and(DealSpecifications.visibleToUser(accessScope, currentUserId, teamUserIds));
 
         return dealRepository.findAll(spec);
@@ -239,7 +240,7 @@ public class SalesDashboardService {
         return stages;
     }
 
-    private List<OwnerBreakdown> buildOwnerBreakdown(List<Deal> deals) {
+    private List<OwnerBreakdown> buildOwnerBreakdown(UUID tenantId, List<Deal> deals) {
         Map<UUID, List<Deal>> byOwner = new HashMap<>();
         UUID unassignedKey = new UUID(0L, 0L);
 
@@ -273,7 +274,7 @@ public class SalesDashboardService {
             boolean unassigned = entry.getKey().equals(unassignedKey);
             owners.add(OwnerBreakdown.builder()
                 .ownerUserId(unassigned ? null : entry.getKey())
-                .ownerName(unassigned ? "Unassigned" : resolveOwnerName(entry.getKey()))
+                .ownerName(unassigned ? "Unassigned" : resolveOwnerName(tenantId, entry.getKey()))
                 .openCount(openCount)
                 .wonCount(wonCount)
                 .lostCount(lostCount)
@@ -286,8 +287,10 @@ public class SalesDashboardService {
         return owners;
     }
 
-    private String resolveOwnerName(UUID ownerId) {
-        return userRepository.findById(ownerId).map(User::getDisplayName).orElse("Unknown user");
+    private String resolveOwnerName(UUID tenantId, UUID ownerId) {
+        return userRepository.findByIdAndTenantIdAndDeletedFalse(ownerId, tenantId)
+            .map(User::getDisplayName)
+            .orElse("Unknown user");
     }
 
     private LeadFunnel buildLeadFunnel(UUID tenantId, UUID currentUserId) {
@@ -298,6 +301,7 @@ public class SalesDashboardService {
 
         Specification<com.shivang.crm.modules.lead.entity.Lead> totalSpec =
             LeadSpecifications.byTenantId(tenantId)
+                .and(LeadSpecifications.notDeleted())
                 .and(LeadSpecifications.visibleToUser(accessScope, currentUserId, teamUserIds));
         Specification<com.shivang.crm.modules.lead.entity.Lead> convertedSpec =
             totalSpec.and(LeadSpecifications.byIsConverted(true));

@@ -1,0 +1,24 @@
+# Management Decision Register
+
+| | |
+|---|---|
+| **Doc ID** | CRM-WSB-DEC |
+| **Version / Status** | 0.1 — PROPOSED — NOT APPROVED (register populated from documented open questions; no decision made on anyone's behalf) |
+| **Prepared** | 2026-10-26 (Phase 1.8) |
+| **Rule** | Decision/Date/Approval fields remain blank until a person authorized by management supplies them. Status invalid-population of those fields is a process defect (B4). |
+
+| ID | Decision required | Why it matters | Options (where known) | Evidence / context | Authorized decision-maker role | Status | Decision / date / approval | Downstream documents affected |
+|---|---|---|---|---|---|---|---|---|
+| DEC-01 | CMMI model and version to be used as reference | Determines which practices the B1–B9 docs are tailored against; prevents model-specific claims | CMMI Development (likely — software product); CMMI Services; V2.2 vs V3.0 | CRM-TD-12 questions table; no model selected anywhere in docs | Management (owner + CEO) | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | all B1–B9 tailoring notes; next-phase proposal; appraisal-prep docs |
+| DEC-02 | Organizational and project appraisal scope | Defines what a future appraisal would cover; prevents over-scoped claims | Single project (CRM) vs OU-wide; pilot scope | CRM-TD-12; repo is a single-team project | Management | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | B-doc adoption language; readiness boundaries doc |
+| DEC-03 | Appraisal type/route and Lead Appraiser | Formal path vs internal readiness only | Internal readiness assessment now; official Benchmark appraisal later (requires CMMI Institute-certified Lead Appraiser) | CRM-TD-12; no Lead Appraiser named | Management (+ procurement) | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | ACT plan; meeting pack follow-ups |
+| DEC-04 | Process-document owners and approvers (B1–B9 owner; B5 secondary reviewer) | Every B-doc has `OWNER TO BE ASSIGNED`; activation cannot start without owners | Single owner for all; split owners; owner + agent-editor model | B-doc headers; ACT plan §3 | Management with owner input | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | all B-doc approval blocks; DEC register upkeep |
+| DEC-05 | Release/deployment owner (must be a human other than the documentation agent) | B8 requires a named deploy operator with signing authority | Owner; other team member | WSB_B8 §6; no deploy records exist (D-09) | Management | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | WSB_B8; B0 EVD-12 |
+| DEC-06 | Six Sigma: formal program/belts vs informal DMAIC-based improvement | Determines whether SSM inventory becomes a program charter | Formal Six Sigma program (belts, projects); informal DMAIC practice; neither for now | SSM §2; CRM-TD-12 Part D | Management | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | QUALITY_METRICS_READYNESS; B9 improvement backlog |
+| DEC-07 | PDF disposition + repository-visibility policy (`docs/pashucare credential.pdf`) | Closes the tracked-credential exposure path; history remediation affects all clones | (a) stage+commit deletion only; (b) deletion + history rewrite/force-push (owner-performed); (c) leave + visibility change; (d) leave + secret-scanning enablement; combinations | Owner deleted local copy (verified unstaged ` D`); PDF still in index + origin/main reachable history; contents = mock per OWNER STATEMENT (never independently verified) | Repo owner / CEO (history rewrite and visibility are explicitly reserved) | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | CRM-TD-11 §6; B0 EVD-11; B4 security entries |
+| DEC-08 | Local credential-artifact handling (`e2e-commercial-key*.txt`, `rbac10-tokens.json`, `wf58_token.txt`, `tokens_test.txt`, result JSON/JS) | Untracked files containing (apparently) test credentials sit in the working tree | Keep + ignore-rule; delete (owner action); move to secret store | B0 EVD-13; CRM-TD-11 §4; contents never printed by this workflow | Owner | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | B0 EVD-13 row; CRM-TD-11 disposition table |
+| DEC-09 | `frontend\.env.test` content review + secret-scanning posture | File is tracked and pushed; contents never inspected; risk unknown until reviewed | Human review (content inspection outside agent) → then disposition; enable GitHub secret scanning; add env ignore rules | B0 EVD-17; CRM-TD-11 H-05/H-06 | Owner (+ delegate for review) | OWNER/MANAGEMENT DECISION REQUIRED | _blank_ | CRM-TD-11 H-06; B0 EVD-17 |
+
+Related smaller open items recorded elsewhere (not duplicated here): B-doc adoption decisions per doc (meeting pack), B9 threshold setting (needs data), B1 approval mechanism.
+
+Integrity rule: when a decision is supplied, fill **only** that row's Decision/date/approval fields, flip Status (e.g., `DECIDED 2026-__-__`), and update the downstream documents' headers the same day (see B7 doc-change discipline).

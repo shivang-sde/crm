@@ -15,7 +15,7 @@ interface EntityDealsSectionProps {
 
 function formatAmount(deal: DealResponse): string {
   if (deal.amount === undefined || deal.amount === null) return "—";
-  return `${deal.amount.toLocaleString()} ${deal.currency || "USD"}`;
+  return deal.amount.toLocaleString();
 }
 
 function categoryBadge(category?: string | null) {

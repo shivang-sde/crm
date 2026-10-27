@@ -360,8 +360,8 @@ public class MeetingService {
                 .attendees(meeting.getAttendees())
                 .entityType(meeting.getEntityType())
                 .entityId(meeting.getEntityId())
-                .entityName(resolveEntityName(meeting.getEntityType(), meeting.getEntityId()))
-                .status(meeting.getStatus())
+.entityName(resolveEntityName(meeting.getTenantId(), meeting.getEntityType(), meeting.getEntityId()))
+            .status(meeting.getStatus())
                 .remindAt(meeting.getRemindAt())
                 .recurrence(meeting.getRecurrence())
                 .customData(meeting.getCustomData())
@@ -375,11 +375,11 @@ public class MeetingService {
         return response;
     }
 
-    private String resolveEntityName(String entityType, UUID entityId) {
+    private String resolveEntityName(UUID tenantId, String entityType, UUID entityId) {
         if (entityType == null || entityId == null) {
             return null;
         }
-        return entityResolverService.resolveEntityName(entityType, entityId);
+        return entityResolverService.resolveEntityName(entityType, entityId, tenantId);
     }
 
     private String resolveUserName(UUID userId) {

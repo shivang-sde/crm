@@ -7,6 +7,7 @@ import {
   AccountCreateRequest,
   AccountListParams,
   AccountUpdateRequest,
+  Customer360Params,
 } from "@/types/accounts";
 
 export function useAccounts(params: AccountListParams = {}) {
@@ -24,8 +25,22 @@ export function useAccount(id: string | undefined) {
   });
 }
 
-export function useAccountContacts(accountId: string | undefined, params: { page?: number; size?: number } = {}) {
+/**
+ * L3.2-P4: the Customer 360 workspace.
+ *
+ * <p>Every section is paged independently, so all six page/size pairs belong in the
+ * query key. Advancing the timeline then refetches a different key than advancing
+ * contacts would, which is what keeps the two from colliding.
+ */
+export function useCustomer360(id: string | undefined, params: Customer360Params = {}) {
   return useQuery({
+    queryKey: ["accounts", id, "customer360", params],
+    queryFn: () => accountApi.getCustomer360(id!, params),
+    enabled: !!id,
+  });
+}
+
+export function useAccountContacts(accountId: string | undefined, params: { page?: number; size?: number } = {}) {  return useQuery({
     queryKey: ["accounts", accountId, "contacts", params],
     queryFn: () => accountApi.getAccountContacts(accountId!, params),
     enabled: !!accountId,

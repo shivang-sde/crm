@@ -6,6 +6,8 @@ import {
   AccountListParams,
   AccountResponse,
   AccountUpdateRequest,
+  Customer360Params,
+  Customer360Response,
 } from "@/types/accounts";
 import { ContactResponse } from "@/types/contacts";
 import { EntityActivityResponse, EntityNoteResponse } from "@/types/entities";
@@ -29,6 +31,23 @@ export const accountApi = {
 
   getAccount: async (id: string) => {
     const response = await api.get<ApiResponse<AccountResponse>>(`/accounts/${id}`);
+    return unwrapResponse(response);
+  },
+
+  /**
+   * L3.2-P4: the Customer 360 read.
+   *
+   * <p>One endpoint serves the whole workspace. There is deliberately no per-section
+   * variant here (`/accounts/{id}/contacts`, `/accounts/{id}/timeline`, …): the
+   * backend composes those domain reads with their own authorization, and splitting
+   * them in the frontend would both duplicate that gate and lose the consistent
+   * snapshot across sections.
+   *
+   * <p>Pagination is per section, so all twelve params are forwarded even when a tab is
+   * not visible. That keeps each section's page stable when the user returns to it.
+   */
+  getCustomer360: async (accountId: string, params: Customer360Params = {}) => {
+    const response = await api.get<ApiResponse<Customer360Response>>(`/accounts/${accountId}/360`, { params });
     return unwrapResponse(response);
   },
 

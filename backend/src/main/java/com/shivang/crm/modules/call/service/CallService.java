@@ -513,7 +513,7 @@ private UUID resolveEffectiveOwnerId(Call call) {
             .followUpAt(call.getFollowUpAt())
             .entityType(call.getEntityType())
             .entityId(call.getEntityId())
-            .entityName(resolveEntityName(call.getEntityType(), call.getEntityId()))
+            .entityName(resolveEntityName(call.getTenantId(), call.getEntityType(), call.getEntityId()))
             .status(call.getStatus())
             .remindAt(call.getRemindAt())
             .recurrence(call.getRecurrence())
@@ -540,11 +540,11 @@ private UUID resolveEffectiveOwnerId(Call call) {
         return response;
     }
 
-    private String resolveEntityName(String entityType, UUID entityId) {
+    private String resolveEntityName(UUID tenantId, String entityType, UUID entityId) {
         if (entityType == null || entityId == null) {
             return null;
         }
-        return entityResolverService.resolveEntityName(entityType, entityId);
+        return entityResolverService.resolveEntityName(entityType, entityId, tenantId);
     }
 
     // private String resolveUserName(UUID userId) {

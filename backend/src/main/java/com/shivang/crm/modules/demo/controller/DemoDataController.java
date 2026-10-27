@@ -70,7 +70,10 @@ public class DemoDataController {
     }
 
     private UUID currentTenantId() {
-        return tenantContext.getTenantId();
+        // requireTenantId(), not getTenantId(): a platform-level user has no tenant,
+        // and a null tenantId flowing into the demo installer would target nothing
+        // while appearing to succeed.
+        return tenantContext.requireTenantId();
     }
 
     private UUID currentUserId() {

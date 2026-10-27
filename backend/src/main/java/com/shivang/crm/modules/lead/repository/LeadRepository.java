@@ -25,6 +25,13 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
     @Query("SELECT l FROM Lead l WHERE l.id = :id AND l.tenantId = :tenantId")
     Optional<Lead> findByIdAndTenantId(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
+    /**
+     * L3.0-P2: live lookup. A Deal must never be linked to a soft-deleted Lead.
+     */
+    Optional<Lead> findByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
+    boolean existsByIdAndTenantIdAndDeletedFalse(UUID entityId, UUID tenantId);
+
     Optional<Lead> findByTenantIdAndEmailAndIdNot(
         UUID tenantId,
         String email,

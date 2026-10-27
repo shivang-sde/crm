@@ -14,7 +14,14 @@ public interface ContactRepository extends JpaRepository<Contact, UUID>, JpaSpec
 
     Optional<Contact> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    /**
+     * L3.0-P2: live lookup. A Deal must never be linked to a soft-deleted Contact.
+     */
+    Optional<Contact> findByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
     boolean existsByIdAndTenantId(UUID entityId, UUID tenantId);
+
+    boolean existsByIdAndTenantIdAndDeletedFalse(UUID entityId, UUID tenantId);
 
     Optional<Contact> findByTenantIdAndEmailIgnoreCaseAndDeletedFalse(UUID tenantId, String email);
 

@@ -46,18 +46,29 @@ public class RbacFilter extends OncePerRequestFilter {
             "/api/v1/auth", "/actuator", "/api/v1/public", "/api/v1/webhooks",
             "/api/v1/records/webhooks", "/swagger", "/v3/api-docs");
 
-    // Calling configuration endpoints are administrative / self-service and use
+    // Calling configuration endpoints are administrative / self-service and carry
     // explicit controller authorization (CallingAdminController: admin:settings,
-    // CallingUserSettingsController: isAuthenticated). They must not be derived
-    // as artificial RBAC modules (integration, call-setting, calling-provider, setting).
+    // CallingUserSettingsController: call:read / call:write). They must not be
+    // derived as artificial RBAC modules (integration, call-setting,
+    // calling-provider, setting) - "setting" in particular is not a seeded module,
+    // so URL-derived RBAC would deny the whole prefix.
     private static final Set<String> CALLING_CONFIG_EXCLUDED_PREFIXES = Set.of(
             "/api/v1/integrations",
             "/api/v1/call-settings",
             "/api/v1/calling-providers",
-            "/api/v1/settings/connectors",
+            "/api/v1/settings",
+            "/api/v1/voice",
             "/api/v1/notifications",
             "/api/v1/admin/commercial",
             "/api/v1/commercial-documents");
+
+    // Operator recovery tooling. These handlers carry explicit, DB-backed
+    // @PreAuthorize checks against the seeded admin:operations_read /
+    // admin:operations_write permissions. URL-derived RBAC cannot be used here
+    // because it would resolve this prefix to the unseeded "operation" module and
+    // deny everything. Same pattern as /api/v1/integrations above.
+    private static final Set<String> OPERATOR_TOOLS_EXCLUDED_PREFIXES = Set.of(
+            "/api/v1/operations");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -92,6 +103,15 @@ public class RbacFilter extends OncePerRequestFilter {
         // and must not be derived as integration/call-setting/calling-provider/setting modules.
         if (isCallingConfigPath(request)) {
             log.debug("Skipping URL-derived RBAC for calling config path: {}", request.getRequestURI());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // Operator recovery tooling relies on its own @PreAuthorize expressions against
+        // the seeded admin:operations_* permissions, so URL-derived RBAC is skipped for
+        // the prefix. Every other app surface derives a permission from the path.
+        if (isOperatorToolsPath(request)) {
+            log.debug("Skipping URL-derived RBAC for operator tools path: {}", request.getRequestURI());
             filterChain.doFilter(request, response);
             return;
         }
@@ -205,6 +225,11 @@ public class RbacFilter extends OncePerRequestFilter {
         return CALLING_CONFIG_EXCLUDED_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
+    private boolean isOperatorToolsPath(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return OPERATOR_TOOLS_EXCLUDED_PREFIXES.stream().anyMatch(path::startsWith);
+    }
+
     private ModuleAction extractModuleAction(String path, String method) {
 
         // Special handling for role endpoints
@@ -281,7 +306,21 @@ public class RbacFilter extends OncePerRequestFilter {
             case "leads", "lead" -> "lead";
             case "contacts", "contact" -> "contact";
             case "accounts", "account" -> "account";
+            // L3.4-P1: the cross-account risk listing lives outside /accounts so it is
+            // not nested under an account id. It reads account-derived facts, so it
+            // resolves to the same "account" module and the same account:read gate as
+            // Customer 360. Without this the switch would fall through to an unseeded
+            // module and deny every caller, exactly the failure mode the Feedback and
+            // Ticket entries above exist to prevent.
+            case "customer-health" -> "account";
             case "deals", "deal" -> "deal";
+            // L3.1-P1: explicit rather than relying on the trailing-'s' fallback,
+            // matching every other domain in this switch.
+            case "tickets", "ticket" -> "ticket";
+            // L3.3-P1: explicit rather than relying on the trailing-'s' fallback. The
+            // fallback would happen to yield "feedback", but only by accident of English
+            // pluralisation, and a permission module must never depend on that.
+            case "feedback", "feedbacks" -> "feedback";
             case "activities", "activity" -> "activity";
             case "calls", "call" -> "call";
             case "tasks", "task" -> "task";

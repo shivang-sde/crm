@@ -78,6 +78,12 @@ app:
     generation-delay-ms: 60000
     generation-window-days: 30
     batch-size: 100
+  tickets:
+    sla:
+      response-minutes: ${TICKET_SLA_RESPONSE_MINUTES:240}
+      resolution-minutes: ${TICKET_SLA_RESOLUTION_MINUTES:1440}
+      breach-scan-enabled: true
+      breach-scan-delay-ms: ${TICKET_SLA_BREACH_SCAN_DELAY_MS:60000}
   entitlements:
     expiry-enabled: true
     expiry-delay-ms: ${ENTITLEMENT_EXPIRY_DELAY_MS:86400000}
@@ -89,6 +95,40 @@ app:
     stale-after-seconds: ${OUTBOX_STALE_AFTER_SECONDS:300}
     confirm-timeout-ms: ${OUTBOX_CONFIRM_TIMEOUT_MS:5000}
     max-retry-delay-seconds: ${OUTBOX_MAX_RETRY_DELAY_SECONDS:300}
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:10}
+  rabbitmq:
+    consumer:
+      prefetch: ${RABBITMQ_CONSUMER_PREFETCH:50}
+      concurrency: ${RABBITMQ_CONSUMER_CONCURRENCY:1}
+      max-concurrency: ${RABBITMQ_CONSUMER_MAX_CONCURRENCY:4}
+      retry:
+        max-attempts: ${RABBITMQ_CONSUMER_RETRY_MAX_ATTEMPTS:3}
+        initial-interval-ms: ${RABBITMQ_CONSUMER_RETRY_INITIAL_INTERVAL_MS:500}
+        multiplier: ${RABBITMQ_CONSUMER_RETRY_MULTIPLIER:2.0}
+        max-interval-ms: ${RABBITMQ_CONSUMER_RETRY_MAX_INTERVAL_MS:10000}
+  resilience:
+    redis:
+      open-duration-ms: ${REDIS_RESILIENCE_OPEN_DURATION_MS:15000}
+  operator-tools:
+    enabled: ${OPERATOR_TOOLS_ENABLED:false}
+    dlq:
+      management-url: ${RABBITMQ_MANAGEMENT_URL:}
+      vhost: ${RABBITMQ_MANAGEMENT_VHOST:/}
+      username: ${RABBITMQ_MANAGEMENT_USERNAME:}
+      password: ${RABBITMQ_MANAGEMENT_PASSWORD:}
+      page-size: ${OPERATOR_TOOLS_DLQ_PAGE_SIZE:20}
+      max-scan-messages: ${OPERATOR_TOOLS_DLQ_MAX_SCAN:50}
+    outbox:
+      page-size: ${OPERATOR_TOOLS_OUTBOX_PAGE_SIZE:20}
+  security:
+    token-blacklist:
+      redis-failure-mode: ${TOKEN_BLACKLIST_REDIS_FAILURE_MODE:BYPASS}
+    login:
+      throttle:
+        enabled: ${LOGIN_THROTTLE_ENABLED:true}
+        max-failed-attempts: ${LOGIN_THROTTLE_MAX_FAILED_ATTEMPTS:5}
+        lock-duration-ms: ${LOGIN_THROTTLE_LOCK_DURATION_MS:900000}
+        max-fallback-keys: ${LOGIN_THROTTLE_MAX_FALLBACK_KEYS:10000}
   workflow-runtime:
     poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:5000}
     batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:25}
@@ -124,14 +164,18 @@ app:
     enabled: ${COMMERCIAL_INTEGRATION_ENABLED:true}
 
 # ── JWT Configuration ──
+# No fallback value. A missing JWT_SECRET aborts startup during placeholder
+# resolution, and ProductionSecuritySecretsValidator (prod profile only) rejects
+# the example key that ships in application.yaml, so production can never silently
+# run on a publicly known signing key.
 jwt:
-  secret: ${JWT_SECRET:Y3JtLWFwcGxpY2F0aW9uLXN1cGVyLXNlY3JldC1rZXktdGhhdC1pcy1sb25nLWVub3VnaC1mb3ItaHMyNTY=}
+  secret: ${JWT_SECRET}
   access-token-expiry-ms: 36000000
   refresh-token-expiry-days: 7
 
 integration:
   security:
-    encryption-key: ${INTEGRATION_ENCRYPTION_KEY:XKM1/RmCg8xvU/iYTEY81mZUgZDWeHxwH3Cpqwz1D2w=}
+    encryption-key: ${INTEGRATION_ENCRYPTION_KEY}
 
 
 server:

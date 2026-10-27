@@ -33,7 +33,6 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/v1/settings")
 @RequiredArgsConstructor
-@PreAuthorize("isAuthenticated()")
 public class CallingUserSettingsController {
 
     private static final String USER_SCOPE = "USER";
@@ -67,6 +66,25 @@ public class CallingUserSettingsController {
             String authType) {
     }
 
+    /**
+     * VOICE-02: short-lived Generic SIP connection material for browser
+     * registration. Authenticated + tenant-scoped (see requireConnector),
+     * resolves only the current user's credential (tenant fallback per
+     * ConnectorCredentialService) under the allowlisted "primary" name.
+     * The secret is returned ONLY here over HTTPS and MUST be treated as
+     * ephemeral by the browser: never persisted, logged, or embedded in
+     * events/state. Never log this response.
+     */
+    public record SipConnectionResponse(
+            UUID connectorInstanceId,
+            String providerKey,
+            String endpoint,
+            String sipDomain,
+            String username,
+            String password,
+            Object iceServers) {
+    }
+
     public record CredentialUpdateRequest(
             String authType,
             Map<String, Object> values) {
@@ -87,6 +105,7 @@ public class CallingUserSettingsController {
     }
 
     @GetMapping("/connectors")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'read')")
     public ResponseEntity<ApiResponse<List<ConnectorResponse>>> connectors() {
         UUID tenantId = requireTenantId();
 
@@ -113,6 +132,7 @@ public class CallingUserSettingsController {
     }
 
     @GetMapping("/connectors/{connectorInstanceId}/credential-status")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'read')")
     public ResponseEntity<ApiResponse<CredentialStatusResponse>>
     credentialStatus(
             @PathVariable UUID connectorInstanceId) {
@@ -149,7 +169,97 @@ public class CallingUserSettingsController {
         );
     }
 
-    @PutMapping("/connectors/{connectorInstanceId}/credentials")
+    @GetMapping("/connectors/{connectorInstanceId}/sip-connection")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'read')")
+    public ResponseEntity<ApiResponse<SipConnectionResponse>>
+    sipConnection(
+            @PathVariable UUID connectorInstanceId) {
+
+        UUID tenantId = requireTenantId();
+        UUID userId = requireUserId();
+
+        ConnectorInstance instance =
+                requireConnector(
+                        tenantId,
+                        connectorInstanceId
+                );
+
+        Map<String, Object> config =
+                instance.getConfig() == null
+                        ? Map.of()
+                        : instance.getConfig();
+
+        Map<String, Object> credentialValues =
+                credentialService
+                        .resolveCredentialValue(
+                                tenantId,
+                                connectorInstanceId,
+                                userId,
+                                SIP_PRIMARY_CREDENTIAL_NAME
+                        )
+                        .map(this::parseCredentialJson)
+                        .orElse(Map.of());
+
+        String endpoint = text(config.get("endpoint"));
+        String sipDomain = text(config.get("sipDomain"));
+        String username = text(credentialValues.get("userId"));
+        if (username == null) {
+            username = text(config.get("username"));
+        }
+        String password = text(credentialValues.get("password"));
+        if (password == null) {
+            password = text(credentialValues.get("secret"));
+        }
+
+        if (endpoint == null || sipDomain == null
+                || username == null || password == null) {
+            throw new BusinessException(
+                    "SIP_CONNECTION_NOT_CONFIGURED",
+                    "SIP connection is not fully configured for this connector"
+            );
+        }
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        new SipConnectionResponse(
+                                connectorInstanceId,
+                                instance.getProvider().getProviderKey(),
+                                endpoint,
+                                sipDomain,
+                                username,
+                                password,
+                                config.get("iceServers")
+                        )
+                )
+        );
+    }
+
+    private static final String SIP_PRIMARY_CREDENTIAL_NAME = "primary";
+
+    private Map<String, Object> parseCredentialJson(String json) {
+        try {
+            Map<?, ?> parsed = objectMapper.readValue(json, Map.class);
+            Map<String, Object> values = new HashMap<>();
+            for (Map.Entry<?, ?> entry : parsed.entrySet()) {
+                if (entry.getKey() != null) {
+                    values.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            return values;
+        } catch (JacksonException exception) {
+            throw new BusinessException(
+                    "SIP_CONNECTION_NOT_CONFIGURED",
+                    "SIP credential is not in the expected format"
+            );
+        }
+    }
+
+    private String text(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
+    }
     public ResponseEntity<ApiResponse<CredentialStatusResponse>>
     saveCredentials(
             @PathVariable UUID connectorInstanceId,
@@ -218,6 +328,7 @@ public class CallingUserSettingsController {
     }
 
     @DeleteMapping("/connectors/{connectorInstanceId}/credentials")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'write')")
     public ResponseEntity<ApiResponse<Void>> deleteCredentials(
             @PathVariable UUID connectorInstanceId) {
 
@@ -241,6 +352,7 @@ public class CallingUserSettingsController {
     }
 
     @GetMapping("/connectors/{connectorInstanceId}/agent-mapping")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'read')")
     public ResponseEntity<ApiResponse<AgentMappingResponse>>
     getAgentMapping(
             @PathVariable UUID connectorInstanceId) {
@@ -270,6 +382,7 @@ public class CallingUserSettingsController {
     }
 
     @PutMapping("/connectors/{connectorInstanceId}/agent-mapping")
+    @PreAuthorize("@rbac.has(authentication, 'call', 'write')")
     public ResponseEntity<ApiResponse<AgentMappingResponse>>
     saveAgentMapping(
             @PathVariable UUID connectorInstanceId,

@@ -27,7 +27,8 @@ import lombok.experimental.SuperBuilder;
     name = "crm_event_outbox",
     indexes = {
         @Index(name = "idx_crm_event_outbox_pending", columnList = "status, available_at"),
-        @Index(name = "idx_crm_event_outbox_tenant_entity", columnList = "tenant_id, aggregate_type, aggregate_id")
+        @Index(name = "idx_crm_event_outbox_tenant_entity", columnList = "tenant_id, aggregate_type, aggregate_id"),
+        @Index(name = "idx_crm_event_outbox_dead", columnList = "status, dead_at")
     },
     uniqueConstraints = @UniqueConstraint(name = "uq_crm_event_outbox_event_id", columnNames = "event_id")
 )
@@ -78,6 +79,10 @@ public class OutboxEvent extends BaseEntity {
 
     @Column(name = "published_at")
     private Instant publishedAt;
+
+    /** Set when the row reaches the terminal {@link OutboxEventStatus#DEAD} state. */
+    @Column(name = "dead_at")
+    private Instant deadAt;
 
     @Column(name = "last_error", columnDefinition = "TEXT")
     private String lastError;

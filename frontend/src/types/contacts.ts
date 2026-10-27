@@ -50,4 +50,12 @@ export interface ContactResponse {
   customData?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  // L3.2-P4: the backend ContactResponse also exposes these; the type had drifted.
+  // `title` above is kept because existing call sites read it, but the backend field
+  // is `jobTitle`, so new code must use that rather than `title`.
+  jobTitle?: string;
+  mobile?: string;
+  leadId?: string;
+  isPrimary?: boolean;
+  isActive?: boolean;
 }

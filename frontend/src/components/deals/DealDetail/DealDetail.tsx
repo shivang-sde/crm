@@ -63,7 +63,12 @@ export function DealDetail({ deal }: DealDetailProps) {
           <DealCalls dealId={deal.id} />
           <DealMeetings dealId={deal.id} />
           <DealCustomFields deal={deal} />
-          <DealLineItemsSection dealId={deal.id} />
+          {/* L3.0-P5: a closed Deal's commercial lines are frozen, so the editor is
+              hidden rather than offering actions the backend must reject. */}
+          <DealLineItemsSection
+            dealId={deal.id}
+            readOnly={deal.recordCategory === "CLOSED_WON" || deal.recordCategory === "CLOSED_LOST" || Boolean(deal.isWon) || Boolean(deal.isLost)}
+          />
           <DealTimeline dealId={deal.id} />
           <DealNotes dealId={deal.id} />
         </div>

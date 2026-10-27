@@ -13,7 +13,9 @@ import {
   Webhook,
   Workflow,
   FileText,
-  Database
+  Database,
+  LifeBuoy,
+  HeartPulse
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -54,7 +56,7 @@ export const PUBLIC_ROUTES = [
  * Authenticated-only surfaces with no catalog permission requirement.
  * They are product shells (entry resolver, generic home, no-access notice).
  */
-export const AUTH_ONLY_ROUTES = ["/home", "/dashboard", "/no-access"];
+export const AUTH_ONLY_ROUTES = ["/dashboard", "/no-access"]; // "/home",
 
 /**
  * PLATFORM UX: routes representing platform-level product behavior.
@@ -85,7 +87,9 @@ const ROUTE_PERMISSIONS: { segment: string; anyOf: PermissionAlternative[] }[] =
   { segment: "workflows", anyOf: [["workflow", "read"]] },
   { segment: "contacts", anyOf: [["contact", "read"]] },
   { segment: "accounts", anyOf: [["account", "read"]] },
+  { segment: "customer-health", anyOf: [["account", "read"]] },
   { segment: "tasks", anyOf: [["task", "read"]] },
+  { segment: "tickets", anyOf: [["ticket", "read"]] },
   { segment: "calls", anyOf: [["call", "read"]] },
   { segment: "meetings", anyOf: [["meeting", "read"]] },
   { segment: "users", anyOf: [["admin", "user_manage"], ["user", "read"]] },
@@ -110,6 +114,7 @@ const DEFAULT_ROUTE_PRIORITY: { anyOf: PermissionAlternative[]; href: string }[]
   { anyOf: [["contact", "read"]], href: "/contacts" },
   { anyOf: [["account", "read"]], href: "/accounts" },
   { anyOf: [["task", "read"]], href: "/tasks" },
+  { anyOf: [["ticket", "read"]], href: "/tickets" },
   { anyOf: [["call", "read"]], href: "/calls" },
   { anyOf: [["meeting", "read"]], href: "/meetings" },
   { anyOf: [["admin", "user_manage"], ["user", "read"]], href: "/users" },
@@ -250,7 +255,7 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
   const baseItems: NavItem[] = canViewDashboard
     ? [
         { name: "Dashboard", href: getDefaultRoute(permissions ?? null, role), icon: Home, show: true },
-        { name: "Reports", href: "/reports", icon: BarChart3, show: true },
+        // { name: "Reports", href: "/reports", icon: BarChart3, show: true },
       ]
     : [];
 
@@ -298,6 +303,7 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
   const canViewEntitlements = hasGrant(permissions, "entitlement:read");
 
   const canViewTasks = hasGrant(permissions, "task:read");
+  const canViewTickets = hasGrant(permissions, "ticket:read");
 
   const canViewCalls = hasGrant(permissions, "call:read");
 
@@ -324,7 +330,9 @@ export function getNavigationItems(role: string | null, permissions?: Map<string
     ...(canViewRecords ? [{ name: "Records", href: "/records", icon: Database, show: true }] : []),
     ...(canViewContacts ? [{ name: "Contacts", href: "/contacts", icon: Users, show: true }] : []),
     ...(canViewAccounts ? [{ name: "Accounts", href: "/accounts", icon: Building, show: true }] : []),
+    ...(canViewAccounts ? [{ name: "Customer Health", href: "/customer-health", icon: HeartPulse, show: true }] : []),
     ...(canViewTasks ? [{ name: "Tasks", href: "/tasks", icon: CheckSquare, show: true }] : []),
+    ...(canViewTickets ? [{ name: "Tickets", href: "/tickets", icon: LifeBuoy, show: true }] : []),
     ...(canViewCalls ? [{ name: "Calls", href: "/calls", icon: Phone, show: true }] : []),
     ...(canViewMeetings ? [{ name: "Meetings", href: "/meetings", icon: Calendar, show: true }] : []),
     ...(canManageUsers ? [{ name: "Users", href: "/users", icon: Users, show: true }] : []),

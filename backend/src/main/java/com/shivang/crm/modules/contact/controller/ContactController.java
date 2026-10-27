@@ -134,6 +134,8 @@ public class ContactController {
 
         log.info("GET /api/v1/contacts/{}/activities - Getting activities", id);
         UUID tenantId = currentTenantId();
+        // RBAC-7 / L3.0-P3: parent Contact must be within the caller's read scope.
+        contactService.assertContactAccessible(tenantId, id, "read");
         Page<ActivityResponse> activities = activityService.getEntityActivities(id, "CONTACT", tenantId, page, size);
 
         Map<String, Object> meta = Map.of(
@@ -155,6 +157,8 @@ public class ContactController {
 
         log.info("GET /api/v1/contacts/{}/notes - Getting notes", id);
         UUID tenantId = currentTenantId();
+        // RBAC-7 / L3.0-P3: parent Contact must be within the caller's read scope.
+        contactService.assertContactAccessible(tenantId, id, "read");
         Page<com.shivang.crm.modules.lead.dto.EntityNoteResponse> notes = entityNoteService.getEntityNotes(id, "CONTACT", tenantId, page, size);
 
         Map<String, Object> meta = Map.of(
@@ -176,6 +180,8 @@ public class ContactController {
         log.info("POST /api/v1/contacts/{}/notes - Adding note", id);
         UUID tenantId = currentTenantId();
         UUID userId = currentUserId();
+        // RBAC-7 / L3.0-P3: parent Contact must be within the caller's write scope.
+        contactService.assertContactAccessible(tenantId, id, "write");
         String noteText = request.get("note");
         com.shivang.crm.modules.lead.dto.EntityNoteResponse noteResponse = entityNoteService.addEntityNote(id, "CONTACT", tenantId, noteText, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(noteResponse));
@@ -190,6 +196,8 @@ public class ContactController {
         log.info("DELETE /api/v1/contacts/{}/notes/{} - Deleting note", id, noteId);
         UUID tenantId = currentTenantId();
         UUID userId = currentUserId();
+        // RBAC-7 / L3.0-P3: parent Contact must be within the caller's delete scope.
+        contactService.assertContactAccessible(tenantId, id, "delete");
         entityNoteService.deleteEntityNote(noteId, id, "CONTACT", tenantId, userId);
         return ResponseEntity.ok(ApiResponse.success("Note deleted successfully"));
     }

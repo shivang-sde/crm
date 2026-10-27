@@ -5,6 +5,7 @@ import { useAuthStore } from "@/lib/store/authStore";
 import { useTenants } from "@/lib/hooks/tenants";
 import { TenantSelector } from "@/components/dashboard/TenantSelector";
 import { OperationalReports } from "@/components/reports/OperationalReports";
+// import {PlatformReportsPage } from "@/components/reports/PlatformReportsPage";
 
 /**
  * Operational reports (/reports).
@@ -15,8 +16,8 @@ import { OperationalReports } from "@/components/reports/OperationalReports";
 export default function ReportsPage() {
   const userRole = useAuthStore((s) => s.userRole);
   const isPlatform = userRole === "SUPERADMIN" || userRole === "RESELLER";
-  // return isPlatform ? <PlatformReportsPage /> : <OperationalReports />;
-  return <div>Reports are currently in development.</div>;
+  return isPlatform ? <PlatformReportsPage /> : <OperationalReports />;
+  // return <div>Reports are currently in development.</div>;
 }
 
 function PlatformReportsPage() {
@@ -27,22 +28,22 @@ function PlatformReportsPage() {
   const selectedTenant = tenants.find((t) => t.id === selectedTenantId);
 
   return (
-    // <OperationalReports
-    //   tenantId={selectedTenantId ?? undefined}
-    //   tenantName={selectedTenant?.name || selectedTenant?.slug}
-    //   actions={
-    //     <TenantSelector
-    //       tenants={tenants}
-    //       selectedTenantId={selectedTenantId}
-    //       onSelect={setSelectedTenantId}
-    //       placeholder={userRole === "RESELLER" ? "All My Tenants" : "All Tenants"}
-    //       isLoading={isLoading}
-    //       isError={isError}
-    //       onRetry={refetch}
-    //     />
-    //   }
-    // />
+    <OperationalReports
+      tenantId={selectedTenantId ?? undefined}
+      tenantName={selectedTenant?.name || selectedTenant?.slug}
+      actions={
+        <TenantSelector
+          tenants={tenants}
+          selectedTenantId={selectedTenantId}
+          onSelect={setSelectedTenantId}
+          placeholder={userRole === "RESELLER" ? "All My Tenants" : "All Tenants"}
+          isLoading={isLoading}
+          isError={isError}
+          onRetry={refetch}
+        />
+      }
+    />
 
-    <div>Reports are currently in development.</div>
+    // <div>Reports are currently in development.</div>
   );
 }

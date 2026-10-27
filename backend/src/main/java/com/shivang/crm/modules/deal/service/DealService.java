@@ -7,11 +7,14 @@ import java.net.URL;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -26,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.modules.auth.repository.UserRepository;
 import com.shivang.crm.modules.deal.dto.DealCreateRequest;
+import com.shivang.crm.modules.deal.dto.DealLineItemCreateRequest;
 import com.shivang.crm.modules.deal.dto.DealResponse;
 import com.shivang.crm.modules.deal.dto.DealStageChangeRequest;
 import com.shivang.crm.modules.deal.dto.DealUpdateRequest;
@@ -61,6 +65,8 @@ public class DealService {
     private final DealCustomFieldRepository dealCustomFieldRepository;
     private final DealLineItemRepository dealLineItemRepository;
     private final DealStageRepository dealStageRepository;
+    private final DealLineItemService dealLineItemService;
+    private final com.shivang.crm.modules.entitlement.repository.CustomerEntitlementRepository entitlementRepository;
     private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
     private final DealMapper dealMapper;
 
@@ -71,12 +77,34 @@ public class DealService {
     private final UserRepository userRepository;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
+    private final com.shivang.crm.shared.service.CustomerRelationshipValidator customerRelationshipValidator;
 
-    /**
-     * Create a new deal
+/**
+     * Create a new deal, together with its initial line items.
+     *
+     * <p>L3.0-P5: this whole method is one transaction (the class is
+     * {@code @Transactional}, and DealLineItemService joins it rather than
+     * starting its own). Deal, its lines and, for a won Deal, its entitlements
+     * are therefore all-or-nothing: a line that fails validation takes the Deal
+     * back down with it, so no partially sold opportunity can survive.
+     *
+     * <p>Ordering matters. Lines are created before provisioning, because
+     * provisioning derives entitlements from the lines that exist at that
+     * moment. Doing it the other way round would produce a won Deal whose
+     * coverage silently misses the lines it was born with.
      */
     public DealResponse createDeal(UUID tenantId, UUID userId, DealCreateRequest request) {
         log.info("Creating deal for tenant: {}", tenantId);
+
+        // L3.0-P2: every customer reference must resolve to a live record in this
+        // tenant before anything is persisted. The deals.account_id /
+        // deals.contact_id / deals.lead_id foreign keys are tenant-blind.
+        customerRelationshipValidator.requireLiveAccount(request.getAccountId(), tenantId);
+        customerRelationshipValidator.requireLiveContact(request.getContactId(), tenantId);
+        customerRelationshipValidator.requireLiveLead(request.getLeadId(), tenantId);
+        customerRelationshipValidator.requireContactBelongsToAccount(
+                request.getContactId(), request.getAccountId(), tenantId);
+        customerRelationshipValidator.requireTenantOwner(request.getOwnerUserId(), tenantId);
 
         // Map request to entity
         Deal deal = dealMapper.toEntity(request);
@@ -85,7 +113,7 @@ public class DealService {
         deal.setOwnerId(request.getOwnerUserId() != null ? request.getOwnerUserId() : userId);
         deal.setUpdatedBy(userId);
         validateCustomData(tenantId, request.getCustomData());
- 
+
         // Set stage
         if (request.getStageId() != null) {
             DealStage stage = dealStageRepository.findByIdAndTenantId(request.getStageId(), tenantId)
@@ -103,9 +131,18 @@ public class DealService {
         // Authoritative initial stage entry (creation enters the initial stage)
         deal.setStageEnteredAt(Instant.now());
 
-        // Save deal
+        // L3.0-P5: reject an incomplete won Deal before writing anything, so the
+        // rejection costs nothing and leaves no trace.
+        requireCommercialLinesForWonDeal(deal.getRecordCategory(), request.getLineItems());
+
+// Save deal
         Deal savedDeal = dealRepository.save(deal);
 
+        // L3.0-P6: DEAL.CREATED is published immediately after the Deal row is
+        // written and BEFORE its initial line items, so the outbox order for an
+        // atomic CLOSED_WON creation reads
+        //   DEAL.CREATED -> DEAL_LINE_ITEM.CREATED... -> ENTITLEMENT.CREATED...
+        // rather than announcing the Deal after its own children.
         Map<String, Object> eventMetadata = new HashMap<>();
         eventMetadata.put("source", "MANUAL");
         eventMetadata.put("actorId", userId.toString());
@@ -117,6 +154,29 @@ public class DealService {
             savedDeal.getId(),
             eventMetadata
         );
+
+        // L3.0-P5: initial lines, created inside this transaction. Each one goes
+        // through the same validation as a standalone line item, so an Offering
+        // from another tenant, an inactive Offering, or a malformed line fails
+        // here and rolls the whole creation back.
+        createInitialLineItems(tenantId, userId, savedDeal.getId(), request.getLineItems());
+
+        // L3.0-P4-A: a Deal created directly in a CLOSED_WON stage is the same
+        // lifecycle edge as an OPEN -> CLOSED_WON transition, so it must run the
+        // identical provisioning step. Previously createDeal omitted this, so a
+        // directly-created won deal silently had no entitlements.
+        //
+        // The prior state for a newly created deal is OPEN by definition: there
+        // is no earlier stage to have been CLOSED_WON. shouldProvisionEntitlements
+        // is therefore evaluated against OPEN, and provisionFromWonDeal remains
+        // idempotent (it skips any line item that already has an entitlement),
+        // so re-running this is safe. It runs after the lines so the entitlements
+        // are derived from the complete commercial position.
+        RecordCategory createdCategory = savedDeal.getRecordCategory();
+        if (shouldProvisionEntitlements(RecordCategory.OPEN, createdCategory)) {
+            entitlementProvisioningService.provisionFromWonDeal(tenantId, savedDeal.getId(), userId);
+        }
+
 
         // Log activity
         Map<String, Object> metadata = new HashMap<>();
@@ -139,7 +199,7 @@ public class DealService {
         UUID currentUserId = com.shivang.crm.util.UserUtil.currentUserId();
         String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "deal", "read");
 
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
 
         recordScopeGuard.assertWithinOwnerCreatorScope(
@@ -206,31 +266,93 @@ public class DealService {
         log.info("Updating deal: {} for tenant: {}", id, tenantId);
 
         String updateScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 updateScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
+        // L3.0-P2: validate the values this request would persist, not just the
+        // fields it happens to carry. A partial update that changes only the
+        // account must still be rejected when it would leave the existing
+        // contact pointing at a different account. Null request fields mean
+        // "unchanged" because DealMapper uses NullValuePropertyMappingStrategy.
+        UUID resultingAccountId = request.getAccountId() != null ? request.getAccountId() : deal.getAccountId();
+        UUID resultingContactId = request.getContactId() != null ? request.getContactId() : deal.getContactId();
+        customerRelationshipValidator.requireLiveAccount(resultingAccountId, tenantId);
+        customerRelationshipValidator.requireLiveContact(resultingContactId, tenantId);
+        customerRelationshipValidator.requireContactBelongsToAccount(
+                resultingContactId, resultingAccountId, tenantId);
+        boolean ownerChanged = request.getOwnerUserId() != null
+                && !Objects.equals(request.getOwnerUserId(), deal.getOwnerId());
+        if (ownerChanged) {
+            // Owner reassignment is a distinct permission from ordinary deal
+            // write, exactly as it is on the dedicated assign endpoint.
+            String assignScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "assign");
+            recordScopeGuard.assertWithinOwnerCreatorScope(
+                    assignScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
+            customerRelationshipValidator.requireTenantOwner(request.getOwnerUserId(), tenantId);
+        }
+
+        // L3.0-P4-E: once a Deal has provisioned entitlements, its customer
+        // identity is frozen. The entitlements snapshot accountId/contactId, so
+        // moving the Deal would leave every provisioned entitlement pointing at
+        // the previous customer. Reassigning to the same account is a no-op and
+        // is deliberately allowed.
+        requireAccountReassignable(tenantId, id, deal.getAccountId(), resultingAccountId);
+
         // Store old values for activity logging
         Map<String, Object> oldValues = new HashMap<>();
-        RecordCategory previousCategory = deal.getRecordCategory();
+        RecordCategory previousCategory = categoryOf(deal.getStage());
         if (request.getStageId() != null && !request.getStageId().equals(deal.getStage().getId())) {
             oldValues.put("oldStageId", deal.getStage().getId());
             oldValues.put("oldStageName", deal.getStage().getName());
         }
-        if (request.getOwnerUserId() != null && !request.getOwnerUserId().equals(deal.getOwnerId())) {
+        if (ownerChanged) {
             oldValues.put("oldOwnerId", deal.getOwnerId());
         }
         if (request.getName() != null && !request.getName().equals(deal.getName())) {
             oldValues.put("oldName", deal.getName());
         }
 
+        // L3.0-P6: snapshot the mutable business fields so DEAL.UPDATED can be
+        // emitted only when something actually changed. This mirrors the existing
+        // LEAD.UPDATED convention (see LeadService.updateLead) rather than
+        // inventing a second rule.
+        //
+        // Stage, owner and amount are deliberately excluded from the comparison:
+        // stage has its own DEAL.STAGE_TRANSITIONED event, owner has
+        // DEAL.OWNER_CHANGED, and amount/expectedRevenue are recalculated
+        // internally whenever line items change. Emitting DEAL.UPDATED for those
+        // would duplicate events the system already models more precisely.
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("name", deal.getName());
+        before.put("description", deal.getDescription());
+        before.put("accountId", deal.getAccountId());
+        before.put("contactId", deal.getContactId());
+        before.put("leadId", deal.getLeadId());
+        before.put("expectedCloseDate", deal.getExpectedCloseDate());
+        before.put("closedDate", deal.getClosedDate());
+        before.put("probability", deal.getProbability());
+        before.put("forecastCategory", deal.getForecastCategory());
+        before.put("nextStep", deal.getNextStep());
+        before.put("dealType", deal.getDealType());
+        before.put("leadSource", deal.getLeadSource());
+        before.put("campaignSource", deal.getCampaignSource());
+        before.put("wonReason", deal.getWonReason());
+        before.put("lostReason", deal.getLostReason());
+        before.put("customData", deal.getCustomData());
+
         if (request.getAmount() != null && (deal.getAmount() == null || request.getAmount().compareTo(deal.getAmount()) != 0)
                 && dealLineItemRepository.existsByTenantIdAndDealIdAndDeletedFalse(tenantId, id)) {
             throw new BusinessException("DEAL_AMOUNT_MANAGED_BY_LINE_ITEMS", "Deal amount is managed by line items");
         }
 
-        validateCustomData(tenantId, request.getCustomData());
+        // A partial update keeps the existing custom data when the request omits
+        // it, so validation must run against what would actually be persisted.
+        Map<String, Object> resultingCustomData = request.getCustomData() != null
+                ? request.getCustomData()
+                : deal.getCustomData();
+        validateCustomData(tenantId, resultingCustomData);
 
         DealStage requestedStage = null;
         boolean stageChanged = false;
@@ -239,9 +361,16 @@ public class DealService {
                 .orElseThrow(() -> new RuntimeException("Stage not found"));
             stageChanged = !request.getStageId().equals(deal.getStage().getId());
         }
+        RecordCategory resultingCategory = requestedStage != null
+                ? categoryOf(requestedStage)
+                : previousCategory;
+        requireStageCommercialInvariants(tenantId, id, previousCategory, resultingCategory);
 
         // Update entity
         dealMapper.updateEntity(request, deal);
+        if (ownerChanged) {
+            deal.setOwnerId(request.getOwnerUserId());
+        }
         deal.setUpdatedBy(userId);
 
         // Update stage if needed
@@ -286,9 +415,105 @@ public class DealService {
             logDealHistory(tenantId, updatedDeal.getId(), "STAGE_CHANGED",
                     "Stage changed from " + oldValues.get("oldStageName") + " to " + updatedDeal.getStage().getName(),
                     userId, historyMetadata);
+            publishStageTransition(tenantId, userId, updatedDeal,
+                    (UUID) oldValues.get("oldStageId"), (String) oldValues.get("oldStageName"));
+        }
+        if (ownerChanged) {
+            publishOwnerChanged(tenantId, userId, updatedDeal, (UUID) oldValues.get("oldOwnerId"));
         }
 
+        publishDealUpdatedIfChanged(tenantId, userId, updatedDeal, before, stageChanged);
+
         return dealMapper.toResponse(updatedDeal);
+    }
+
+    /**
+     * L3.0-P6: emits the single canonical {@code DEAL.UPDATED} event.
+     *
+     * <p>Authoritative producer for {@code DEAL.UPDATED}. Deliberately the only
+     * place this event is published from, which is what keeps a Deal update from
+     * emitting twice.
+     *
+     * <p>Not emitted when:
+     * <ul>
+     *   <li>nothing changed, so the event would describe a mutation that never
+     *       happened;</li>
+     *   <li>the stage moved. {@code applyStageLifecycle} rewrites probability,
+     *       forecastCategory and the closed dates as a consequence of the stage,
+     *       so a stage transition always "changes" several derived fields.
+     *       {@code DEAL.STAGE_TRANSITIONED} already reports that transition with
+     *       the before and after stage, and emitting UPDATED as well would make a
+     *       single stage move look like two unrelated mutations. When a request
+     *       changes the stage and a field such as the won reason together, the
+     *       stage transition remains the authoritative record.</li>
+     * </ul>
+     * Owner changes are excluded from the compared field set entirely, because
+     * {@code DEAL.OWNER_CHANGED} owns them.
+     *
+     * Creation is not routed through here at all, so a newly created Deal produces
+     * {@code DEAL.CREATED} only and never a spurious {@code DEAL.UPDATED}.
+     */
+    private void publishDealUpdatedIfChanged(UUID tenantId, UUID userId, Deal updatedDeal,
+            Map<String, Object> before, boolean stageChanged) {
+        if (stageChanged) {
+            return;
+        }
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("name", updatedDeal.getName());
+        after.put("description", updatedDeal.getDescription());
+        after.put("accountId", updatedDeal.getAccountId());
+        after.put("contactId", updatedDeal.getContactId());
+        after.put("leadId", updatedDeal.getLeadId());
+        after.put("expectedCloseDate", updatedDeal.getExpectedCloseDate());
+        after.put("closedDate", updatedDeal.getClosedDate());
+        after.put("probability", updatedDeal.getProbability());
+        after.put("forecastCategory", updatedDeal.getForecastCategory());
+        after.put("nextStep", updatedDeal.getNextStep());
+        after.put("dealType", updatedDeal.getDealType());
+        after.put("leadSource", updatedDeal.getLeadSource());
+        after.put("campaignSource", updatedDeal.getCampaignSource());
+        after.put("wonReason", updatedDeal.getWonReason());
+        after.put("lostReason", updatedDeal.getLostReason());
+        after.put("customData", updatedDeal.getCustomData());
+
+        List<String> changedFields = new ArrayList<>();
+        before.forEach((field, oldValue) -> {
+            if (!Objects.equals(oldValue, after.get(field))) {
+                changedFields.add(field);
+            }
+        });
+        if (changedFields.isEmpty()) {
+            return;
+        }
+
+        boolean workflowCaused = com.shivang.crm.shared.event.CausalEventContext.get() != null;
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("actorId", userId.toString());
+        eventMetadata.put("actorType", workflowCaused ? "SYSTEM" : "USER");
+        eventMetadata.put("source", workflowCaused ? "WORKFLOW" : "MANUAL");
+        eventMetadata.put("changedFields", changedFields);
+        // Stable identifiers only: enough for a consumer to resolve the Deal's
+        // customer without the event carrying the entity itself.
+        putIfPresent(eventMetadata, "accountId", updatedDeal.getAccountId());
+        putIfPresent(eventMetadata, "contactId", updatedDeal.getContactId());
+        putIfPresent(eventMetadata, "stageId", updatedDeal.getStage() == null ? null : updatedDeal.getStage().getId());
+
+        canonicalCrmEventPublisher.publish(
+                updatedDeal.getTenantId() != null ? updatedDeal.getTenantId() : tenantId,
+                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
+                CanonicalCrmEvent.UPDATED_EVENT_TYPE,
+                updatedDeal.getId(),
+                eventMetadata);
+    }
+
+    /**
+     * Omits absent optional identifiers rather than writing nulls, which keeps
+     * event metadata compact and matches P1's null-tolerant metadata handling.
+     */
+    private static void putIfPresent(Map<String, Object> metadata, String key, Object value) {
+        if (value != null) {
+            metadata.put(key, value.toString());
+        }
     }
 
     private void validateCustomData(UUID tenantId, Map<String, Object> customData) {
@@ -466,7 +691,7 @@ public class DealService {
         log.info("Changing stage of deal: {} to: {} for tenant: {}", id, stageId, tenantId);
 
         String stageScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 stageScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
@@ -476,7 +701,8 @@ public class DealService {
 
         UUID oldStageId = deal.getStage().getId();
         String oldStageName = deal.getStage().getName();
-        RecordCategory oldCategory = deal.getRecordCategory();
+        RecordCategory oldCategory = categoryOf(deal.getStage());
+        requireStageCommercialInvariants(tenantId, id, oldCategory, categoryOf(newStage));
         deal.setStage(newStage);
         if (!oldStageId.equals(newStage.getId())) {
             // Actual stage transition -> authoritative current-stage entry
@@ -489,20 +715,7 @@ public class DealService {
 
         boolean stageChanged = !oldStageId.equals(newStage.getId());
         if (stageChanged) {
-            Map<String, Object> eventMetadata = new HashMap<>();
-            eventMetadata.put("previousStageId", oldStageId.toString());
-            eventMetadata.put("newStageId", newStage.getId().toString());
-            eventMetadata.put("previousStage", oldStageName);
-            eventMetadata.put("newStage", newStage.getName());
-            eventMetadata.put("actorId", userId.toString());
-            eventMetadata.put("actorType", "USER");
-            canonicalCrmEventPublisher.publish(
-                tenantId,
-                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
-                CanonicalCrmEvent.STAGE_TRANSITIONED_EVENT_TYPE,
-                updatedDeal.getId(),
-                eventMetadata
-            );
+            publishStageTransition(tenantId, userId, updatedDeal, oldStageId, oldStageName);
         }
 
         RecordCategory previousCategory = oldCategory;
@@ -544,7 +757,7 @@ public class DealService {
         log.info("Marking deal as won: {} for tenant: {}", id, tenantId);
 
         String wonScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 wonScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
@@ -576,7 +789,7 @@ public class DealService {
         log.info("Marking deal as lost: {} for tenant: {}", id, tenantId);
 
         String lostScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "write");
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 lostScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
@@ -601,35 +814,23 @@ public class DealService {
         log.info("Assigning deal: {} to user: {} for tenant: {}", id, ownerUserId, tenantId);
 
         String assignScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "assign");
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 assignScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
         UUID oldOwner = deal.getOwnerId();
+        boolean ownerChanged = !java.util.Objects.equals(oldOwner, ownerUserId);
+        if (ownerChanged) {
+            customerRelationshipValidator.requireTenantOwner(ownerUserId, tenantId);
+        }
         deal.setOwnerId(ownerUserId);
         deal.setUpdatedBy(userId);
 
         Deal updatedDeal = dealRepository.save(deal);
 
-        boolean ownerChanged = !java.util.Objects.equals(oldOwner, ownerUserId);
         if (ownerChanged) {
-            Map<String, Object> eventMetadata = new HashMap<>();
-            if (oldOwner != null) {
-                eventMetadata.put("previousOwnerId", oldOwner.toString());
-            }
-            if (ownerUserId != null) {
-                eventMetadata.put("newOwnerId", ownerUserId.toString());
-            }
-            eventMetadata.put("actorId", userId.toString());
-            eventMetadata.put("actorType", "USER");
-            canonicalCrmEventPublisher.publish(
-                updatedDeal.getTenantId(),
-                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
-                CanonicalCrmEvent.OWNER_CHANGED_EVENT_TYPE,
-                updatedDeal.getId(),
-                eventMetadata
-            );
+            publishOwnerChanged(tenantId, userId, updatedDeal, oldOwner);
         }
 
         // Log activity
@@ -642,20 +843,34 @@ public class DealService {
         return dealMapper.toResponse(updatedDeal);
     }
 
-    /**
-     * Delete a deal (soft delete can be implemented)
-     */
+/**
+     * L3.0-P4-H: Deal deletion is a soft delete.
+ *
+     * <p>This was a hard {@code repository.delete()} before P4. A Deal is the
+     * commercial origin of its line items and of every entitlement provisioned
+     * from them, and it is referenced by activities, notes and entity_history
+     * rows that must remain queryable for customer history. A hard delete either
+     * fails on the deal_line_items foreign key or destroys that history outright.
+ *
+     * <p>Line items and entitlements are deliberately NOT cascaded or mutated.
+     * They keep pointing at this Deal id, which is what keeps the sold position
+     * reconstructable; the P2 deleted-aware finders and specifications already
+     * exclude this row from normal active reads, so nothing downstream can treat
+     * a deleted Deal as live.
+ */
     public void deleteDeal(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting deal: {} for tenant: {}", id, tenantId);
 
         String deleteScope = recordScopeGuard.requireScope(tenantId, userId, "deal", "delete");
-        Deal deal = dealRepository.findByIdAndTenantId(id, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 deleteScope, tenantId, userId, deal.getOwnerId(), deal.getCreatedBy());
 
-        dealRepository.delete(deal);
-        log.info("Deal deleted: {}", id);
+        deal.softDelete(userId);
+        deal.setUpdatedBy(userId);
+        dealRepository.save(deal);
+        log.info("Deal soft deleted: {}", id);
     }
 
     /**
@@ -667,7 +882,7 @@ public class DealService {
         UUID currentUserId = com.shivang.crm.util.UserUtil.currentUserId();
         String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "deal", action);
 
-        Deal deal = dealRepository.findByIdAndTenantId(dealId, tenantId)
+        Deal deal = dealRepository.findByIdAndTenantIdAndDeletedFalse(dealId, tenantId)
             .orElseThrow(() -> new RuntimeException("Deal not found"));
 
         recordScopeGuard.assertWithinOwnerCreatorScope(
@@ -682,6 +897,7 @@ public class DealService {
         log.info("Fetching deals for account: {} in tenant: {}", accountId, tenantId);
 
         Specification<Deal> spec = DealSpecifications.byTenantId(tenantId)
+            .and(DealSpecifications.notDeleted())
             .and(DealSpecifications.byAccountId(accountId));
 
         List<Deal> deals = dealRepository.findAll(spec);
@@ -696,6 +912,7 @@ public class DealService {
         log.info("Fetching open deals for user: {} in tenant: {}", userId, tenantId);
 
         Specification<Deal> spec = DealSpecifications.byTenantId(tenantId)
+            .and(DealSpecifications.notDeleted())
             .and(DealSpecifications.byOwnerUserId(userId))
             .and(DealSpecifications.byIsWon(false))
             .and(DealSpecifications.byIsLost(false));
@@ -712,6 +929,7 @@ public class DealService {
         log.info("Fetching won deals for tenant: {}", tenantId);
 
         Specification<Deal> spec = DealSpecifications.byTenantId(tenantId)
+            .and(DealSpecifications.notDeleted())
             .and(DealSpecifications.byIsWon(true));
 
         Pageable pageable = PageRequest.of(page, size);
@@ -728,6 +946,7 @@ public class DealService {
         log.info("Fetching lost deals for tenant: {}", tenantId);
 
         Specification<Deal> spec = DealSpecifications.byTenantId(tenantId)
+            .and(DealSpecifications.notDeleted())
             .and(DealSpecifications.byIsLost(true));
 
         Pageable pageable = PageRequest.of(page, size);
@@ -752,6 +971,7 @@ public class DealService {
     public BigDecimal getTotalDealValue(UUID userId, UUID tenantId) {
         List<Deal> deals = dealRepository.findAll(
             DealSpecifications.byTenantId(tenantId)
+                .and(DealSpecifications.notDeleted())
                 .and(DealSpecifications.byOwnerUserId(userId))
                 .and(DealSpecifications.byIsWon(false))
                 .and(DealSpecifications.byIsLost(false))
@@ -761,6 +981,66 @@ public class DealService {
             .map(Deal::getAmount)
             .filter(amount -> amount != null)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * One commercial transition rule shared by PATCH and PUT stage changes:
+     * a win must have lines to provision from, and a won Deal with provisioned
+     * entitlements must not be silently reopened away from them.
+     */
+    private void requireStageCommercialInvariants(UUID tenantId, UUID dealId,
+            RecordCategory oldCategory, RecordCategory newCategory) {
+        if (oldCategory != RecordCategory.CLOSED_WON && newCategory == RecordCategory.CLOSED_WON
+                && !dealLineItemRepository.existsByTenantIdAndDealIdAndDeletedFalse(tenantId, dealId)) {
+            throw new BusinessException("DEAL_WON_REQUIRES_LINE_ITEMS",
+                    "A deal entering a won stage must have at least one active line item");
+        }
+        if (oldCategory == RecordCategory.CLOSED_WON && newCategory != RecordCategory.CLOSED_WON
+                && entitlementRepository.existsByTenantIdAndDealIdAndDeletedFalse(tenantId, dealId)) {
+            throw new BusinessException("DEAL_REOPEN_BLOCKED_BY_ENTITLEMENTS",
+                    "A won deal with provisioned entitlements cannot be reopened");
+        }
+    }
+
+    private RecordCategory categoryOf(DealStage stage) {
+        return stage == null || stage.getRecordCategory() == null
+                ? RecordCategory.OPEN
+                : stage.getRecordCategory();
+    }
+
+    private void publishStageTransition(UUID tenantId, UUID actorId, Deal updatedDeal,
+            UUID oldStageId, String oldStageName) {
+        Map<String, Object> eventMetadata = new HashMap<>();
+        eventMetadata.put("previousStageId", oldStageId.toString());
+        eventMetadata.put("newStageId", updatedDeal.getStage().getId().toString());
+        eventMetadata.put("previousStage", oldStageName);
+        eventMetadata.put("newStage", updatedDeal.getStage().getName());
+        eventMetadata.put("actorId", actorId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+                tenantId,
+                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
+                CanonicalCrmEvent.STAGE_TRANSITIONED_EVENT_TYPE,
+                updatedDeal.getId(),
+                eventMetadata);
+    }
+
+    private void publishOwnerChanged(UUID tenantId, UUID actorId, Deal updatedDeal, UUID oldOwner) {
+        Map<String, Object> eventMetadata = new HashMap<>();
+        if (oldOwner != null) {
+            eventMetadata.put("previousOwnerId", oldOwner.toString());
+        }
+        if (updatedDeal.getOwnerId() != null) {
+            eventMetadata.put("newOwnerId", updatedDeal.getOwnerId().toString());
+        }
+        eventMetadata.put("actorId", actorId.toString());
+        eventMetadata.put("actorType", "USER");
+        canonicalCrmEventPublisher.publish(
+                updatedDeal.getTenantId() != null ? updatedDeal.getTenantId() : tenantId,
+                CanonicalCrmEvent.DEAL_ENTITY_TYPE,
+                CanonicalCrmEvent.OWNER_CHANGED_EVENT_TYPE,
+                updatedDeal.getId(),
+                eventMetadata);
     }
 
     private void applyStageLifecycle(
@@ -867,5 +1147,60 @@ public class DealService {
 
     private boolean shouldProvisionEntitlements(RecordCategory previousCategory, RecordCategory newCategory) {
         return previousCategory != RecordCategory.CLOSED_WON && newCategory == RecordCategory.CLOSED_WON;
+    }
+
+    /**
+     * L3.0-P5: a won Deal is born commercially complete, so it may not be created
+     * without the lines its coverage will be derived from.
+     *
+     * <p>Checked before the Deal is written, so an incomplete won Deal is rejected
+     * outright rather than persisted in a state that can never be repaired by
+     * adding lines. This is what removed P4's transitional exception: the old
+     * "closed Deal with no entitlements may accept one line" window was only
+     * ever needed because creation could not carry lines in the first place.
+     *
+     * <p>Only CLOSED_WON is constrained. A CLOSED_LOST Deal legitimately has no
+     * commercial coverage to provision, and an OPEN Deal has not sold anything
+     * yet, so both may be created without lines as before.
+     */
+    private void requireCommercialLinesForWonDeal(RecordCategory recordCategory, List<DealLineItemCreateRequest> lineItems) {
+        if (recordCategory != RecordCategory.CLOSED_WON) {
+            return;
+        }
+        if (lineItems == null || lineItems.isEmpty()) {
+            throw new BusinessException("DEAL_WON_REQUIRES_LINE_ITEMS",
+                    "A deal created in a won stage must include at least one line item, "
+                            + "so its customer entitlements can be provisioned in the same transaction");
+        }
+    }
+
+    /**
+     * L3.0-P5: creates the Deal's initial lines. Any failure propagates out of
+     * createDeal and rolls back the whole creation, including the Deal row and
+     * any lines already written before the failure.
+     */
+    private void createInitialLineItems(UUID tenantId, UUID userId, UUID dealId, List<DealLineItemCreateRequest> lineItems) {
+        if (lineItems == null || lineItems.isEmpty()) {
+            return;
+        }
+        for (DealLineItemCreateRequest lineItem : lineItems) {
+            dealLineItemService.persistLineItem(tenantId, dealId, userId, lineItem);
+        }
+    }
+
+    /**
+     * L3.0-P4-E: rejects reassigning a Deal to a different Account once it has
+     * provisioned entitlements. The existence check is tenant-scoped, so another
+     * tenant's entitlements can never freeze this Deal.
+     */
+    private void requireAccountReassignable(UUID tenantId, UUID dealId, UUID currentAccountId, UUID newAccountId) {
+        if (java.util.Objects.equals(currentAccountId, newAccountId)) {
+            return;
+        }
+        if (!entitlementRepository.existsByTenantIdAndDealIdAndDeletedFalse(tenantId, dealId)) {
+            return;
+        }
+        throw new BusinessException("DEAL_ACCOUNT_REASSIGNMENT_BLOCKED",
+                "Deal has provisioned entitlements and cannot be reassigned to a different account");
     }
 }

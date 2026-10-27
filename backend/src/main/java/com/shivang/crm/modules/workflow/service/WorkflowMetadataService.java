@@ -78,10 +78,14 @@ public class WorkflowMetadataService {
                 "city", "addressLine1", "postalCode", "leadId", "isActive",
                 "createdAt", "updatedAt"
             )),
-            entityWithRelationships("DEAL", "Deal", List.of(
+entityWithRelationships("DEAL", "Deal", List.of(
                 event("CREATED", "Created"),
+                // L3.0-P6: registered so DEAL.UPDATED is selectable as a
+                // workflow trigger. Stage and owner keep their own more precise
+                // events and are registered below.
+                event("UPDATED", "Updated", "changedFields"),
                 event("STAGE_TRANSITIONED", "Stage Transitioned",
-                    "previousStageId", "newStageId", "previousStage", "newStage"),
+                        "previousStageId", "newStageId", "previousStage", "newStage"),
                 event("OWNER_CHANGED", "Owner Changed", "previousOwnerId", "newOwnerId")
             ), List.of(
                 "id", "ownerId", "name", "accountId", "contactId", "leadId",

@@ -83,6 +83,30 @@ public class ConnectorCredentialServiceImpl implements ConnectorCredentialServic
     }
 
     @Override
+    @Transactional
+    public int deactivateTenantCredentials(
+            UUID tenantId,
+            UUID connectorInstanceId,
+            String credentialName,
+            UUID updatedBy) {
+
+        if (tenantId == null || connectorInstanceId == null
+                || credentialName == null || credentialName.isBlank()) {
+            throw new BusinessException(
+                    "INVALID_REQUEST",
+                    "Tenant, connector and credential name are required"
+            );
+        }
+
+        return repository.deactivateTenantCredentials(
+                tenantId,
+                connectorInstanceId,
+                credentialName,
+                updatedBy
+        );
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Optional<ConnectorCredential> findById(
             UUID tenantId,

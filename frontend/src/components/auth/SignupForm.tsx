@@ -60,7 +60,7 @@ export function SignupForm() {
       setAuth(data.user, data.accessToken, data.user.role || 'EMPLOYEE', data.tenant);
       toast.success("Account created successfully!");
       // Entry resolver performs the permission-driven default redirect.
-      router.replace("/home");
+      router.replace("/dashboard");
     },
     onError: (error: unknown) => {
       const responseError = error as {

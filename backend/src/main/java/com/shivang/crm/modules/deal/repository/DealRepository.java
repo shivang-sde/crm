@@ -15,15 +15,31 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
 
     Optional<Deal> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    /**
+     * L3.0-P2: live lookup. Customer relationship validation must never accept a
+     * soft-deleted Deal as a live parent.
+     */
+    Optional<Deal> findByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
     Optional<Deal> findByTenantIdAndName(UUID tenantId, String name);
 
      boolean existsByIdAndTenantId(UUID entityId, UUID tenantId);
+
+     boolean existsByIdAndTenantIdAndDeletedFalse(UUID entityId, UUID tenantId);
 
     @Query("SELECT COUNT(d) FROM Deal d WHERE d.tenantId = :tenantId AND d.stage.id = :stageId AND d.deleted = false")
     Integer countByStageId(@Param("tenantId") UUID tenantId, @Param("stageId") UUID stageId);
 
     @Query("SELECT COUNT(d) FROM Deal d WHERE d.tenantId = :tenantId AND d.stage.recordCategory = :recordCategory AND d.deleted = false")
     Integer countByRecordCategory(@Param("tenantId") UUID tenantId, @Param("recordCategory") RecordCategory recordCategory);
+
+    /**
+     * L3.0-P4-B: won deals for one tenant, used by entitlement reconciliation.
+     * Tenant-scoped and deleted-aware.
+     */
+    @Query("SELECT d FROM Deal d WHERE d.tenantId = :tenantId AND d.stage.recordCategory = :recordCategory AND d.deleted = false")
+    java.util.List<Deal> findByTenantIdAndRecordCategoryAndDeletedFalse(
+            @Param("tenantId") UUID tenantId, @Param("recordCategory") RecordCategory recordCategory);
 
     @Query("SELECT COUNT(d) FROM Deal d WHERE d.tenantId = :tenantId AND d.stage.recordCategory = com.shivang.crm.modules.deal.entity.RecordCategory.CLOSED_WON AND d.deleted = false")
     Integer countWonDeals(@Param("tenantId") UUID tenantId);

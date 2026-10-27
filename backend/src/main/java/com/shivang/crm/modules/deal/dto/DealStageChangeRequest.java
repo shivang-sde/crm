@@ -3,7 +3,6 @@ package com.shivang.crm.modules.deal.dto;
 import java.time.LocalDate;
 import java.util.UUID;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -23,18 +22,14 @@ public class DealStageChangeRequest {
 
     @NotNull(message = "Stage ID is required")
     @Schema(description = "Deal stage UUID")
-    @JsonProperty("stage_id")
     private UUID stageId;
 
     @Schema(description = "Actual closed date")
-    @JsonProperty("closed_date")
     private LocalDate closedDate;
 
     @Schema(description = "Reason why the deal was won")
-    @JsonProperty("won_reason")
     private String wonReason;
 
     @Schema(description = "Reason why the deal was lost")
-    @JsonProperty("lost_reason")
     private String lostReason;
 }

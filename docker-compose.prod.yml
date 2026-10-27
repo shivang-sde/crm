@@ -176,6 +176,17 @@ services:
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS}
       SPRING_RABBITMQ_VIRTUAL_HOST: ${RABBITMQ_DEFAULT_VHOST:-/}
+      # OPS-01: RabbitMQ management API. Required for non-destructive DLQ inspection
+      # (AMQP has no queue-browse primitive). Reachable from the backend over the
+      # internal network only; port 15672 is not published to the host.
+      # The feature stays off unless an operator opts in, matching the application
+      # default. DLQ inspection also needs the management credentials; they default to
+      # the same account the AMQP client already uses.
+      OPERATOR_TOOLS_ENABLED: ${OPERATOR_TOOLS_ENABLED:-false}
+      RABBITMQ_MANAGEMENT_URL: ${RABBITMQ_MANAGEMENT_URL:-http://rabbitmq:15672}
+      RABBITMQ_MANAGEMENT_VHOST: ${RABBITMQ_MANAGEMENT_VHOST:-/}
+      RABBITMQ_MANAGEMENT_USERNAME: ${RABBITMQ_MANAGEMENT_USERNAME:-${RABBITMQ_DEFAULT_USER}}
+      RABBITMQ_MANAGEMENT_PASSWORD: ${RABBITMQ_MANAGEMENT_PASSWORD:-${RABBITMQ_DEFAULT_PASS}}
 
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_TOKEN_EXPIRY_MS: ${JWT_ACCESS_TOKEN_EXPIRY_MS}

@@ -13,6 +13,7 @@ import { Footer } from "./Footer";
 import { Header, type BreadcrumbItem } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { CallOpeningProvider } from "@/components/call-opening/CallOpeningProvider";
+import { SoftphoneWidget } from "@/components/voice/SoftphoneWidget";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -205,6 +206,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <Footer />
         </div>
       </div>
+      <SoftphoneWidget />
     </CallOpeningProvider>
   );
 }

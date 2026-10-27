@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -45,6 +46,7 @@ public class OfferingController {
     private final TenantContext tenantContext;
 
     @PostMapping
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'write')")
     @Operation(summary = "Create offering", description = "Create a new catalog offering")
     public ResponseEntity<ApiResponse<OfferingResponse>> createOffering(@RequestBody OfferingCreateRequest request) {
         UUID tenantId = currentTenantId();
@@ -54,6 +56,7 @@ public class OfferingController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'read')")
     @Operation(summary = "Get offering", description = "Get an offering by id")
     public ResponseEntity<ApiResponse<OfferingResponse>> getOffering(@PathVariable UUID id) {
         UUID tenantId = currentTenantId();
@@ -61,6 +64,7 @@ public class OfferingController {
     }
 
     @GetMapping
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'read')")
     @Operation(summary = "List offerings", description = "List offerings with filters and pagination")
     public ResponseEntity<ApiResponse<java.util.List<OfferingResponse>>> listOfferings(
             @Parameter(description = "Search term") @RequestParam(required = false) String search,
@@ -82,6 +86,7 @@ public class OfferingController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'write')")
     @Operation(summary = "Update offering", description = "Update an existing offering")
     public ResponseEntity<ApiResponse<OfferingResponse>> updateOffering(@PathVariable UUID id,
             @RequestBody OfferingUpdateRequest request) {
@@ -91,6 +96,7 @@ public class OfferingController {
     }
 
     @PatchMapping("/{id}/activate")
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'write')")
     @Operation(summary = "Activate offering", description = "Activate an offering")
     public ResponseEntity<ApiResponse<String>> activateOffering(@PathVariable UUID id) {
         UUID tenantId = currentTenantId();
@@ -100,6 +106,7 @@ public class OfferingController {
     }
 
     @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'write')")
     @Operation(summary = "Deactivate offering", description = "Deactivate an offering")
     public ResponseEntity<ApiResponse<String>> deactivateOffering(@PathVariable UUID id) {
         UUID tenantId = currentTenantId();
@@ -109,6 +116,7 @@ public class OfferingController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("@rbac.has(authentication, 'offering', 'delete')")
     @Operation(summary = "Delete offering", description = "Soft delete an offering")
     public ResponseEntity<ApiResponse<String>> deleteOffering(@PathVariable UUID id) {
         UUID tenantId = currentTenantId();

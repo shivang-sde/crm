@@ -402,7 +402,7 @@ public class TaskService {
             .priority(task.getPriority())
             .entityType(task.getEntityType())
             .entityId(task.getEntityId())
-            .entityName(resolveEntityName(task.getEntityType(), task.getEntityId()))
+            .entityName(resolveEntityName(task.getTenantId(), task.getEntityType(), task.getEntityId()))
             .remindAt(task.getRemindAt())
             .recurrence(task.getRecurrence())
             .customData(task.getCustomData())
@@ -420,11 +420,11 @@ public class TaskService {
         return response;
     }
 
-    private String resolveEntityName(String entityType, UUID entityId) {
+    private String resolveEntityName(UUID tenantId, String entityType, UUID entityId) {
         if (entityType == null || entityId == null) {
             return null;
         }
-        return entityResolverService.resolveEntityName(entityType, entityId);
+        return entityResolverService.resolveEntityName(entityType, entityId, tenantId);
     }
 
     private String resolveUserName(UUID userId) {

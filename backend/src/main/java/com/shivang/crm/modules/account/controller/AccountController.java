@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,7 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.shivang.crm.modules.account.dto.AccountCreateRequest;
 import com.shivang.crm.modules.account.dto.AccountResponse;
 import com.shivang.crm.modules.account.dto.AccountUpdateRequest;
+import com.shivang.crm.modules.account.dto.Customer360Response;
 import com.shivang.crm.modules.account.service.AccountService;
+import com.shivang.crm.modules.account.service.Customer360Service;
 import com.shivang.crm.modules.activity.dto.ActivityResponse;
 import com.shivang.crm.modules.activity.service.ActivityService;
 import com.shivang.crm.modules.auth.security.TenantContext;
@@ -46,6 +49,7 @@ public class AccountController {
     private final TenantContext tenantContext;
     private final EntityNoteService entityNoteService;
     private final ActivityService activityService;
+    private final Customer360Service customer360Service;
 
     @PostMapping
     @Operation(summary = "Create account", description = "Create a new account")
@@ -95,6 +99,55 @@ public class AccountController {
         java.util.List<AccountResponse> accounts = accountService.searchAccounts(tenantId, query, 20);
 
         return ResponseEntity.ok(ApiResponse.success(accounts));
+    }
+
+/**
+     * L3.2-P1/P2/P3: Customer 360 read.
+     *
+     * <p>Anchored on the Account resource, so it resolves to module {@code account}
+     * in {@code RbacFilter} and needs no separate permission. {@code @PreAuthorize}
+     * restates that intent as defense in depth, matching the newer Ticket convention;
+     * the sibling Account endpoints rely on the filter alone. There is no
+     * {@code customer360:read} permission and none is added: the timeline is
+     * subordinate to {@code account:read}, not a new resource.
+     *
+     * <p>Account visibility does not imply child visibility. Each section is
+     * scope-filtered and independently paginated by its own domain service, and
+     * reports its own totals so nothing is silently omitted. The timeline obeys the
+     * same rule: an activity appears only when the record it belongs to is visible.
+     */
+    @GetMapping("/{id}/360")
+    @PreAuthorize("@rbac.has(authentication, 'account', 'read')")
+    @Operation(summary = "Get customer 360 view",
+            description = "The account and its contacts, deals, entitlements, tickets, feedback, "
+                    + "and a unified activity timeline. Each collection is independently scoped and "
+                    + "paginated, and reports its own totals.")
+    public ResponseEntity<ApiResponse<Customer360Response>> getCustomer360(
+            @PathVariable UUID id,
+            @Parameter(description = "Contacts page (0-indexed)") @RequestParam(defaultValue = "0") int contactsPage,
+            @Parameter(description = "Contacts page size") @RequestParam(defaultValue = "20") int contactsSize,
+            @Parameter(description = "Deals page (0-indexed)") @RequestParam(defaultValue = "0") int dealsPage,
+            @Parameter(description = "Deals page size") @RequestParam(defaultValue = "20") int dealsSize,
+            @Parameter(description = "Entitlements page (0-indexed)") @RequestParam(defaultValue = "0") int entitlementsPage,
+            @Parameter(description = "Entitlements page size") @RequestParam(defaultValue = "20") int entitlementsSize,
+            @Parameter(description = "Tickets page (0-indexed)") @RequestParam(defaultValue = "0") int ticketsPage,
+            @Parameter(description = "Tickets page size") @RequestParam(defaultValue = "20") int ticketsSize,
+            @Parameter(description = "Feedback page (0-indexed)") @RequestParam(defaultValue = "0") int feedbackPage,
+            @Parameter(description = "Feedback page size") @RequestParam(defaultValue = "20") int feedbackSize,
+            @Parameter(description = "Timeline page (0-indexed)") @RequestParam(defaultValue = "0") int timelinePage,
+            @Parameter(description = "Timeline page size") @RequestParam(defaultValue = "20") int timelineSize) {
+
+        log.info("GET /api/v1/accounts/{}/360 - Getting customer 360 view", id);
+        UUID tenantId = currentTenantId();
+
+        return ResponseEntity.ok(ApiResponse.success(customer360Service.getAccount360(
+                id, tenantId,
+                contactsPage, contactsSize,
+                dealsPage, dealsSize,
+                entitlementsPage, entitlementsSize,
+                ticketsPage, ticketsSize,
+                feedbackPage, feedbackSize,
+                timelinePage, timelineSize)));
     }
 
     @GetMapping("/{id}")
@@ -159,6 +212,8 @@ public class AccountController {
 
         log.info("GET /api/v1/accounts/{}/activities - Getting activities", id);
         UUID tenantId = currentTenantId();
+        // RBAC-7 / L3.0-P3: parent Account must be within the caller's read scope.
+        accountService.assertAccountAccessible(tenantId, id, "read");
         Page<ActivityResponse> activities = activityService.getEntityActivities(id, "ACCOUNT", tenantId, page, size);
 
         Map<String, Object> meta = Map.of(
@@ -180,6 +235,8 @@ public class AccountController {
 
         log.info("GET /api/v1/accounts/{}/notes - Getting notes", id);
         UUID tenantId = currentTenantId();
+        // RBAC-7 / L3.0-P3: parent Account must be within the caller's read scope.
+        accountService.assertAccountAccessible(tenantId, id, "read");
         Page<com.shivang.crm.modules.lead.dto.EntityNoteResponse> notes = entityNoteService.getEntityNotes(id, "ACCOUNT", tenantId, page, size);
 
         Map<String, Object> meta = Map.of(
@@ -201,6 +258,8 @@ public class AccountController {
         log.info("POST /api/v1/accounts/{}/notes - Adding note", id);
         UUID tenantId = currentTenantId();
         UUID userId = currentUserId();
+        // RBAC-7 / L3.0-P3: parent Account must be within the caller's write scope.
+        accountService.assertAccountAccessible(tenantId, id, "write");
         String noteText = request.get("note");
         com.shivang.crm.modules.lead.dto.EntityNoteResponse noteResponse = entityNoteService.addEntityNote(id, "ACCOUNT", tenantId, noteText, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(noteResponse));
@@ -215,6 +274,8 @@ public class AccountController {
         log.info("DELETE /api/v1/accounts/{}/notes/{} - Deleting note", id, noteId);
         UUID tenantId = currentTenantId();
         UUID userId = currentUserId();
+        // RBAC-7 / L3.0-P3: parent Account must be within the caller's delete scope.
+        accountService.assertAccountAccessible(tenantId, id, "delete");
         entityNoteService.deleteEntityNote(noteId, id, "ACCOUNT", tenantId, userId);
         return ResponseEntity.ok(ApiResponse.success("Note deleted successfully"));
     }

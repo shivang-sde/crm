@@ -64,6 +64,16 @@ spring:
     jdbc-properties:
       TimeZone: UTC
 
+  # ── Scheduled jobs ──
+  # Nine @Scheduled jobs share this pool. Previously the default pool size of 1
+  # meant a slow job (e.g. the outbox publisher blocking on a publisher confirm
+  # while RabbitMQ is down) stalled reminders, recurrence, entitlement expiry and
+  # all workflow dispatch. Each @Scheduled trigger still never overlaps itself.
+  task:
+    scheduling:
+      pool:
+        size: ${SCHEDULER_POOL_SIZE:10}
+
   # ── Redis ──
   data:
     redis:
@@ -112,6 +122,62 @@ app:
     stale-after-seconds: ${OUTBOX_STALE_AFTER_SECONDS:300}
     confirm-timeout-ms: ${OUTBOX_CONFIRM_TIMEOUT_MS:5000}
     max-retry-delay-seconds: ${OUTBOX_MAX_RETRY_DELAY_SECONDS:300}
+    # Publish attempt budget per row. On exhaustion the row moves to the terminal
+    # DEAD state and is never selected again without an explicit requeue.
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:10}
+  rabbitmq:
+    consumer:
+      prefetch: ${RABBITMQ_CONSUMER_PREFETCH:50}
+      concurrency: ${RABBITMQ_CONSUMER_CONCURRENCY:1}
+      max-concurrency: ${RABBITMQ_CONSUMER_MAX_CONCURRENCY:4}
+      retry:
+        # Total deliveries per message, including the first. Deterministic failures
+        # (business rules, malformed payloads, integrity violations) are dead-lettered
+        # immediately without consuming this budget.
+        max-attempts: ${RABBITMQ_CONSUMER_RETRY_MAX_ATTEMPTS:3}
+        initial-interval-ms: ${RABBITMQ_CONSUMER_RETRY_INITIAL_INTERVAL_MS:500}
+        multiplier: ${RABBITMQ_CONSUMER_RETRY_MULTIPLIER:2.0}
+        max-interval-ms: ${RABBITMQ_CONSUMER_RETRY_MAX_INTERVAL_MS:10000}
+  resilience:
+    redis:
+      # How long Redis-backed calls keep bypassing the server after a connection
+      # failure. Keeps a Redis outage from turning into a 5xx storm on the auth path
+      # and avoids logging once per request. Recovers automatically afterwards.
+      open-duration-ms: ${REDIS_RESILIENCE_OPEN_DURATION_MS:15000}
+  operator-tools:
+    # Master switch for OPS-01 (RabbitMQ DLQ) and OPS-02 (outbox DEAD) tooling.
+    # Off by default: the capability is inert until an operator opts in AND supplies
+    # the RabbitMQ management API URL, which DLQ inspection requires because AMQP
+    # has no non-destructive queue browse primitive.
+    enabled: ${OPERATOR_TOOLS_ENABLED:false}
+    dlq:
+      management-url: ${RABBITMQ_MANAGEMENT_URL:}
+      vhost: ${RABBITMQ_MANAGEMENT_VHOST:/}
+      username: ${RABBITMQ_MANAGEMENT_USERNAME:}
+      password: ${RABBITMQ_MANAGEMENT_PASSWORD:}
+      connect-timeout-ms: ${RABBITMQ_MANAGEMENT_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${RABBITMQ_MANAGEMENT_READ_TIMEOUT_MS:5000}
+      page-size: ${OPERATOR_TOOLS_DLQ_PAGE_SIZE:20}
+      max-scan-messages: ${OPERATOR_TOOLS_DLQ_MAX_SCAN:50}
+      confirm-timeout-ms: ${OPERATOR_TOOLS_DLQ_CONFIRM_TIMEOUT_MS:5000}
+      # Exchanges a re-drive may target. Empty means "only the CRM event exchange".
+      allowed-exchanges: []
+    outbox:
+      page-size: ${OPERATOR_TOOLS_OUTBOX_PAGE_SIZE:20}
+      max-page-size: ${OPERATOR_TOOLS_OUTBOX_MAX_PAGE_SIZE:200}
+  security:
+    token-blacklist:
+      # BYPASS = a token that was explicitly logged out stays usable until its
+      # natural expiry while Redis is down (JWT signature verification is
+      # unaffected). DENY = strict fail-closed revocation, at the cost of rejecting
+      # all traffic during the outage.
+      redis-failure-mode: ${TOKEN_BLACKLIST_REDIS_FAILURE_MODE:BYPASS}
+    login:
+      throttle:
+        enabled: ${LOGIN_THROTTLE_ENABLED:true}
+        max-failed-attempts: ${LOGIN_THROTTLE_MAX_FAILED_ATTEMPTS:5}
+        lock-duration-ms: ${LOGIN_THROTTLE_LOCK_DURATION_MS:900000}
+        max-fallback-keys: ${LOGIN_THROTTLE_MAX_FALLBACK_KEYS:10000}
   workflow-runtime:
     poll-delay-ms: ${WORKFLOW_RUNTIME_POLL_DELAY_MS:45000}
     batch-size: ${WORKFLOW_RUNTIME_BATCH_SIZE:10}

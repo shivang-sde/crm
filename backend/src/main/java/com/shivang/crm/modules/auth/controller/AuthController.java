@@ -49,10 +49,32 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(
             @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest,
             HttpServletResponse response) {
 
-        AuthResponse authResponse = authService.login(request, response);
+        AuthResponse authResponse = authService.login(request, response, clientAddress(httpRequest));
         return ResponseEntity.ok(ApiResponse.success(authResponse));
+    }
+
+    /**
+     * Best-effort client address for brute-force throttling.
+     *
+     * <p>Takes the first hop of {@code X-Forwarded-For} when present (the reverse
+     * proxy appends to it) and falls back to the socket address. The value is only
+     * ever SHA-256'd before storage, so a spoofed header cannot poison the Redis
+     * keyspace with arbitrary data - it can at worst give an attacker a fresh
+     * throttle bucket, which is the same exposure as any per-IP limit.
+     */
+    private static String clientAddress(HttpServletRequest request) {
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        if (forwardedFor != null && !forwardedFor.isBlank()) {
+            int comma = forwardedFor.indexOf(',');
+            String first = (comma > 0 ? forwardedFor.substring(0, comma) : forwardedFor).trim();
+            if (!first.isEmpty()) {
+                return first;
+            }
+        }
+        return request.getRemoteAddr();
     }
 
     /**

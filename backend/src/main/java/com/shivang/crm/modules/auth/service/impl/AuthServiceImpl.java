@@ -25,6 +25,7 @@ import com.shivang.crm.modules.auth.mapper.TenantMapper;
 import com.shivang.crm.modules.auth.repository.RefreshTokenRepository;
 import com.shivang.crm.modules.auth.repository.UserRepository;
 import com.shivang.crm.modules.auth.security.JwtService;
+import com.shivang.crm.modules.auth.security.LoginThrottleService;
 import com.shivang.crm.modules.auth.security.TokenBlacklistService;
 import com.shivang.crm.modules.auth.service.AuthService;
 import com.shivang.crm.modules.auth.service.TenantProvisioningService;
@@ -53,6 +54,7 @@ public class AuthServiceImpl implements AuthService {
     private final TenantRepository tenantRepository;
     private final JwtService jwtService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final LoginThrottleService loginThrottleService;
     private final PasswordEncoder passwordEncoder;
     private final UserRoleRepository userRoleRepository;
     private final TenantProvisioningService tenantProvisioningService;
@@ -112,9 +114,32 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public AuthResponse login(LoginRequest request, HttpServletResponse response) {
+    public AuthResponse login(LoginRequest request, HttpServletResponse response, String clientAddress) {
+        String email = request.getEmail().toLowerCase().trim();
+        String client = clientAddress == null || clientAddress.isBlank() ? "unknown" : clientAddress;
+
+        // Brute-force gate. The refusal below reuses INVALID_CREDENTIALS verbatim so a
+        // locked account is indistinguishable from a wrong password: no enumeration
+        // oracle, and no hint that the identifier exists.
+        if (loginThrottleService.isLocked(email, client)) {
+            loginThrottleService.recordThrottled();
+            log.warn("Login refused by brute-force throttle for one identifier/address pair "
+                    + "(threshold={} failures per window)", 5);
+            throw new UnauthorizedException("INVALID_CREDENTIALS", "Invalid email or password");
+        }
+
+        try {
+            return authenticate(request, email, client, response);
+        } catch (UnauthorizedException ex) {
+            loginThrottleService.recordFailure(email, client);
+            throw ex;
+        }
+    }
+
+    private AuthResponse authenticate(LoginRequest request, String email, String clientAddress,
+            HttpServletResponse response) {
         // 1. Find user by email
-        User user = userRepository.findByEmail(request.getEmail().toLowerCase().trim())
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UnauthorizedException("INVALID_CREDENTIALS", "Invalid email or password"));
 
         // 2. Verify password
@@ -155,6 +180,9 @@ public class AuthServiceImpl implements AuthService {
         // 8. Update last login
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
+
+        // 9. Successful authentication clears the brute-force state for this pair
+        loginThrottleService.recordSuccess(email, clientAddress);
 
         // 8. Return access token + user info + tenant
         return AuthResponse.builder()

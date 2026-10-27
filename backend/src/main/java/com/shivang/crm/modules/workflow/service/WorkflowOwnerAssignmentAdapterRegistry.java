@@ -10,13 +10,20 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowOwnerAssignmentAdapterRegistry {
 
+    private static final String REGISTRY_NAME = "WorkflowOwnerAssignmentAdapterRegistry";
+
     private final Map<String, WorkflowOwnerAssignmentAdapter> adapters;
 
     public WorkflowOwnerAssignmentAdapterRegistry(List<WorkflowOwnerAssignmentAdapter> adapters) {
         this.adapters = adapters.stream().collect(Collectors.toUnmodifiableMap(
             adapter -> adapter.entityType().toUpperCase(),
             Function.identity(),
-            (first, second) -> first
+            (first, second) -> {
+                throw new IllegalStateException(REGISTRY_NAME + " has a duplicate registration for entity type '"
+                    + first.entityType() + "': " + first.getClass().getName() + " and "
+                    + second.getClass().getName() + ". Remove or rename one of them; only one owner assignment "
+                    + "adapter can own an entity type.");
+            }
         ));
     }
 

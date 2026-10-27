@@ -1,17 +1,55 @@
+# Test-profile configuration.
+#
+# There is deliberately NO in-memory database here. An earlier revision pointed
+# this file at `jdbc:h2:mem:testdb` with `ddl-auto: create-drop`, but H2 has
+# never been a dependency of this project — see TicketMessageMigrationContractTest,
+# which states outright that there is no H2 or Testcontainers harness. That block
+# only ever produced "Cannot load driver class: org.h2.Driver".
+#
+# It could not have worked regardless. The Flyway migrations are PostgreSQL-only
+# (gen_random_uuid(), JSONB columns, GIN indexes), so no substitute engine can
+# replay them, and Spring Batch validates its schema through a live connection
+# while the context starts. A context test therefore needs a real PostgreSQL.
+#
+# `contextLoads` is a wiring test: it proves the context, entity mappings,
+# repositories, security config and controllers can all be constructed. Schema
+# correctness is covered two ways — Flyway applies all migrations against real
+# PostgreSQL, and the *MigrationContractTest classes assert the migration text.
 integration:
   security:
+    # Non-production value, present only so the context can be built. Overridden by
+    # INTEGRATION_ENCRYPTION_KEY wherever real credentials are encrypted, and the
+    # prod profile rejects this value outright.
     encryption-key: "XKM1/RmCg8xvU/iYTEY81mZUgZDWeHxwH3Cpqwz1D2w="
 
 jwt:
+  # Same rationale: enough length and entropy to sign with, never used in prod.
   secret: "nR9xjQEINW3WfCLmG9HSNIVmjiNcoAUdLe21ocKg6WxrNOqtmqY68wjwXVAYwfmS+j434IgZRM8gZ7N4DQXXiA=="
 
-# Use test database (optional but recommended)
 spring:
+  # Same driver and defaults as the main profile. Override DATABASE_URL,
+  # POSTGRES_USER and POSTGRES_PASSWORD to point at a throwaway test database;
+  # never at a database holding real data.
   datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: 
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/crm?sslmode=disable}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:crm_password}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    # Migrations are the source of truth for the schema, so they still run here.
+    enabled: true
+
+  batch:
+    jdbc:
+      # No migration owns the BATCH_* tables, so Spring Batch creates them. Left
+      # at "always" deliberately: "never" would let JobRepository fail at startup.
+      initialize-schema: always
+
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # "none" is the honest value: Flyway owns the schema. "create-drop" would
+      # fabricate a schema that differs from the migrated one and silently diverge
+      # from production.
+      ddl-auto: none
+    database-platform: org.hibernate.dialect.PostgreSQLDialect

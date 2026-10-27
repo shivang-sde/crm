@@ -20,7 +20,7 @@ public interface AuthService {
      * Authenticate user with email/password.
      * Returns access token in response body, sets refresh token in HTTP-only cookie.
      */
-    AuthResponse login(LoginRequest request, HttpServletResponse response);
+    AuthResponse login(LoginRequest request, HttpServletResponse response, String clientAddress);
 
     /**
      * Refresh access token using the refresh token from HTTP-only cookie.

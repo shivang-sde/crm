@@ -79,7 +79,10 @@ public class WorkflowHttpConnectionController {
     }
 
     @PostMapping("/http-connections/{id}/test")
-    @PreAuthorize("@rbac.has(authentication, 'workflow', 'read')")
+    // write, not read: this issues a live authenticated outbound request using the
+    // connection's stored credentials, so a read-scoped caller must not be able to
+    // cause the CRM to present a secret to an arbitrary host.
+    @PreAuthorize("@rbac.has(authentication, 'workflow', 'write')")
     public ResponseEntity<ApiResponse<ConnectionTestResponse>> testConnection(
             @PathVariable UUID id, @Valid @RequestBody ConnectionTestRequest request) {
         UUID tenantId = tenantContext.requireTenantId();

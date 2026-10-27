@@ -13,6 +13,14 @@ public class AccountSpecifications {
         return (root, query, cb) -> cb.equal(root.get("tenantId"), tenantId);
     }
 
+    /**
+     * L3.0-P2: soft-delete is conventional here (no @SQLDelete / @Where), so
+     * live reads must exclude deleted rows explicitly.
+     */
+    public static Specification<Account> notDeleted() {
+        return (root, query, cb) -> cb.isFalse(root.get("deleted"));
+    }
+
     public static Specification<Account> visibleToUser(String scope, UUID userId, List<UUID> teamUserIds) {
         return (root, query, cb) -> switch (scope) {
             case "ALL" -> cb.conjunction();
@@ -59,6 +67,7 @@ public class AccountSpecifications {
             UUID currentUserId,
             List<UUID> teamUserIds) {
         Specification<Account> spec = byTenantId(tenantId);
+        spec = spec.and(notDeleted());
         spec = spec.and(visibleToUser(accessScope, currentUserId, teamUserIds));
 
         if (ownerId != null) {

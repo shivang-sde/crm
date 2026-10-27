@@ -150,7 +150,7 @@ export function DealTable({ deals }: DealTableProps) {
                 </TableCell>
                 <TableCell>
                   {deal.amount !== undefined && deal.amount !== null
-                    ? `${deal.amount.toLocaleString()} ${deal.currency || "USD"}`
+                    ? deal.amount.toLocaleString()
                     : "—"}
                 </TableCell>
                 <TableCell className="text-emerald-700 font-medium">

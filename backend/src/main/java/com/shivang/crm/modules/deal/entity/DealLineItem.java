@@ -64,6 +64,15 @@ public class DealLineItem extends BaseEntity {
     @Column(name = "tax_amount", precision = 19, scale = 2)
     private BigDecimal taxAmount;
 
+    /**
+     * L3.0-P4-F: ISO-4217 currency of the monetary values on this line,
+     * snapshotted from Offering.currencyCode at creation time. Nullable because
+     * Offering.currencyCode is nullable; that nullability is preserved rather
+     * than defaulted to an invented currency.
+     */
+    @Column(name = "currency_code", length = 3)
+    private String currencyCode;
+
     @Column(name = "line_total", precision = 19, scale = 2)
     private BigDecimal lineTotal;
 

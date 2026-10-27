@@ -15,6 +15,15 @@ public class DealSpecifications {
         return (root, query, cb) -> cb.equal(root.get("tenantId"), tenantId);
     }
 
+    /**
+     * L3.0-P2: soft-delete is conventional in this codebase (no @SQLDelete /
+     * @Where), so every live read must exclude deleted rows explicitly. Mirrors
+     * OfferingSpecifications.notDeleted.
+     */
+    public static Specification<Deal> notDeleted() {
+        return (root, query, cb) -> cb.isFalse(root.get("deleted"));
+    }
+
     public static Specification<Deal> byStageId(UUID stageId) {
         return (root, query, cb) -> cb.equal(root.get("stage").get("id"), stageId);
     }
@@ -115,6 +124,8 @@ public class DealSpecifications {
             List<UUID> teamUserIds
     ) {
         Specification<Deal> spec = byTenantId(tenantId);
+
+        spec = spec.and(notDeleted());
 
         spec = spec.and(visibleToUser(accessScope, currentUserId, teamUserIds));
 

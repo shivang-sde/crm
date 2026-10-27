@@ -40,9 +40,15 @@ public class ContactService {
     private final ContactMapper contactMapper;
     private final PermissionEvaluatorService permissionEvaluatorService;
     private final CanonicalCrmEventPublisher canonicalCrmEventPublisher;
+    private final com.shivang.crm.shared.service.CustomerRelationshipValidator customerRelationshipValidator;
 
     public ContactResponse createContact(UUID tenantId, UUID userId, ContactCreateRequest request) {
         log.info("Creating contact for tenant {}", tenantId);
+
+        // L3.0-P2: the parent Account must be a live record in this tenant. The
+        // contacts.account_id foreign key is tenant-blind, so without this a
+        // known UUID from another tenant would be accepted.
+        customerRelationshipValidator.requireLiveAccount(request.getAccountId(), tenantId);
 
         if (request.getEmail() != null && contactRepository.findByTenantIdAndEmailIgnoreCaseAndDeletedFalse(tenantId, request.getEmail().trim()).isPresent()) {
             throw new BusinessException("DUPLICATE_CONTACT", "A contact with the same email already exists");
@@ -79,7 +85,7 @@ public class ContactService {
         UUID currentUserId = UserUtil.currentUserId();
         String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "contact", "read");
 
-        Contact contact = contactRepository.findByIdAndTenantId(id, tenantId)
+        Contact contact = contactRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
 
         recordScopeGuard.assertWithinOwnerCreatorScope(
@@ -114,10 +120,29 @@ public class ContactService {
         return listContacts(tenantId, null, search, 0, limit).getContent();
     }
 
+    /**
+     * RBAC-7 / L3.0-P3: ensures the parent Contact is within the caller's scope
+     * for the given action before any nested child resource (activities, notes)
+     * is served or mutated. Mirrors {@code DealService.assertDealAccessible}.
+     *
+     * <p>Tenant isolation is enforced by the P2 deleted-aware lookup; this adds
+     * the record-scope layer that nested endpoints were missing.
+     */
+    public void assertContactAccessible(UUID tenantId, UUID contactId, String action) {
+        UUID currentUserId = UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "contact", action);
+
+        Contact contact = contactRepository.findByIdAndTenantIdAndDeletedFalse(contactId, tenantId)
+                .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, contact.getOwnerId(), contact.getCreatedBy());
+    }
+
     public ContactResponse updateContact(UUID id, UUID tenantId, UUID userId, ContactUpdateRequest request) {
         log.info("Updating contact {} for tenant {}", id, tenantId);
         String scope = recordScopeGuard.requireScope(tenantId, userId, "contact", "write");
-        Contact contact = contactRepository.findByIdAndTenantId(id, tenantId)
+        Contact contact = contactRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 scope, tenantId, userId, contact.getOwnerId(), contact.getCreatedBy());
@@ -156,7 +181,7 @@ public class ContactService {
 
     public ContactResponse assignOwner(UUID id, UUID tenantId, UUID ownerUserId, UUID actorId) {
         String scope = recordScopeGuard.requireScope(tenantId, actorId, "contact", "assign");
-        Contact contact = contactRepository.findByIdAndTenantId(id, tenantId)
+        Contact contact = contactRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 scope, tenantId, actorId, contact.getOwnerId(), contact.getCreatedBy());
@@ -187,13 +212,28 @@ public class ContactService {
         return contactMapper.toResponse(updated);
     }
 
+    /**
+     * L3.0-P4-H: Contact deletion is a soft delete.
+     *
+     * <p>This was a hard {@code repository.delete()} before P4. A Contact is
+     * referenced by deals and entitlements and anchors activities, notes and
+     * entity_history rows. A hard delete either fails on the deals.contact_id
+     * foreign key or removes the person from the customer history.
+     *
+     * <p>Deals and entitlements are not cascaded or mutated; the P2 deleted-aware
+     * finders already exclude this Contact from normal active reads, and
+     * EntityResolverService (P2) refuses to resolve it as a live entity.
+     */
     public void deleteContact(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting contact {} for tenant {}", id, tenantId);
         String scope = recordScopeGuard.requireScope(tenantId, userId, "contact", "delete");
-        Contact contact = contactRepository.findByIdAndTenantId(id, tenantId)
+        Contact contact = contactRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 scope, tenantId, userId, contact.getOwnerId(), contact.getCreatedBy());
-        contactRepository.delete(contact);
+
+        contact.softDelete(userId);
+        contact.setUpdatedBy(userId);
+        contactRepository.save(contact);
     }
 }

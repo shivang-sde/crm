@@ -13,6 +13,10 @@ public class LeadSpecifications {
         return (root, query, cb) -> cb.equal(root.get("tenantId"), tenantId);
     }
 
+    public static Specification<Lead> notDeleted() {
+        return (root, query, cb) -> cb.isFalse(root.get("deleted"));
+    }
+
     public static Specification<Lead> visibleToUser(
         String scope,
         UUID userId,

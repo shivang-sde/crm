@@ -83,7 +83,7 @@ public class AccountService {
         UUID currentUserId = UserUtil.currentUserId();
         String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "account", "read");
 
-        Account account = accountRepository.findByIdAndTenantId(id, tenantId)
+        Account account = accountRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
 
         recordScopeGuard.assertWithinOwnerCreatorScope(
@@ -120,7 +120,7 @@ public class AccountService {
     public AccountResponse updateAccount(UUID id, UUID tenantId, UUID userId, AccountUpdateRequest request) {
         log.info("Updating account {} for tenant {}", id, tenantId);
         String writeScope = recordScopeGuard.requireScope(tenantId, userId, "account", "write");
-        Account account = accountRepository.findByIdAndTenantId(id, tenantId)
+        Account account = accountRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 writeScope, tenantId, userId, account.getOwnerId(), account.getCreatedBy());
@@ -154,7 +154,7 @@ public class AccountService {
 
     public AccountResponse assignOwner(UUID id, UUID tenantId, UUID ownerUserId, UUID actorId) {
         String assignScope = recordScopeGuard.requireScope(tenantId, actorId, "account", "assign");
-        Account account = accountRepository.findByIdAndTenantId(id, tenantId)
+        Account account = accountRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 assignScope, tenantId, actorId, account.getOwnerId(), account.getCreatedBy());
@@ -185,14 +185,53 @@ public class AccountService {
         return accountMapper.toResponse(updated);
     }
 
+    /**
+     * L3.0-P4-H: Account deletion is a soft delete.
+     *
+     * <p>This was a hard {@code repository.delete()} before P4. An Account is the
+     * canonical customer identity: contacts, deals and entitlements all reference
+     * it, and activities, notes and entity_history rows carry it as a timeline
+     * anchor that must stay queryable for customer history. A hard delete either
+     * fails on the contacts.account_id foreign key or drops the customer record
+     * out from under its own history.
+     *
+     * <p>Child records are deliberately NOT cascaded or mutated. Contacts, deals
+     * and entitlements keep pointing at this Account, which is exactly what makes
+     * the historical graph intact; the P2 deleted-aware finders already exclude
+     * the soft-deleted Account from normal active reads.
+     */
     public void deleteAccount(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting account {} for tenant {}", id, tenantId);
         String deleteScope = recordScopeGuard.requireScope(tenantId, userId, "account", "delete");
-        Account account = accountRepository.findByIdAndTenantId(id, tenantId)
+        Account account = accountRepository.findByIdAndTenantIdAndDeletedFalse(id, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 deleteScope, tenantId, userId, account.getOwnerId(), account.getCreatedBy());
-        accountRepository.delete(account);
+
+        account.softDelete(userId);
+        account.setUpdatedBy(userId);
+        accountRepository.save(account);
+    }
+
+    /**
+     * RBAC-7 / L3.0-P3: ensures the parent Account is within the caller's scope
+     * for the given action before any nested child resource (activities, notes,
+     * contacts) is served or mutated.
+     *
+     * <p>Mirrors {@code DealService.assertDealAccessible}. Without it, a nested
+     * endpoint served through a different module permission could act on an
+     * Account the caller cannot see. Tenant isolation is already enforced by the
+     * P2 deleted-aware lookup; this adds the record-scope layer.
+     */
+    public void assertAccountAccessible(UUID tenantId, UUID accountId, String action) {
+        UUID currentUserId = UserUtil.currentUserId();
+        String scope = recordScopeGuard.requireScope(tenantId, currentUserId, "account", action);
+
+        Account account = accountRepository.findByIdAndTenantIdAndDeletedFalse(accountId, tenantId)
+            .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
+
+        recordScopeGuard.assertWithinOwnerCreatorScope(
+                scope, tenantId, currentUserId, account.getOwnerId(), account.getCreatedBy());
     }
 
     @Transactional(readOnly = true)
@@ -201,7 +240,7 @@ public class AccountService {
         // RBAC-7: nested-resource rule — the parent account must be within the
         // caller's account:read scope before any child contacts are exposed.
         String parentScope = recordScopeGuard.requireScope(tenantId, currentUserId, "account", "read");
-        Account parent = accountRepository.findByIdAndTenantId(accountId, tenantId)
+        Account parent = accountRepository.findByIdAndTenantIdAndDeletedFalse(accountId, tenantId)
             .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
         recordScopeGuard.assertWithinOwnerCreatorScope(
                 parentScope, tenantId, currentUserId, parent.getOwnerId(), parent.getCreatedBy());

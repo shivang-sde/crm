@@ -18,13 +18,10 @@ import { useState } from "react";
 import { useDeleteAccount } from "@/lib/hooks/accounts";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { AccountResponse } from "@/types/accounts";
-import { AccountContacts } from "./AccountContacts";
-import { AccountTimeline } from "./AccountTimeline";
-import { EntityDealsSection } from "@/components/deals/EntityDealsSection";
+import { AccountWorkspace } from "./AccountWorkspace";
 import { AccountNotes } from "./AccountNotes";
 import { ClickToCallButton } from "@/components/call-opening/ClickToCallButton";
 import { EntityCallHistory } from "@/components/calls/EntityCallHistory";
-import { AccountEntitlementsSection } from "@/components/entitlements/AccountEntitlementsSection";
 import { CommercialDocumentsSection } from "@/components/commercial/CommercialDocumentsSection";
 
 interface AccountDetailProps {
@@ -79,100 +76,31 @@ export function AccountDetail({ account }: AccountDetailProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-lg border bg-white p-6">
-            <div>
-              <h2 className="text-xl font-semibold">{account.name}</h2>
-              <p className="text-sm text-muted-foreground">{account.industry || "No industry specified"}</p>
-            </div>
+      {/*
+        L3.2-P4: Customer 360 workspace. Contacts, deals, entitlements, tickets and
+        the timeline now come from the single /accounts/{id}/360 response, so the
+        previous per-section cards that each fetched their own endpoint are no longer
+        rendered here — they would duplicate the same data behind a second
+        authorization gate.
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Email</p>
-                <p>{account.email || "—"}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Phone</p>
-                <p>{account.phone || "—"}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Website</p>
-                <p>{account.website || "—"}</p>
-              </div>
-              {/* <div>
-                <p className="text-sm font-medium text-muted-foreground">Owner</p>
-                <p>{account.ownerUserId || "Unassigned"}</p>
-              </div> */}
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Annual Revenue</p>
-                <p>{account.annualRevenue ? `$${account.annualRevenue.toLocaleString()}` : "—"}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Employees</p>
-                <p>{account.employeeCount ?? "—"}</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">Address</p>
-              <p>
-                {account.addressLine1 || ""}
-                {account.city ? `, ${account.city}` : ""}
-                {account.state ? `, ${account.state}` : ""}
-                {account.postalCode ? ` ${account.postalCode}` : ""}
-                {account.country ? `, ${account.country}` : ""}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Description</p>
-              <p>{account.description || "No description provided."}</p>
-            </div>
-          </div>
-
-          <AccountEntitlementsSection accountId={account.id} />
-          <CommercialDocumentsSection accountId={account.id} />
-          <EntityDealsSection entityType="ACCOUNT" entityId={account.id} />
-          <AccountContacts accountId={account.id} />
-          <EntityCallHistory
-            entityType="account"
-            entityId={account.id}
-            title="Account call history"
-            pageSize={10}
-          />
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-6">
+        The panels with no Customer 360 equivalent (notes, call history, commercial
+        documents) stay on the Overview tab so nothing is lost.
+      */}
+      <AccountWorkspace
+        account={account}
+        overviewPanels={
+          <div className="space-y-4">
             <AccountNotes accountId={account.id} />
+            <CommercialDocumentsSection accountId={account.id} />
+            <EntityCallHistory
+              entityType="account"
+              entityId={account.id}
+              title="Account call history"
+              pageSize={10}
+            />
           </div>
-
-          <div className="space-y-6">
-            <AccountTimeline accountId={account.id} />
-          </div>
-          <div className="rounded-lg border bg-white p-6">
-            <p className="text-sm font-medium text-muted-foreground">Account details</p>
-            <div className="mt-4 grid gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Lead source</p>
-                <p>{account.leadId ? "Converted from lead" : "Direct account"}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Created at</p>
-                <p>{new Date(account.createdAt).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Updated at</p>
-                <p>{new Date(account.updatedAt).toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
         <AlertDialogContent>

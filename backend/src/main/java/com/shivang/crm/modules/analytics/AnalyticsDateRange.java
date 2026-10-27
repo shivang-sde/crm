@@ -16,14 +16,27 @@ public record AnalyticsDateRange(Instant from, Instant to) {
     private static final long MAX_DAYS = 366;
 
     public static AnalyticsDateRange resolve(String rawFrom, String rawTo) {
+        return resolve(rawFrom, rawTo, Instant.now());
+    }
+
+    /**
+     * Same rules, but with the caller's notion of "now" supplied explicitly.
+     *
+     * <p>{@link #resolve(String, String)} reads the system clock when a bound is
+     * missing, which makes a default window untestable and lets two components
+     * disagree about "the last 30 days" if they are called a millisecond apart.
+     * A caller that owns a {@link java.time.Clock} should pass its instant here
+     * so the whole window derives from one source.
+     */
+    public static AnalyticsDateRange resolve(String rawFrom, String rawTo, Instant now) {
         Instant to = parse(rawTo, "to");
         Instant from = parse(rawFrom, "from");
 
         if (to == null && from == null) {
-            to = Instant.now();
+            to = now;
             from = to.minus(DEFAULT_DAYS, ChronoUnit.DAYS);
         } else if (to == null) {
-            to = Instant.now();
+            to = now;
         } else if (from == null) {
             from = to.minus(DEFAULT_DAYS, ChronoUnit.DAYS);
         }

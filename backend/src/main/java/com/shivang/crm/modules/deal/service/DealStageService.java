@@ -29,12 +29,35 @@ public class DealStageService {
     private final DealStageRepository dealStageRepository;
     private final DealRepository dealRepository;
     private final DealStageMapper dealStageMapper;
+    private final com.shivang.crm.modules.rbac.service.RecordScopeGuard recordScopeGuard;
+
+    /**
+     * L3.0-P3: DealStage is tenant-wide pipeline configuration, not an owned
+     * business record. It has no owner/creator, so OWN and TEAM scope carry no
+     * meaningful meaning for it and must never be treated as "allowed because
+     * the stage has no owner".
+     *
+     * <p>Therefore mutation requires an effective ALL scope on the corresponding
+     * deal action. No fake owner is assigned and the schema is unchanged: the
+     * stage simply does not participate in owner-based scoping.
+     */
+    private void requireTenantConfigurationScope(UUID tenantId, UUID userId, String action) {
+        String scope = recordScopeGuard.requireScope(tenantId, userId, "deal", action);
+        if (!"ALL".equals(scope)) {
+            throw new com.shivang.crm.shared.exception.PermissionDeniedException(
+                    "SCOPE_DENIED",
+                    "Pipeline configuration is tenant-wide and requires ALL scope on deal:" + action);
+        }
+    }
 
     /**
      * Create a new deal stage
      */
     public DealStageResponse createDealStage(UUID tenantId, UUID userId, DealStageCreateRequest request) {
         log.info("Creating deal stage for tenant: {}", tenantId);
+
+        // Authorization first, then business validation, then mutation.
+        requireTenantConfigurationScope(tenantId, userId, "write");
 
         // Check for duplicate stage name
         dealStageRepository.findByTenantIdAndName(tenantId, request.getName())
@@ -93,6 +116,8 @@ public class DealStageService {
     public DealStageResponse updateDealStage(UUID id, UUID tenantId, UUID userId, DealStageUpdateRequest request) {
         log.info("Updating deal stage: {} for tenant: {}", id, tenantId);
 
+        requireTenantConfigurationScope(tenantId, userId, "write");
+
         DealStage stage = dealStageRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new RuntimeException("Deal stage not found"));
 
@@ -130,6 +155,8 @@ public class DealStageService {
      */
     public void deleteDealStage(UUID id, UUID tenantId, UUID userId) {
         log.info("Deleting deal stage: {} for tenant: {}", id, tenantId);
+
+        requireTenantConfigurationScope(tenantId, userId, "delete");
 
         DealStage stage = dealStageRepository.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new RuntimeException("Deal stage not found"));

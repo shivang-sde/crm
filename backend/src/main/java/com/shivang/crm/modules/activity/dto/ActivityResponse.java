@@ -37,6 +37,16 @@ public class ActivityResponse {
     @JsonProperty("performedBy")
     private UUID performedBy;
 
+    /**
+     * L3.1-P5: USER or SYSTEM. Needed because a SYSTEM activity has no performedBy,
+     * so the field alone cannot distinguish "nobody" from "not recorded".
+     */
+    @JsonProperty("actorType")
+    private String actorType;
+
+    @JsonProperty("actorSource")
+    private String actorSource;
+
     @JsonProperty("metadata")
     private Map<String, Object> metadata;
 

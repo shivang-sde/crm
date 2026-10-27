@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { useCreateDeal, useUpdateDeal, useDealStages, useDealCustomFields } from "@/lib/hooks/deals";
 import { useDealLineItems } from "@/lib/hooks/deal-line-items";
+import { useOfferings } from "@/lib/hooks/offerings";
 import { RecordCombobox } from "@/components/common/RecordCombobox";
 import { useQuery } from "@tanstack/react-query";
 import { userApi } from "@/lib/api/users";
@@ -22,6 +23,7 @@ import { useContact } from "@/lib/hooks/contacts";
 import { DealResponse } from "@/types/deals";
 import { DynamicFieldRenderer } from "./DynamicFieldRenderer";
 import { dealFormSchema, DealFormData } from "./validation";
+import { InitialLineItemsEditor, InitialLineItemDraft, toLineItemRequests } from "./InitialLineItemsEditor";
 
 interface DealFormProps {
   initialData?: DealResponse;
@@ -37,6 +39,7 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
   const { data: usersData } = useQuery({ queryKey: ["users", "deal-form"], queryFn: () => userApi.getUsers({ page: 0, isActive: true }) });
   const { data: initialAccount } = useAccount(isEdit ? initialData?.accountId || undefined : undefined);
   const { data: initialContact } = useContact(isEdit ? initialData?.contactId || undefined : undefined);
+  const { data: offeringsData } = useOfferings({ size: 100 });
 
   const createMutation = useCreateDeal();
   const updateMutation = useUpdateDeal();
@@ -44,12 +47,17 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
   const hasLineItems = Boolean(initialData?.id && (lineItemsData?.length ?? 0) > 0);
   const amountManagedByLineItems = isEdit && hasLineItems;
 
+  // L3.0-P5: a new Deal's initial lines, submitted in the same request.
+  const [lineItemDrafts, setLineItemDrafts] = useState<InitialLineItemDraft[]>([]);
+  const [lineItemsError, setLineItemsError] = useState<string | undefined>(undefined);
+
+  const offerings = (offeringsData?.data ?? []) as Array<{ id: string; name: string }>;
+
   const form = useForm<DealFormData>({
     resolver: zodResolver(dealFormSchema) as any,
     defaultValues: {
       name: "",
       amount: undefined,
-      currency: undefined,
       stageId: "",
       accountId: undefined,
       contactId: undefined,
@@ -73,7 +81,6 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
       form.reset({
         name: initialData.name,
         amount: initialData.amount ?? undefined,
-        currency: initialData.currency ?? undefined,
         stageId: initialData.stage.id,
         accountId: initialData.accountId ?? undefined,
         contactId: initialData.contactId ?? undefined,
@@ -116,7 +123,6 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
     const payload = {
       name: data.name,
       amount: data.amount ?? undefined,
-      currency: data.currency ?? undefined,
       stageId: data.stageId,
       accountId: data.accountId || undefined,
       contactId: data.contactId || undefined,
@@ -135,13 +141,28 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
     };
 
     if (isEdit && initialData) {
+      // L3.0-P5: editing never replaces lines. Line mutation stays on the
+      // line-item endpoints, so an update cannot silently discard them.
       updateMutation.mutate(
         { id: initialData.id, data: payload },
         { onSuccess: (deal) => onSuccess?.(deal) }
       );
-    } else {
-      createMutation.mutate(payload, { onSuccess: (deal) => onSuccess?.(deal) });
+      return;
     }
+
+    const lineItems = toLineItemRequests(lineItemDrafts);
+    // A won Deal with no lines is rejected by the backend, because it could never
+    // produce entitlements. Catch it here rather than after a round trip.
+    if (isWonStage && lineItems.length === 0) {
+      setLineItemsError("A deal in a won stage needs at least one line item.");
+      return;
+    }
+    setLineItemsError(undefined);
+
+    createMutation.mutate(
+      { ...payload, ...(lineItems.length > 0 ? { lineItems } : {}) },
+      { onSuccess: (deal) => onSuccess?.(deal) }
+    );
   }
 
   if (stagesLoading) {
@@ -165,11 +186,6 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
           <FieldLabel>Amount</FieldLabel>
           <Input type="number" placeholder="0.00" {...form.register("amount")} disabled={amountManagedByLineItems} />
           {amountManagedByLineItems && <p className="text-sm text-muted-foreground">Amount is managed by line items.</p>}
-        </Field>
-
-        <Field>
-          <FieldLabel>Currency</FieldLabel>
-          <Input placeholder="USD" {...form.register("currency")} />
         </Field>
 
         <Field>
@@ -348,6 +364,19 @@ export function DealForm({ initialData, onSuccess }: DealFormProps) {
           </Field>
         )}
       </FieldGroup>
+
+      {/* L3.0-P5: only for new Deals. Editing lines is owned by the line-item
+          endpoints, so this must not appear on an edit form where it would read
+          as "replace all lines". */}
+      {!isEdit && (
+        <InitialLineItemsEditor
+          drafts={lineItemDrafts}
+          onChange={setLineItemDrafts}
+          offerings={offerings}
+          required={isWonStage}
+          error={lineItemsError}
+        />
+      )}
 
       {customFields && customFields.length > 0 && (
         <div className="border-t pt-6">

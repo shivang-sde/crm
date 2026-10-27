@@ -40,6 +40,9 @@ const INTEGRATIONS_ITEMS: SettingsNavItemConfig[] = [
 
 const ADMIN_ITEMS: SettingsNavItemConfig[] = [
   { href: "/admin/settings", label: "Organization", description: "Manage organization-level calling configuration.", permission: { module: "admin", action: "settings" } },
+  { href: "/settings/voice", label: "Voice", description: "Manage the shared Generic SIP voice connection.", permission: { module: "admin", action: "settings" } },
+  { href: "/admin/operations/rabbitmq", label: "Dead Letters", description: "Inspect and re-drive RabbitMQ dead letters.", permission: { module: "admin", action: "operations_read" } },
+  { href: "/admin/operations/outbox", label: "Outbox Failures", description: "Inspect and requeue terminal outbox events.", permission: { module: "admin", action: "operations_read" } },
   // { href: "/leads/settings", label: "Lead Settings", description: "Configure lead statuses, sources, and custom fields.", permission: { module: "lead", action: "write" } },
   // { href: "/deals/settings", label: "Deal Settings", description: "Configure deal stages and custom fields.", permission: { module: "deal", action: "write" } },
   // { href: "/users", label: "Users & Roles", description: "Manage users, roles and access.", permission: { module: "admin", action: "user_manage" } },
@@ -93,6 +96,7 @@ export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
     .filter((item) => !item.permission || hasPermission(item.permission.module, item.permission.action))
     .map((item) => {
       let icon = Settings;
+      if (item.href === "/settings/voice") icon = Phone;
       if (item.href === "/leads/settings") icon = Target;
       if (item.href === "/deals/settings") icon = Package;
       if (item.href === "/users") icon = Settings;

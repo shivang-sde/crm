@@ -60,7 +60,7 @@ export function DealBasicInfo({ deal }: DealBasicInfoProps) {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Amount</p>
               <p className="text-lg font-bold text-foreground">
                 {deal.amount !== undefined && deal.amount !== null
-                  ? `${deal.amount.toLocaleString()} ${deal.currency || "USD"}`
+                  ? deal.amount.toLocaleString()
                   : "—"}
               </p>
             </div>
@@ -74,7 +74,7 @@ export function DealBasicInfo({ deal }: DealBasicInfoProps) {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Expected Revenue</p>
               <p className="text-lg font-bold text-foreground">
                 {deal.expectedRevenue !== undefined && deal.expectedRevenue !== null
-                  ? `${deal.expectedRevenue.toLocaleString()} ${deal.currency || "USD"}`
+                  ? deal.expectedRevenue.toLocaleString()
                   : "—"}
               </p>
             </div>

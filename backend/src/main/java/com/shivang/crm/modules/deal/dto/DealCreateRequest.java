@@ -2,14 +2,15 @@ package com.shivang.crm.modules.deal.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.shivang.crm.modules.deal.entity.DealType;
 import com.shivang.crm.modules.deal.entity.ForecastCategory;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,71 +31,78 @@ public class DealCreateRequest {
     private String name;
 
     @Schema(description = "Deal stage UUID", example = "550e8400-e29b-41d4-a716-446655440000")
-    @JsonProperty("stage_id")
     private UUID stageId;
 
     @Schema(description = "Associated account UUID", example = "550e8400-e29b-41d4-a716-446655440000")
-    @JsonProperty("account_id")
     private UUID accountId;
 
     @Schema(description = "Associated contact UUID", example = "550e8400-e29b-41d4-a716-446655440000")
-    @JsonProperty("contact_id")
     private UUID contactId;
 
     @Schema(description = "Associated lead UUID (for lead-to-deal conversion)", example = "550e8400-e29b-41d4-a716-446655440000")
-    @JsonProperty("lead_id")
     private UUID leadId;
 
     @Schema(description = "Deal amount", example = "150000.00")
     private BigDecimal amount;
 
     @Schema(description = "Expected close date", example = "2026-12-31")
-    @JsonProperty("expected_close_date")
     private LocalDate expectedCloseDate;
 
     @Schema(description = "Actual closed date")
-    @JsonProperty("closed_date")
     private LocalDate closedDate;
 
     @Schema(description = "Probability percentage (0-100)", example = "75")
     private Integer probability;
 
     @Schema(description = "Forecast category")
-    @JsonProperty("forecast_category")
     private ForecastCategory forecastCategory;
 
     @Schema(description = "Next step")
-    @JsonProperty("next_step")
     private String nextStep;
 
     @Schema(description = "Deal type")
-    @JsonProperty("deal_type")
     private DealType dealType;
 
     @Schema(description = "Lead source")
-    @JsonProperty("lead_source")
     private String leadSource;
 
     @Schema(description = "Campaign source")
-    @JsonProperty("campaign_source")
     private String campaignSource;
 
     @Schema(description = "Reason why the deal was won")
-    @JsonProperty("won_reason")
     private String wonReason;
 
     @Schema(description = "Reason why the deal was lost")
-    @JsonProperty("lost_reason")
     private String lostReason;
 
     @Schema(description = "Deal description")
     private String description;
 
     @Schema(description = "Deal owner user UUID", example = "550e8400-e29b-41d4-a716-446655440000")
-    @JsonProperty("owner_user_id")
     private UUID ownerUserId;
 
     @Schema(description = "Custom fields as key-value map")
-    @JsonProperty("custom_data")
     private Map<String, Object> customData;
+
+    /**
+     * L3.0-P5: the Deal's initial commercial lines, created in the same
+     * transaction as the Deal itself.
+     *
+     * <p>This exists because a Deal cannot be created directly in CLOSED_WON and
+     * then given its lines: a commercially closed Deal has no legitimate window
+     * in which lines may be added. Carrying them here means a won Deal is born
+     * with its coverage already attached, instead of being opened up to be
+     * sold and re-closed.
+     *
+     * <p>Optional for OPEN and CLOSED_LOST Deals. Required and non-empty for a
+     * CLOSED_WON Deal, because a won Deal with no lines could never produce the
+     * entitlements that represent what the customer was sold.
+     *
+     * <p>Deliberately absent from DealUpdateRequest. Line-item mutation stays
+     * owned by DealLineItemService so that a Deal update can never silently
+     * read as "replace all of this Deal's lines".
+     */
+    @Schema(description = "Initial line items, created atomically with the deal")
+    @Valid
+    private List<DealLineItemCreateRequest> lineItems;
 }

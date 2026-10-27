@@ -1,5 +1,6 @@
 package com.shivang.crm.modules.entitlement.repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -16,6 +17,14 @@ import org.springframework.stereotype.Repository;
 import com.shivang.crm.modules.entitlement.entity.CustomerEntitlement;
 import com.shivang.crm.modules.entitlement.entity.EntitlementStatus;
 
+/**
+ * L3.0-P4-L3.4-P1: Customer entitlement persistence.
+ *
+ * <p>Every finder is tenant-scoped and deleted-aware. The {@code status} and
+ * {@code endDate} predicates are ordinary Spring Data JPA method names; they are
+ * not ORM-level {@code @Where} filters, so every live read must exclude soft-deleted
+ * rows explicitly (the {@code deleted} column is a plain boolean on the entity).
+ */
 @Repository
 public interface CustomerEntitlementRepository extends JpaRepository<CustomerEntitlement, UUID>, JpaSpecificationExecutor<CustomerEntitlement> {
 
@@ -49,6 +58,12 @@ public interface CustomerEntitlementRepository extends JpaRepository<CustomerEnt
         return findAll(CustomerEntitlementSpecifications.buildSpecification(
                 tenantId, accountId, contactId, offeringId, status, ownerUserId, renewable, endDateFrom, endDateTo, search), pageable);
     }
+
+    boolean existsByTenantIdAndOfferingIdAndStatusInAndDeletedFalse(
+        UUID tenantId,
+        UUID offeringId,
+        List<EntitlementStatus> statuses);
+
     boolean existsByTenantIdAndAccountIdAndDeletedFalse(UUID tenantId, UUID accountId);
     boolean existsByTenantIdAndOfferingIdAndDeletedFalse(UUID tenantId, UUID offeringId);
     boolean existsByTenantIdAndDealIdAndDeletedFalse(UUID tenantId, UUID dealId);

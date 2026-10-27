@@ -202,11 +202,14 @@ public class TenantProvisioningServiceImpl implements TenantProvisioningService 
                 }
             }
 
-            // Assign EMPLOYEE permissions using config
+            // Assign EMPLOYEE permissions using config. Scope comes from
+            // DefaultRoleConfig so the Java fallback and the PostgreSQL
+            // create_tenant_default_roles() trigger stay behaviourally aligned.
             for (Permission perm : allPermissions) {
                 if (defaultRoleConfig.isEmployeePermission(perm)) {
                     allRolePermissions.add(createRolePermission(
-                            employeeRole.getId(), perm.getId(), "OWN"));
+                            employeeRole.getId(), perm.getId(),
+                            DefaultRoleConfig.EMPLOYEE_ACCESS_SCOPE));
                 }
             }
 

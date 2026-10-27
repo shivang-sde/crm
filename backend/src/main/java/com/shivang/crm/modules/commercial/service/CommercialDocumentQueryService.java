@@ -65,13 +65,13 @@ public class CommercialDocumentQueryService {
         Page<IntegrationExternalRecord> pageResult;
         if (accountId != null) {
             // Validate account belongs to tenant and user has access
-            var account = accountRepository.findByIdAndTenantId(accountId, tenantId)
+            var account = accountRepository.findByIdAndTenantIdAndDeletedFalse(accountId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
             String scope = scopeGuard.requireScope(tenantId, userId, "account", "read");
             scopeGuard.assertWithinOwnerCreatorScope(scope, tenantId, userId, account.getOwnerId(), account.getCreatedBy());
             pageResult = recordRepository.findByTenantAndAccountAndTypes(tenantId, accountId, types, pageable);
         } else {
-            var contact = contactRepository.findByIdAndTenantId(contactId, tenantId)
+            var contact = contactRepository.findByIdAndTenantIdAndDeletedFalse(contactId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
             String scope = scopeGuard.requireScope(tenantId, userId, "contact", "read");
             scopeGuard.assertWithinOwnerCreatorScope(scope, tenantId, userId, contact.getOwnerId(), contact.getCreatedBy());

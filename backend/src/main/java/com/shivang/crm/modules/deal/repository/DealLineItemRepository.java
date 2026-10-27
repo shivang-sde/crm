@@ -25,5 +25,16 @@ public interface DealLineItemRepository extends JpaRepository<DealLineItem, UUID
 
     @Query("SELECT COALESCE(SUM(dli.lineTotal), 0) FROM DealLineItem dli WHERE dli.tenantId = :tenantId AND dli.dealId = :dealId AND dli.deleted = false")
     BigDecimal sumLineTotalsByTenantIdAndDealIdAndDeletedFalse(@Param("tenantId") UUID tenantId, @Param("dealId") UUID dealId);
+
+    @Query("SELECT DISTINCT dli.currencyCode FROM DealLineItem dli WHERE dli.tenantId = :tenantId AND dli.dealId = :dealId AND dli.deleted = false")
+    List<String> findDistinctCurrencyCodesByTenantIdAndDealIdAndDeletedFalse(
+            @Param("tenantId") UUID tenantId, @Param("dealId") UUID dealId);
+
+    @Query("SELECT COUNT(dli) > 0 FROM DealLineItem dli JOIN Deal d ON d.id = dli.dealId "
+            + "WHERE dli.tenantId = :tenantId AND dli.offeringId = :offeringId AND dli.deleted = false "
+            + "AND d.deleted = false AND d.stage.recordCategory = com.shivang.crm.modules.deal.entity.RecordCategory.OPEN")
+    boolean existsOpenDealLineItemByTenantIdAndOfferingId(
+            @Param("tenantId") UUID tenantId, @Param("offeringId") UUID offeringId);
+
     boolean existsByTenantIdAndOfferingIdAndDeletedFalse(UUID tenantId, UUID offeringId);
 }

@@ -11,6 +11,13 @@ public interface ConnectorCredentialService {
 
     void deactivate( UUID tenantId, UUID credentialId, UUID userId );
 
+    /**
+     * VOICE-05: deactivate the shared tenant-scoped credential for one
+     * connector (admin "Remove Secret"). Tenant ownership is enforced by
+     * the query; callers must hold admin authorization. Returns rows updated.
+     */
+    int deactivateTenantCredentials(UUID tenantId, UUID connectorInstanceId, String credentialName, UUID updatedBy);
+
     Optional<ConnectorCredential> findById(UUID tenantId, UUID id);
     List<ConnectorCredential> findByTenantId(UUID tenantId);
     List<ConnectorCredential> findByTenantIdAndConnectorInstanceIdAndCreatedByAndIsActiveTrue(UUID tenantId, UUID connectorInstanceId, UUID createdBy);

@@ -19,6 +19,10 @@ public interface ActivityMapper {
     @Mapping(target = "metadata", source = "metadata")
     @Mapping(target = "id", source = "id")
     @Mapping(target = "createdAt", source = "createdAt")
+    // L3.1-P5: a system-generated activity has a null performedBy, which on its own is
+    // indistinguishable from a missing value. These make the actor explicit.
+    @Mapping(target = "actorType", source = "actorType")
+    @Mapping(target = "actorSource", source = "actorSource")
     ActivityResponse toResponse(Activity activity);
 
     List<ActivityResponse> toResponseList(List<Activity> activities);

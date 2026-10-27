@@ -1,5 +1,6 @@
 import { DealStageSummary, RecordCategory, ForecastCategory } from "./deal-stages";
 import { DealCustomFieldResponse } from "./deal-custom-fields";
+import { DealLineItemCreateRequest } from "./deal-line-items";
 
 export type DealFieldType =
   | "TEXT"
@@ -19,7 +20,6 @@ export interface DealResponse {
   id: string;
   name: string;
   amount?: number | null;
-  currency?: string | null;
   stage: DealStageSummary;
   accountId?: string | null;
   contactId?: string | null;
@@ -39,39 +39,49 @@ export interface DealResponse {
   closedDate?: string | null;
   wonReason?: string | null;
   lostReason?: string | null;
+  description?: string | null;
   customData?: Record<string, unknown>;
   createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * L3.0-P5: a Deal's initial line items, submitted with the Deal itself so that a
+ * directly-created CLOSED_WON Deal is born with its coverage attached instead of
+ * having to be opened up to be sold.
+ *
+ * Required and non-empty for a won stage; optional otherwise. Editing lines stays
+ * on the line-item endpoints, so `DealUpdateRequest` deliberately has no
+ * `lineItems`.
+ */
 export interface DealCreateRequest {
   name: string;
   amount?: number | null;
-  currency?: string | null;
   stageId?: string;
   accountId?: string;
   contactId?: string;
   leadId?: string;
   ownerUserId?: string;
   expectedCloseDate?: string;
+  closedDate?: string | null;
   probability?: number;
-  expectedRevenue?: number | null;
   forecastCategory?: ForecastCategory | null;
   nextStep?: string | null;
   dealType?: DealType | null;
   leadSource?: string | null;
   campaignSource?: string | null;
-  closedDate?: string | null;
   wonReason?: string | null;
   lostReason?: string | null;
+  description?: string | null;
   customData?: Record<string, unknown>;
+  lineItems?: DealLineItemCreateRequest[];
 }
 
 export interface DealUpdateRequest {
   name?: string;
   amount?: number | null;
-  currency?: string | null;
   stageId?: string;
   accountId?: string | null;
   contactId?: string | null;

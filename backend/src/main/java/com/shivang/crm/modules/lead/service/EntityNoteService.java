@@ -142,15 +142,17 @@ public class EntityNoteService {
         );
     }
 
+    // L3.0-P2: deleted-aware so a note can never be attached to a soft-deleted
+        // customer record.
     private void validateEntityExists(UUID entityId, String entityType, UUID tenantId) {
         switch (entityType) {
-            case "LEAD" -> leadRepository.findByIdAndTenantId(entityId, tenantId)
+            case "LEAD" -> leadRepository.findByIdAndTenantIdAndDeletedFalse(entityId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Lead not found"));
-            case "ACCOUNT" -> accountRepository.findByIdAndTenantId(entityId, tenantId)
+            case "ACCOUNT" -> accountRepository.findByIdAndTenantIdAndDeletedFalse(entityId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Account not found"));
-            case "CONTACT" -> contactRepository.findByIdAndTenantId(entityId, tenantId)
+            case "CONTACT" -> contactRepository.findByIdAndTenantIdAndDeletedFalse(entityId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Contact not found"));
-            case "DEAL" -> dealRepository.findByIdAndTenantId(entityId, tenantId)
+            case "DEAL" -> dealRepository.findByIdAndTenantIdAndDeletedFalse(entityId, tenantId)
                     .orElseThrow(() -> new BusinessException("NOT_FOUND", "Deal not found"));
             default -> throw new BusinessException("INVALID_ENTITY_TYPE", "Unsupported entity type: " + entityType);
         }

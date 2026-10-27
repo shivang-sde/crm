@@ -59,7 +59,7 @@ export function LoginForm() {
       toast.success(`Welcome back, ${userName}!`);
       
       // Entry resolver performs the permission-driven default redirect.
-      router.replace("/home");
+      router.replace("/dashboard");
     },
     onError: (error: unknown) => {
       const responseError = error as {

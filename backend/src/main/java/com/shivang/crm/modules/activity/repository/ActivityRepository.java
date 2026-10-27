@@ -16,6 +16,15 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
 
     Page<Activity> findByActivityTypeAndTenantIdOrderByCreatedAtDesc(String activityType, UUID tenantId, Pageable pageable);
 
+    /**
+     * L3.1-P5: entity-scoped read that excludes soft-deleted activities.
+     *
+     * <p>Added alongside the existing finders rather than replacing them, so no
+     * existing activity endpoint changes behaviour.
+     */
+    Page<Activity> findByEntityTypeAndEntityIdAndTenantIdAndDeletedFalseOrderByCreatedAtDesc(
+            String entityType, UUID entityId, UUID tenantId, Pageable pageable);
+
     List<Activity> findByEntityTypeAndEntityIdAndTenantIdAndActivityTypeInOrderByCreatedAtDesc(
             String entityType, UUID entityId, UUID tenantId, List<String> activityTypes);
 }

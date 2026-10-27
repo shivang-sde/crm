@@ -20,6 +20,8 @@ import com.shivang.crm.modules.lead.repository.LeadRepository;
 import com.shivang.crm.shared.exception.BusinessException;
 
 import com.shivang.crm.modules.auth.entity.User;
+import com.shivang.crm.modules.ticket.entity.Ticket;
+import com.shivang.crm.modules.ticket.repository.TicketRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,11 +38,16 @@ public class EntityResolverService {
     private final AccountRepository accountRepository;
     private final DealRepository dealRepository;
     private final CustomerEntitlementRepository entitlementRepository;
+    /** L3.1-P1: Support Ticket is a first-class customer-domain entity. */
+    private final TicketRepository ticketRepository;
 
     /**
      * Validates that an entity exists for the given type and ID within the tenant.
-     * 
-     * @param entityType The type of entity (LEAD, CONTACT, ACCOUNT, DEAL)
+     *
+     * <p>L3.0-P2: every branch is now deleted-aware as well as tenant-scoped, so
+     * a soft-deleted record is never treated as a live polymorphic link target.
+     *
+     * @param entityType The type of entity (LEAD, CONTACT, ACCOUNT, DEAL, ENTITLEMENT, TICKET)
      * @param entityId The UUID of the entity
      * @param tenantId The tenant ID for isolation
      * @throws BusinessException if entity doesn't exist or is invalid
@@ -51,39 +58,46 @@ public class EntityResolverService {
         }
 
         boolean exists = switch (entityType.toUpperCase()) {
-            case "LEAD" -> leadRepository.existsByIdAndTenantId(entityId, tenantId);
-            case "CONTACT" -> contactRepository.existsByIdAndTenantId(entityId, tenantId);
-            case "ACCOUNT" -> accountRepository.existsByIdAndTenantId(entityId, tenantId);
-            case "DEAL" -> dealRepository.existsByIdAndTenantId(entityId, tenantId);
+            case "LEAD" -> leadRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
+            case "CONTACT" -> contactRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
+            case "ACCOUNT" -> accountRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
+            case "DEAL" -> dealRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
             case "ENTITLEMENT" -> entitlementRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
+            case "TICKET" -> ticketRepository.existsByIdAndTenantIdAndDeletedFalse(entityId, tenantId);
             default -> throw new BusinessException("INVALID_ENTITY_TYPE",
-                "Invalid entity type: " + entityType + ". Supported types: LEAD, CONTACT, ACCOUNT, DEAL, ENTITLEMENT");
+                "Invalid entity type: " + entityType + ". Supported types: LEAD, CONTACT, ACCOUNT, DEAL, ENTITLEMENT, TICKET");
         };
 
         if (!exists) {
-            throw new BusinessException("ENTITY_NOT_FOUND", 
+            throw new BusinessException("ENTITY_NOT_FOUND",
                 entityType + " with ID " + entityId + " not found in tenant " + tenantId);
         }
     }
 
     /**
      * Resolves the display name for an entity based on its type and ID.
-     * 
+     *
+     * <p>L3.0-P2: {@code tenantId} is now required. Customer-domain resolution
+     * previously used the unscoped {@code findById}, which could return the name
+     * or email of another tenant's record.
+     *
      * @param entityType The type of entity
      * @param entityId The UUID of the entity
+     * @param tenantId The tenant that owns the resolution
      * @return The display name of the entity, or null if not found
      */
-    public String resolveEntityName(String entityType, UUID entityId) {
+    public String resolveEntityName(String entityType, UUID entityId, UUID tenantId) {
         if (entityType == null || entityId == null) {
             return null;
         }
 
         return switch (entityType.toUpperCase()) {
-            case "LEAD" -> resolveLeadName(entityId);
-            case "CONTACT" -> resolveContactName(entityId);
-            case "ACCOUNT" -> resolveAccountName(entityId);
-            case "DEAL" -> resolveDealName(entityId);
-            case "ENTITLEMENT" -> resolveEntitlementName(entityId);
+            case "LEAD" -> resolveLeadName(tenantId, entityId);
+            case "CONTACT" -> resolveContactName(tenantId, entityId);
+            case "ACCOUNT" -> resolveAccountName(tenantId, entityId);
+            case "DEAL" -> resolveDealName(tenantId, entityId);
+            case "ENTITLEMENT" -> resolveEntitlementName(tenantId, entityId);
+            case "TICKET" -> resolveTicketName(tenantId, entityId);
             default -> null;
         };
     }
@@ -91,12 +105,12 @@ public class EntityResolverService {
     /**
      * Resolves a contact's full name.
      */
-    public String resolveContactName(UUID contactId) {
+    public String resolveContactName(UUID tenantId, UUID contactId) {
         if (contactId == null) {
             return null;
         }
-        
-        Optional<Contact> contactOpt = contactRepository.findById(contactId);
+
+        Optional<Contact> contactOpt = contactRepository.findByIdAndTenantIdAndDeletedFalse(contactId, tenantId);
         return contactOpt.map(contact -> {
             StringBuilder name = new StringBuilder();
             if (contact.getFirstName() != null) {
@@ -115,12 +129,12 @@ public class EntityResolverService {
     /**
      * Resolves a lead's name.
      */
-    public String resolveLeadName(UUID leadId) {
+    public String resolveLeadName(UUID tenantId, UUID leadId) {
         if (leadId == null) {
             return null;
         }
-        
-        Optional<Lead> leadOpt = leadRepository.findById(leadId);
+
+        Optional<Lead> leadOpt = leadRepository.findByIdAndTenantIdAndDeletedFalse(leadId, tenantId);
         return leadOpt.map(lead -> {
             StringBuilder name = new StringBuilder();
             if (lead.getFirstName() != null) {
@@ -139,42 +153,60 @@ public class EntityResolverService {
     /**
      * Resolves an account's name.
      */
-    public String resolveAccountName(UUID accountId) {
+    public String resolveAccountName(UUID tenantId, UUID accountId) {
         if (accountId == null) {
             return null;
         }
-        
-        Optional<Account> accountOpt = accountRepository.findById(accountId);
+
+        Optional<Account> accountOpt = accountRepository.findByIdAndTenantIdAndDeletedFalse(accountId, tenantId);
         return accountOpt.map(Account::getName).orElse(null);
     }
 
     /**
      * Resolves a deal's name.
      */
-    public String resolveDealName(UUID dealId) {
+    public String resolveDealName(UUID tenantId, UUID dealId) {
         if (dealId == null) {
             return null;
         }
-        
-        Optional<Deal> dealOpt = dealRepository.findById(dealId);
+
+        Optional<Deal> dealOpt = dealRepository.findByIdAndTenantIdAndDeletedFalse(dealId, tenantId);
         return dealOpt.map(Deal::getName).orElse(null);
     }
 
     /**
      * Resolves an entitlement's name.
      */
-    public String resolveEntitlementName(UUID entitlementId) {
+    public String resolveEntitlementName(UUID tenantId, UUID entitlementId) {
         if (entitlementId == null) {
             return null;
         }
 
-        Optional<CustomerEntitlement> entitlementOpt = entitlementRepository.findById(entitlementId);
+        Optional<CustomerEntitlement> entitlementOpt =
+                entitlementRepository.findByIdAndTenantIdAndDeletedFalse(entitlementId, tenantId);
         return entitlementOpt.map(CustomerEntitlement::getName).orElse(null);
     }
 
+    /**
+     * L3.1-P1: resolves a support ticket's display label. The subject is the
+     * customer-facing summary, so it is the sensible timeline label.
+     */
+    public String resolveTicketName(UUID tenantId, UUID ticketId) {
+        if (ticketId == null) {
+            return null;
+        }
+
+        return ticketRepository.findByIdAndTenantIdAndDeletedFalse(ticketId, tenantId)
+                .map(Ticket::getSubject)
+                .orElse(null);
+    }
+
    /**
-    * Resolves a user's full name by ID.
-    */
+     * Resolves a user''s full name by ID.
+     *
+     * <p>Not customer-domain: this is a display helper for assignee/owner labels,
+     * and the owner of a customer record is already tenant-validated on write.
+     */
     public String resolveUserName(UUID userId) {
         return userRepository.findById(userId)
             .map(User::getDisplayName)

@@ -2,6 +2,7 @@ package com.shivang.crm.modules.workflow.service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -47,6 +48,7 @@ public class WorkflowDefinitionService {
     private final WorkflowNodeRepository workflowNodeRepository;
     private final WorkflowEdgeRepository workflowEdgeRepository;
     private final WorkflowGraphValidationService graphValidationService;
+    private final WorkflowEntityContextProviderRegistry entityContextProviderRegistry;
 
     public UUID createWorkflow(UUID tenantId, String name) {
         return workflowRepository.save(Workflow.builder()
@@ -165,14 +167,23 @@ public class WorkflowDefinitionService {
             .findByWorkflowIdAndTenantIdAndDeletedFalseOrderByVersionNumberDesc(workflowId, tenantId)
             .stream().findFirst().map(version -> version.getVersionNumber() + 1).orElse(1);
 
+        String entityType = request.getTriggerEntityType() == null
+                ? "" : request.getTriggerEntityType().trim().toUpperCase(Locale.ROOT);
+        String eventType = request.getTriggerEventType() == null
+                ? "" : request.getTriggerEventType().trim().toUpperCase(Locale.ROOT);
+        if (entityType.isBlank() || eventType.isBlank()) {
+            throw new BusinessException("WORKFLOW_TRIGGER_REQUIRED", "Trigger entityType and eventType are required");
+        }
+        requireSupportedTriggerEntityType(entityType);
+
         try {
             return workflowVersionRepository.save(WorkflowVersion.builder()
                 .tenantId(tenantId)
                 .workflow(workflow)
                 .versionNumber(nextVersion)
                 .status(WorkflowVersionStatus.DRAFT)
-                .triggerEntityType(request.getTriggerEntityType().trim().toUpperCase())
-                .triggerEventType(request.getTriggerEventType().trim().toUpperCase())
+                .triggerEntityType(entityType)
+                .triggerEventType(eventType)
                 .triggerFilter(normalizeTriggerFilter(request.getTriggerFilter()))
                 .build()).getId();
         } catch (DataIntegrityViolationException ex) {
@@ -253,11 +264,12 @@ public class WorkflowDefinitionService {
 
     public void updateDraftVersionTrigger(UUID tenantId, UUID versionId, com.shivang.crm.modules.workflow.dto.WorkflowVersionUpdateRequest request) {
         WorkflowVersion version = requireDraftVersion(tenantId, versionId);
-        String entityType = request.getTriggerEntityType() == null ? "" : request.getTriggerEntityType().trim().toUpperCase();
-        String eventType = request.getTriggerEventType() == null ? "" : request.getTriggerEventType().trim().toUpperCase();
+        String entityType = request.getTriggerEntityType() == null ? "" : request.getTriggerEntityType().trim().toUpperCase(Locale.ROOT);
+        String eventType = request.getTriggerEventType() == null ? "" : request.getTriggerEventType().trim().toUpperCase(Locale.ROOT);
         if (entityType.isBlank() || eventType.isBlank()) {
             throw new BusinessException("WORKFLOW_TRIGGER_REQUIRED", "Trigger entityType and eventType are required");
         }
+        requireSupportedTriggerEntityType(entityType);
         version.setTriggerEntityType(entityType);
         version.setTriggerEventType(eventType);
         version.setTriggerFilter(normalizeTriggerFilter(request.getTriggerFilter()));
@@ -278,6 +290,25 @@ public class WorkflowDefinitionService {
                 trigger.setConfiguration(cfg);
                 workflowNodeRepository.save(trigger);
             });
+    }
+
+    /**
+     * L3.0-P1 Change C: a workflow trigger must reference an entity type the
+     * engine can actually resolve. WorkflowEntityContextProviderRegistry is the
+     * single source of truth for that vocabulary, so a typo such as "TICKETS"
+     * is rejected at the definition boundary instead of being persisted,
+     * activated, and then silently never matching any canonical event.
+     *
+     * <p>Does not change trigger matching semantics: WorkflowTriggerService
+     * still matches on exact entityType/eventType strings.
+     */
+    private void requireSupportedTriggerEntityType(String entityType) {
+        if (!entityContextProviderRegistry.supports(entityType)) {
+            throw new BusinessException("WORKFLOW_TRIGGER_ENTITY_TYPE_UNSUPPORTED",
+                "Trigger entityType is not supported: " + entityType
+                    + ". Supported types: "
+                    + entityContextProviderRegistry.supportedEntityTypes().stream().sorted().collect(Collectors.joining(", ")));
+        }
     }
 
     private Map<String, Object> normalizeTriggerFilter(Map<String, Object> raw) {

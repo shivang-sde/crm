@@ -36,6 +36,30 @@ public interface ConnectorCredentialRepository extends JpaRepository<ConnectorCr
             @Param("updatedBy") UUID updatedBy
     );
 
+    /**
+     * VOICE-05: admin removal of the shared (tenant-scoped, createdBy null)
+     * credential for one connector. Tenant ownership is enforced by the
+     * query itself; caller must additionally hold admin authorization.
+     * Never logs or returns credential values.
+     */
+    @Modifying
+    @Query("""
+    update ConnectorCredential c
+       set c.isActive = false,
+           c.updatedBy = :updatedBy
+     where c.tenantId = :tenantId
+       and c.connectorInstance.id = :connectorInstanceId
+       and c.createdBy is null
+       and c.credentialName = :credentialName
+       and c.isActive = true
+""")
+    int deactivateTenantCredentials(
+            @Param("tenantId") UUID tenantId,
+            @Param("connectorInstanceId") UUID connectorInstanceId,
+            @Param("credentialName") String credentialName,
+            @Param("updatedBy") UUID updatedBy
+    );
+
     List<ConnectorCredential>
             findByTenantIdAndConnectorInstanceIdAndCredentialScopeAndOwnerUserIdAndIsActiveTrueAndDeletedFalseOrderByCreatedAtDesc(
                     UUID tenantId,

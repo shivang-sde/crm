@@ -1,9 +1,12 @@
 package com.shivang.crm.modules.integration.controller;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
@@ -310,6 +313,376 @@ public class CallingAdminController {
         config.setCreatedBy(config.getCreatedBy() != null ? config.getCreatedBy() : userId);
         config.setUpdatedBy(userId);
         return ResponseEntity.ok(toLayoutConfigResponse(callLayoutConfigService.save(config)));
+    }
+
+    /**
+     * VOICE-05: admin view of the shared Generic SIP connection.
+     * Returns safe configuration plus presence metadata only — never the
+     * SIP secret, never TURN credentials, never encrypted material.
+     * TURN credentials already stored in config are reported as
+     * {@code credentialConfigured} flags so blank means "keep existing".
+     */
+    @GetMapping("/voice/connections/generic-sip")
+    public ResponseEntity<GenericSipConnectionResponse> getGenericSipConnection() {
+        UUID tenantId = requireTenantId();
+        Optional<ConnectorInstance> instance = resolveGenericSipInstance(tenantId);
+        if (instance.isEmpty()) {
+            return ResponseEntity.ok(GenericSipConnectionResponse.notConfigured());
+        }
+        return ResponseEntity.ok(toGenericSipResponse(tenantId, instance.get()));
+    }
+
+    /**
+     * VOICE-05: admin create-or-update of the shared Generic SIP connection.
+     * Non-secret fields merge into {@code ConnectorInstance.config}; the SIP
+     * secret (blank = keep, {@code removeSecret} = deactivate shared secret)
+     * is stored only through the encrypted {@code ConnectorCredential} store
+     * under the allowlisted {@code "primary"} name with TENANT scope.
+     */
+    @PutMapping("/voice/connections/generic-sip")
+    public ResponseEntity<GenericSipConnectionResponse> saveGenericSipConnection(
+            @RequestBody GenericSipConnectionRequest request) {
+        UUID tenantId = requireTenantId();
+        UUID userId = requireUserId();
+        ConnectorInstance instance = resolveGenericSipInstance(tenantId)
+                .orElseGet(() -> newGenericSipInstance(tenantId, userId));
+        if (instance.getProvider() == null
+                || !"CALLING".equalsIgnoreCase(instance.getProvider().getCategory())) {
+            throw new BusinessException("INVALID_CONNECTOR", "Connector is not a calling provider");
+        }
+
+        String endpoint = requireWssUrl(request.endpoint());
+        String sipDomain = requireSipDomain(request.sipDomain());
+        String username = requireUsername(request.username());
+        List<Map<String, Object>> iceServers = normalizeIceServers(
+                instance.getConfig(), request.iceServers());
+
+        Map<String, Object> config = instance.getConfig() != null
+                ? new HashMap<>(instance.getConfig())
+                : new HashMap<>();
+        config.put("endpoint", endpoint);
+        config.put("sipDomain", sipDomain);
+        config.put("username", username);
+        config.put("iceServers", iceServers);
+        instance.setConfig(config);
+        instance.setIsActive(true);
+        instance.setUpdatedBy(userId);
+        connectorInstanceService.save(instance);
+
+        if (Boolean.TRUE.equals(request.removeSecret())) {
+            connectorCredentialService.deactivateTenantCredentials(
+                    tenantId, instance.getId(), SIP_PRIMARY_CREDENTIAL_NAME, userId);
+        } else if (request.secret() != null && !request.secret().isBlank()) {
+            replaceTenantSecret(tenantId, instance, username, request.secret(), userId);
+        } else {
+            syncCredentialUsername(tenantId, instance, username);
+        }
+
+        log.info("Generic SIP connection saved tenant={} connector={} secretChanged={} secretRemoved={}",
+                tenantId, instance.getId(), request.secret() != null && !request.secret().isBlank(),
+                Boolean.TRUE.equals(request.removeSecret()));
+        return ResponseEntity.ok(toGenericSipResponse(tenantId, instance));
+    }
+
+    private static final String GENERIC_SIP_PROVIDER_KEY = "sellspark_voice";
+    private static final String SIP_PRIMARY_CREDENTIAL_NAME = "primary";
+    private static final String TENANT_SCOPE = "TENANT";
+
+    private Optional<ConnectorInstance> resolveGenericSipInstance(UUID tenantId) {
+        // Explicit Generic SIP only: never adopt a foreign connector (e.g.
+        // click2call). Absent means not-configured (GET) or create-new (PUT).
+        return connectorInstanceService.findActiveByTenantAndProvider(tenantId, GENERIC_SIP_PROVIDER_KEY);
+    }
+
+    private ConnectorInstance newGenericSipInstance(UUID tenantId, UUID userId) {
+        ProviderDefinition provider = providerRegistryService.findByProviderKey(GENERIC_SIP_PROVIDER_KEY)
+                .orElseThrow(() -> new BusinessException("NOT_FOUND", "Calling provider is not provisioned"));
+        return ConnectorInstance.builder()
+                .tenantId(tenantId)
+                .provider(provider)
+                .connectorName("Generic SIP")
+                .environment("PRODUCTION")
+                .config(new HashMap<>())
+                .isActive(true)
+                .createdBy(userId)
+                .updatedBy(userId)
+                .build();
+    }
+
+    private GenericSipConnectionResponse toGenericSipResponse(UUID tenantId, ConnectorInstance instance) {
+        Map<String, Object> config = instance.getConfig() != null ? instance.getConfig() : Map.of();
+        String endpoint = text(config.get("endpoint"));
+        String sipDomain = text(config.get("sipDomain"));
+        String username = text(config.get("username"));
+        boolean secretConfigured = findTenantPrimaryCredential(tenantId, instance.getId()).isPresent();
+        List<GenericSipIceServerResponse> iceServers = readMaskedIceServers(config.get("iceServers"));
+        boolean configured = endpoint != null && sipDomain != null && username != null;
+        return new GenericSipConnectionResponse(
+                instance.getId(),
+                instance.getProvider() != null ? instance.getProvider().getProviderKey() : null,
+                instance.getConnectorName(),
+                Boolean.TRUE.equals(instance.getIsActive()),
+                configured,
+                secretConfigured,
+                secretConfigured ? TENANT_SCOPE : null,
+                new GenericSipConnectionConfigResponse(endpoint, sipDomain, username, iceServers));
+    }
+
+    private Optional<ConnectorCredential> findTenantPrimaryCredential(UUID tenantId, UUID connectorInstanceId) {
+        return connectorCredentialService
+                .findByTenantIdAndConnectorInstanceIdAndCreatedByIsNullAndIsActiveTrue(tenantId, connectorInstanceId)
+                .stream()
+                .filter(item -> !Boolean.TRUE.equals(item.getDeleted()))
+                .filter(item -> SIP_PRIMARY_CREDENTIAL_NAME.equals(item.getCredentialName()))
+                .findFirst();
+    }
+
+    private void replaceTenantSecret(
+            UUID tenantId, ConnectorInstance instance, String username, String secret, UUID userId) {
+        connectorCredentialService.deactivateTenantCredentials(
+                tenantId, instance.getId(), SIP_PRIMARY_CREDENTIAL_NAME, userId);
+        ConnectorCredential credential = ConnectorCredential.builder()
+                .tenantId(tenantId)
+                .connectorInstance(instance)
+                .credentialName(SIP_PRIMARY_CREDENTIAL_NAME)
+                .authType("PROVIDER_SPECIFIC")
+                .credentialScope(TENANT_SCOPE)
+                .ownerUserId(null)
+                .encryptedValue(serializeCredentialValues(Map.of("userId", username, "password", secret)))
+                .metadata(Map.of("scope", TENANT_SCOPE, "managedBy", "voice-connections"))
+                .isActive(true)
+                .createdBy(null)
+                .updatedBy(userId)
+                .build();
+        connectorCredentialService.save(credential);
+    }
+
+    private void syncCredentialUsername(UUID tenantId, ConnectorInstance instance, String username) {
+        Optional<ConnectorCredential> existing = findTenantPrimaryCredential(tenantId, instance.getId());
+        if (existing.isEmpty()) {
+            return;
+        }
+        try {
+            Map<String, Object> values = new HashMap<>(parseCredentialJson(
+                    connectorCredentialService.decryptValue(existing.get())));
+            if (!values.containsKey("password")) {
+                return;
+            }
+            values.put("userId", username);
+            existing.get().setEncryptedValue(serializeCredentialValues(values));
+            connectorCredentialService.save(existing.get());
+        } catch (RuntimeException ex) {
+            // Stored blob is not in the expected shape: keep the existing
+            // secret untouched and still persist the configuration update.
+            log.warn("Generic SIP credential userId sync skipped tenant={} connector={}",
+                    tenantId, instance.getId());
+        }
+    }
+
+    private Map<String, Object> parseCredentialJson(String json) {
+        try {
+            Map<?, ?> parsed = objectMapper.readValue(json, Map.class);
+            Map<String, Object> values = new HashMap<>();
+            for (Map.Entry<?, ?> entry : parsed.entrySet()) {
+                if (entry.getKey() != null) {
+                    values.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            return values;
+        } catch (JacksonException ex) {
+            throw new BusinessException("INVALID_REQUEST", "Stored SIP credential is not in the expected format");
+        }
+    }
+
+    private String requireWssUrl(String endpoint) {
+        String value = text(endpoint);
+        if (value == null || !value.matches("^wss://[^\\s/]+(:\\d+)?(/\\S*)?$")) {
+            throw new BusinessException("INVALID_REQUEST", "WSS URL must start with wss:// and include a host");
+        }
+        if (value.length() > 500) {
+            throw new BusinessException("INVALID_REQUEST", "WSS URL is too long");
+        }
+        return value;
+    }
+
+    private String requireSipDomain(String sipDomain) {
+        String value = text(sipDomain);
+        if (value == null || value.contains("://") || value.contains(" ")) {
+            throw new BusinessException("INVALID_REQUEST", "SIP domain must be a plain host value");
+        }
+        if (value.length() > 255) {
+            throw new BusinessException("INVALID_REQUEST", "SIP domain is too long");
+        }
+        return value;
+    }
+
+    private String requireUsername(String username) {
+        String value = text(username);
+        if (value == null) {
+            throw new BusinessException("INVALID_REQUEST", "Username / extension is required");
+        }
+        if (value.length() > 128) {
+            throw new BusinessException("INVALID_REQUEST", "Username / extension is too long");
+        }
+        return value;
+    }
+
+    private List<Map<String, Object>> normalizeIceServers(Object existingIce, List<GenericSipIceServerRequest> requested) {
+        Map<String, Map<String, Object>> existingByUrls = new HashMap<>();
+        if (existingIce instanceof List<?> list) {
+            for (Object entry : list) {
+                if (entry instanceof Map<?, ?> map && map.get("urls") != null) {
+                    existingByUrls.put(iceUrlsKey(map.get("urls")), toStringObjectMap(map));
+                }
+            }
+        }
+        if (requested == null) {
+            return List.of();
+        }
+        if (requested.size() > 10) {
+            throw new BusinessException("INVALID_REQUEST", "Too many ICE servers (maximum 10)");
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (GenericSipIceServerRequest server : requested) {
+            if (server == null) {
+                continue;
+            }
+            Object urls = normalizeIceUrls(server.urls());
+            String key = iceUrlsKey(urls);
+            if (!seen.add(key)) {
+                throw new BusinessException("INVALID_REQUEST", "Duplicate ICE server URL");
+            }
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("urls", urls);
+            String serverUsername = text(server.username());
+            if (serverUsername != null) {
+                if (serverUsername.length() > 128) {
+                    throw new BusinessException("INVALID_REQUEST", "ICE username is too long");
+                }
+                entry.put("username", serverUsername);
+            }
+            String credential = text(server.credential());
+            if (credential != null) {
+                if (credential.length() > 512) {
+                    throw new BusinessException("INVALID_REQUEST", "ICE credential is too long");
+                }
+                entry.put("credential", credential);
+            } else {
+                Map<String, Object> existing = existingByUrls.get(key);
+                if (existing != null) {
+                    if (serverUsername == null && existing.get("username") != null) {
+                        entry.put("username", existing.get("username"));
+                    }
+                    if (existing.get("credential") != null) {
+                        entry.put("credential", existing.get("credential"));
+                    }
+                }
+            }
+            normalized.add(entry);
+        }
+        return normalized;
+    }
+
+    private Object normalizeIceUrls(Object urls) {
+        if (urls instanceof List<?> list) {
+            if (list.isEmpty() || list.size() > 5) {
+                throw new BusinessException("INVALID_REQUEST", "ICE server must list 1 to 5 URLs");
+            }
+            List<String> validated = new ArrayList<>();
+            for (Object url : list) {
+                validated.add(requireSingleIceUrl(url));
+            }
+            return validated;
+        }
+        return requireSingleIceUrl(urls);
+    }
+
+    private String iceUrlsKey(Object urls) {
+        if (urls instanceof List<?> list) {
+            List<String> parts = new ArrayList<>();
+            for (Object url : list) {
+                if (url != null) {
+                    parts.add(String.valueOf(url).trim());
+                }
+            }
+            parts.sort(String.CASE_INSENSITIVE_ORDER);
+            return String.join(",", parts);
+        }
+        return urls == null ? "" : String.valueOf(urls).trim();
+    }
+
+    private String requireSingleIceUrl(Object url) {
+        String value = text(url);
+        if (value == null || !(value.startsWith("stun:") || value.startsWith("turn:") || value.startsWith("turns:"))) {
+            throw new BusinessException("INVALID_REQUEST", "ICE URL must start with stun:, turn: or turns:");
+        }
+        if (value.length() > 500) {
+            throw new BusinessException("INVALID_REQUEST", "ICE URL is too long");
+        }
+        return value;
+    }
+
+    private List<GenericSipIceServerResponse> readMaskedIceServers(Object iceServers) {
+        List<GenericSipIceServerResponse> result = new java.util.ArrayList<>();
+        if (!(iceServers instanceof List<?> list)) {
+            return result;
+        }
+        for (Object entry : list) {
+            if (!(entry instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Object urls = map.get("urls");
+            if (urls == null) {
+                continue;
+            }
+            result.add(new GenericSipIceServerResponse(
+                    urls, text(map.get("username")), map.get("credential") != null
+                    && !String.valueOf(map.get("credential")).isBlank()));
+        }
+        return result;
+    }
+
+    private Map<String, Object> toStringObjectMap(Map<?, ?> map) {
+        Map<String, Object> result = new HashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private String text(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    public record GenericSipIceServerRequest(Object urls, String username, String credential) {
+    }
+
+    public record GenericSipConnectionRequest(
+            String endpoint, String sipDomain, String username,
+            List<GenericSipIceServerRequest> iceServers, String secret, Boolean removeSecret) {
+    }
+
+    public record GenericSipIceServerResponse(Object urls, String username, boolean credentialConfigured) {
+    }
+
+    public record GenericSipConnectionConfigResponse(
+            String endpoint, String sipDomain, String username, List<GenericSipIceServerResponse> iceServers) {
+    }
+
+    public record GenericSipConnectionResponse(
+            UUID connectorInstanceId, String providerKey, String connectorName, boolean active,
+            boolean configured, boolean secretConfigured, String secretScope,
+            GenericSipConnectionConfigResponse config) {
+        static GenericSipConnectionResponse notConfigured() {
+            return new GenericSipConnectionResponse(null, null, null, false, false, false, null,
+                    new GenericSipConnectionConfigResponse(null, null, null, List.of()));
+        }
     }
 
     private ProviderResponse toProviderResponse(ProviderDefinition provider) {

@@ -20,6 +20,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 
 @Entity
@@ -30,7 +31,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@lombok.experimental.SuperBuilder
+@Builder
 public class User extends BaseEntity {
 
     @Column(name = "tenant_id")
@@ -74,6 +75,7 @@ public class User extends BaseEntity {
     private Tenant tenant;
 
     @OneToMany(mappedBy = "reseller", fetch = FetchType.LAZY)
+    @Builder.Default
     private Set<Tenant> managedTenants = new HashSet<>();
 
     /*resolved username  */

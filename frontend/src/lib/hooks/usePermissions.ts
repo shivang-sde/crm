@@ -122,8 +122,18 @@ export const usePermissions = () => {
   const canEditActivities = hasPermission("activity", "write");
   const canDeleteActivities = hasPermission("activity", "delete");
 
+  // L3.1: assignment is a separate permission from write (backend L3.1-P2), so the
+  // UI can hide the control. Hiding is UX only — the backend still enforces it.
+  const canViewTickets = hasPermission("ticket", "read");
+  const canEditTickets = hasPermission("ticket", "write");
+  const canDeleteTickets = hasPermission("ticket", "delete");
+  const canAssignTickets = hasPermission("ticket", "assign");
+
   const canViewEntitlements = hasPermission("entitlement", "read");
   const canEditEntitlements = hasPermission("entitlement", "write");
+
+  const canViewFeedback = hasPermission("feedback", "read");
+  const canCreateFeedback = hasPermission("feedback", "write");
 
   const canViewAcquisition = hasPermission("acquisition", "read");
   const canEditAcquisition = hasPermission("acquisition", "write");
@@ -176,8 +186,14 @@ export const usePermissions = () => {
     canViewActivities,
     canEditActivities,
     canDeleteActivities,
+    canViewTickets,
+    canEditTickets,
+    canDeleteTickets,
+    canAssignTickets,
     canViewEntitlements,
     canEditEntitlements,
+    canViewFeedback,
+    canCreateFeedback,
     canViewAcquisition,
     canEditAcquisition,
     canDeleteAcquisition,

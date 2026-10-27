@@ -23,7 +23,6 @@ export function DealColumn({ stage, deals, dragEnabled }: DealColumnProps) {
 
   // Total value of all deals in this column
   const totalValue = deals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
-  const hasCurrency = deals.find((d) => d.currency)?.currency || "USD";
 
   return (
     <div className="flex-shrink-0 w-72 flex flex-col max-h-[calc(100vh-14rem)]">

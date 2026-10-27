@@ -13,6 +13,7 @@ const SECTION_LABELS: Record<string, string> = {
   "/settings/profile": "Settings / Profile",
   "/settings/preferences": "Settings / Preferences",
   "/settings/calling": "Settings / Calling",
+  "/settings/voice": "Settings / Voice",
   "/settings/http-connections": "Settings / HTTP Connections",
   "/settings/http-credentials": "Settings / HTTP Credentials",
   "/settings/demo-data": "Settings / Demo Workspace",

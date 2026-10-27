@@ -13,7 +13,7 @@ interface UnifiedActivityTimelineProps {
 }
 
 export function UnifiedActivityTimeline({ entityType, entityId, limit = 10 }: UnifiedActivityTimelineProps) {
-  const filters: UnifiedActivitiesFilters = {
+  const filters: UnifiedActivitiesFilters & { entityType: string; entityId: string } = {
     entityType,
     entityId,
     size: limit,
