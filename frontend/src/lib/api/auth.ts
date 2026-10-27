@@ -10,8 +10,6 @@ import {
   User,
 } from "@/types/auth";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
-
 const unwrapAuthResponse = <T>(response: { data: ApiResponse<T> }): T => {
   if (!response.data?.success || response.data.data === undefined) {
     throw new Error("Unexpected auth response format");
@@ -22,24 +20,17 @@ const unwrapAuthResponse = <T>(response: { data: ApiResponse<T> }): T => {
 export const authApi = {
   login: async (data: LoginRequest) => {
     const response = await api.post<ApiResponse<AuthResponse>>("/auth/login", data);
-    console.log("Login response:", response); // Debug log
     return unwrapAuthResponse(response);
   },
 
   register: async (data: RegisterRequest) => {
     const response = await api.post<ApiResponse<AuthResponse>>("/auth/register", data);
-    console.log("Register response:", response); // Debug log
     return unwrapAuthResponse(response);
   },
 
   refreshAuth: async () => {
-    const response = await axios.post<ApiResponse<AuthResponse>>(
-      `${BASE_URL}/auth/refresh`,
-      {},
-      { withCredentials: true }
-    );
-    console.log("Refresh auth response:", response); // Debug log
-
+    // Use the shared 'api' instance instead of raw 'axios'
+    const response = await api.post<ApiResponse<AuthResponse>>("/auth/refresh");
     return unwrapAuthResponse(response);
   },
 
@@ -49,7 +40,6 @@ export const authApi = {
 
   getCurrentUser: async () => {
     const response = await api.get<ApiResponse<User>>("/auth/me");
-    console.log("Get current user response:", response); // Debug log
     return unwrapAuthResponse(response);
   },
 

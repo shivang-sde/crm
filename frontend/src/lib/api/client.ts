@@ -47,14 +47,8 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshResponse =
-          await axios.post<ApiResponse<AuthResponse>>(
-            `${BASE_URL}/auth/refresh`,
-            {},
-            {
-              withCredentials: true,
-            }
-          );
+        // Use 'api' instance so base URL and credentials are handled automatically
+        const refreshResponse = await api.post<ApiResponse<AuthResponse>>("/auth/refresh");
 
         const authPayload = refreshResponse.data.data;
 
@@ -69,15 +63,8 @@ api.interceptors.response.use(
           authPayload.tenant
         );
 
-        const headers = new AxiosHeaders(
-          originalRequest.headers
-        );
-
-        headers.set(
-          "Authorization",
-          `Bearer ${authPayload.accessToken}`
-        );
-
+        const headers = new AxiosHeaders(originalRequest.headers);
+        headers.set("Authorization", `Bearer ${authPayload.accessToken}`);
         originalRequest.headers = headers;
 
         return api(originalRequest);
