@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
-import { User, Briefcase, Settings, Settings2, ChevronRight, Phone, Globe, Database, Target, Package, Key, Webhook } from "lucide-react";
+import { User, Briefcase, Settings, Settings2, Phone, Globe, Database, Target, Package, Key, Webhook } from "lucide-react";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { SettingsNavItem } from "./SettingsNavItem";
 import { SettingsSection } from "./SettingsSection";
@@ -10,6 +9,7 @@ import { useAuthStore } from "@/lib/store/authStore";
 
 interface SettingsSidebarProps {
   pathname: string;
+  variant?: "desktop" | "mobile";
 }
 
 interface SettingsNavItemConfig {
@@ -50,7 +50,7 @@ const ADMIN_ITEMS: SettingsNavItemConfig[] = [
   // { href: "/roles", label: "Permissions", description: "Configure role permissions and access control.", permission: { module: "admin", action: "role_manage" } },
 ];
 
-export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
+export function SettingsSidebar({ pathname, variant = "desktop" }: SettingsSidebarProps) {
   const { hasPermission } = usePermissions();
 
   const getUserRole = useAuthStore((state) => state.getUserRole);
@@ -129,8 +129,22 @@ export function SettingsSidebar({ pathname }: SettingsSidebarProps) {
   const hasAdminItems = adminItems.length > 0;
 
   return (
-    <aside className="hidden lg:block w-64 shrink-0 border-r bg-white">
-      <nav className="flex h-full flex-col p-4" aria-label="Settings navigation">
+    <aside
+      id={variant === "mobile" ? "mobile-settings-navigation" : undefined}
+      className={
+        variant === "mobile"
+          ? "w-full border-b bg-white"
+          : "hidden w-64 shrink-0 border-r bg-white lg:block"
+      }
+    >
+      <nav
+        className={
+          variant === "mobile"
+            ? "flex max-h-[60dvh] flex-col overflow-y-auto overscroll-contain p-4"
+            : "flex h-full flex-col p-4"
+        }
+        aria-label="Settings navigation"
+      >
        { UserRole !== "ADMIN" && (
          <div className="space-y-1">
           <SettingsSection title="My Settings" />

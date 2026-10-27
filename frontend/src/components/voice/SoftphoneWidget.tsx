@@ -130,11 +130,11 @@ export function SoftphoneWidget() {
   return (
     <div
       data-testid="softphone-widget"
-      className="fixed right-4 bottom-4 z-40 flex flex-col items-end"
+      className="fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex max-w-[calc(100vw-2rem)] flex-col items-end"
       aria-label="Softphone"
     >
       {isOpen ? (
-        <Card className="overflow-hidden shadow-2xl w-[320px] max-w-[calc(100vw-2rem)] mb-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <Card className="mb-3 max-h-[calc(100dvh-7rem)] w-[min(20rem,calc(100vw-2rem))] max-w-full overflow-hidden shadow-2xl duration-200 animate-in fade-in slide-in-from-bottom-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 px-3 py-2 bg-muted/30 border-b">
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
               <Phone className="size-4 text-primary" aria-hidden="true" />
@@ -167,7 +167,7 @@ export function SoftphoneWidget() {
           <CardContent className="max-h-[70vh] overflow-y-auto px-3 pt-3 pb-3">
             {connectorsFailed || !genericConnectorId ? (
               <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3 text-center">
-                <p className="text-sm font-medium">Generic SIP · Not configured</p>
+                <p className="text-sm font-medium">Generic SIP - Not configured</p>
                 <p className="text-xs text-muted-foreground">
                   {connectorsFailed
                     ? 'Could not load calling connections.'
@@ -266,7 +266,7 @@ function ConnectionSection(props: {
     <div className="flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2">
       <p className="min-w-0 truncate text-xs text-muted-foreground">
         <span className="font-medium text-foreground">Generic SIP</span>
-        {' · Shared tenant connection'}
+        {'- Shared tenant connection'}
       </p>
       {props.registered ? (
         <Button type="button" variant="outline" size="xs" disabled={props.busy} onClick={props.onDisconnect}>

@@ -29,6 +29,7 @@ export interface HeaderProps {
   onLogout: () => void;
   logoutPending: boolean;
   onToggleSidebar: () => void;
+  sidebarOpen?: boolean;
   breadcrumbs?: BreadcrumbItem[];
 }
 
@@ -38,38 +39,56 @@ export function Header({
   onLogout,
   logoutPending,
   onToggleSidebar,
+  sidebarOpen = false,
   breadcrumbs = [],
 }: HeaderProps) {
+  const currentLabel = breadcrumbs[breadcrumbs.length - 1]?.label ?? "Sellspark CRM";
+
   return (
-    <header className="w-full bg-white px-4 py-3 md:px-6">
-      <div className="mx-auto flex flex-row items-center justify-between gap-4">
-        {/* Left Side: Mobile Menu Button & Breadcrumbs */}
-        <div className="flex items-center gap-4 min-w-0">
+    <header className="w-full bg-white px-3 sm:px-4 md:px-6">
+      <div className="mx-auto flex h-full flex-row items-center justify-between gap-2 sm:gap-4">
+        {/* Left Side: Mobile Menu Button, Current Page & Breadcrumbs */}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden shrink-0"
+            className="h-11 w-11 shrink-0 md:hidden"
             onClick={onToggleSidebar}
-            aria-label="Toggle navigation menu"
+            aria-label="Open navigation menu"
+            aria-controls="mobile-navigation"
+            aria-expanded={sidebarOpen}
           >
             <Menu className="h-5 w-5" />
           </Button>
 
+          <span className="truncate text-sm font-semibold text-slate-900 md:hidden">
+            {currentLabel}
+          </span>
+
           {breadcrumbs.length > 0 && (
-            <nav className="hidden sm:flex items-center gap-2 overflow-x-auto text-sm text-slate-500 whitespace-nowrap">
+            <nav
+              aria-label="Breadcrumb"
+              className="hidden min-w-0 items-center gap-1.5 overflow-x-auto text-sm whitespace-nowrap text-slate-500 md:flex"
+            >
               {breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.href}>
                   {index < breadcrumbs.length - 1 ? (
-                    <Link href={crumb.href} className="hover:text-slate-900 transition-colors">
+                    <Link
+                      href={crumb.href}
+                      className="rounded-sm transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                       {crumb.label}
                     </Link>
                   ) : (
-                    <span className="font-medium text-slate-900 truncate max-w-[200px]">
+                    <span
+                      aria-current="page"
+                      className="max-w-[36vw] truncate font-medium text-slate-900 lg:max-w-[240px]"
+                    >
                       {crumb.label}
                     </span>
                   )}
                   {index < breadcrumbs.length - 1 && (
-                    <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                   )}
                 </React.Fragment>
               ))}
@@ -78,30 +97,40 @@ export function Header({
         </div>
 
         {/* Right Side: Notification Bell & Profile Settings Dropdown */}
-        <div className="flex items-center gap-4 shrink-0">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <NotificationBell />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full bg-slate-100 p-0 hover:bg-slate-200">
+              <Button
+                variant="ghost"
+                className="relative h-11 w-11 rounded-full bg-slate-100 p-0 hover:bg-slate-200"
+              >
                 <UserIcon className="h-5 w-5 text-slate-600" />
                 <span className="sr-only">Toggle user menu</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)]">
               <div className="px-2 py-1.5 text-xs text-slate-400">
-                Logged in as <span className="font-semibold text-slate-700 block truncate">{userName}</span>
-                {roleName && <span className="text-[10px] text-indigo-600 font-medium tracking-wider uppercase block mt-0.5">{roleName}</span>}
+                Logged in as{" "}
+                <span className="block truncate font-semibold text-slate-700">{userName}</span>
+                {roleName && (
+                  <span className="mt-0.5 block text-[10px] font-medium tracking-wider text-indigo-600 uppercase">
+                    {roleName}
+                  </span>
+                )}
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings" className="w-full cursor-pointer">Settings</Link>
+                <Link href="/settings" className="w-full cursor-pointer">
+                  Settings
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                onClick={onLogout} 
+              <DropdownMenuItem
+                onClick={onLogout}
                 disabled={logoutPending}
-                className="text-rose-600 focus:text-rose-600 cursor-pointer focus:bg-rose-50"
+                className="cursor-pointer text-rose-600 focus:bg-rose-50 focus:text-rose-600"
               >
                 {logoutPending ? "Logging out..." : "Log out"}
               </DropdownMenuItem>

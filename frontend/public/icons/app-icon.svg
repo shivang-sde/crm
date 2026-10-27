@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sellspark CRM">
+  <rect width="512" height="512" fill="#4f46e5"/>
+  <g fill="#ffffff">
+    <path d="M128 390V220l128-70 128 70v170h-64V258H192v132z"/>
+    <rect x="222" y="286" width="28" height="28" rx="4"/>
+    <rect x="262" y="286" width="28" height="28" rx="4"/>
+    <rect x="222" y="326" width="28" height="28" rx="4"/>
+    <rect x="262" y="326" width="28" height="28" rx="4"/>
+    <rect x="242" y="366" width="28" height="24" rx="4"/>
+  </g>
+</svg>

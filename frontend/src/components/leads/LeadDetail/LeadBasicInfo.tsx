@@ -24,7 +24,7 @@ export function LeadBasicInfo({ lead }: LeadBasicInfoProps) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+      <CardContent className="grid grid-cols-1 sm:grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
         <div>
           <p className="text-muted-foreground">Email</p>
           <p>{lead.email || "—"}</p>

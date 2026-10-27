@@ -148,7 +148,7 @@ export default function NewMeetingPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Subject *</label>
                 <Input {...register('subject')} placeholder="Enter meeting subject" />
@@ -219,7 +219,7 @@ export default function NewMeetingPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Start Time *</label>
                 <Input type="datetime-local" {...register('startTime')} />
@@ -237,7 +237,7 @@ export default function NewMeetingPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Link to Entity</label>
                 <Select
@@ -324,7 +324,7 @@ export default function NewMeetingPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Remind At</label>
                 <Input type="datetime-local" {...register('remindAt')} />

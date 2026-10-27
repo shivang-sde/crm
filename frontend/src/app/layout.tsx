@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import QueryProvider from "@/providers/query-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { PwaManager } from "@/components/pwa/PwaManager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +16,35 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CRM",
-  description: "A CRM build for small businesses",
+  applicationName: "Sellspark CRM",
+  title: {
+    default: "Sellspark CRM",
+    template: "%s | Sellspark CRM",
+  },
+  description:
+    "Manage leads, contacts, deals, tasks, workflows and customer conversations from one workspace.",
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Sellspark CRM",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#4f46e5",
 };
 
 import { Toaster } from "sonner";
@@ -36,6 +64,7 @@ export default function RootLayout({
           <TooltipProvider>
             {children}
           </TooltipProvider>
+          <PwaManager />
           <Toaster position="top-right" richColors />
         </QueryProvider>
       </body>

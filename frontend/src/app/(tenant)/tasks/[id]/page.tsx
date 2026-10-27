@@ -45,7 +45,7 @@ console.log('TaskDetailPage data:', task);
     try {
       await completeTask.mutateAsync(id);
       toast.success('Task marked as complete');
-    } catch (error) {
+    } catch {
       toast.error('Failed to complete task');
     }
   };
@@ -54,7 +54,7 @@ console.log('TaskDetailPage data:', task);
     try {
       await reopenTask.mutateAsync(id);
       toast.success('Task reopened');
-    } catch (error) {
+    } catch {
       toast.error('Failed to reopen task');
     }
   };
@@ -65,7 +65,7 @@ console.log('TaskDetailPage data:', task);
       await deleteTask.mutateAsync(id);
       toast.success('Task deleted successfully');
       router.push('/tasks');
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete task');
     }
   };
@@ -87,14 +87,14 @@ console.log('TaskDetailPage data:', task);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" onClick={() => router.push('/tasks')}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <Button variant="outline" size="icon" onClick={() => router.push('/tasks')} aria-label="Back to tasks">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-3xl font-bold tracking-tight">{task.subject}</h1>
+          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{task.subject}</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!task.isClosed ? (
             <Button onClick={handleComplete} disabled={completeTask.isPending}>
               <CheckCircle className="mr-2 h-4 w-4" />
@@ -121,7 +121,7 @@ console.log('TaskDetailPage data:', task);
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Task Details</CardTitle>
@@ -206,7 +206,7 @@ console.log('TaskDetailPage data:', task);
         <CardHeader>
           <CardTitle>Timestamps</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Created At</p>
             <p className="text-sm">{new Date(task.createdAt).toLocaleString()}</p>

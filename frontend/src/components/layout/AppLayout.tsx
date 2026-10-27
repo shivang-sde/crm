@@ -172,7 +172,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <CallOpeningProvider>
-      <div className="flex min-h-screen w-full bg-slate-50/50">
+      <div className="flex min-h-dvh w-full bg-slate-50/50">
         <Sidebar
           tenantName={tenant?.name}
           roleLabel={userRole || undefined}
@@ -187,19 +187,20 @@ export default function AppLayout({ children }: AppLayoutProps) {
           isLoggingOut={logoutMutation.isPending}
         />
 
-        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-          <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center border-b border-slate-200 bg-white shadow-sm">
-            <Header 
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="sticky top-0 z-20 flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-center border-b border-slate-200 bg-white pt-[env(safe-area-inset-top)] shadow-sm">
+            <Header
               userName={fallbackUserName}
               roleName={userRole || undefined}
               onLogout={() => logoutMutation.mutate()}
               logoutPending={logoutMutation.isPending}
               onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+              sidebarOpen={sidebarOpen}
               breadcrumbs={breadcrumbs}
             />
           </header>
 
-          <main className="flex-1 p-2 md:p-4 lg:p-6 max-w-8xl w-full mx-auto">
+          <main className="mx-auto w-full max-w-8xl flex-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:p-4 lg:p-6">
             {children}
           </main>
 

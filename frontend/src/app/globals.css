@@ -123,10 +123,55 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply min-h-dvh overflow-x-clip bg-background text-foreground;
   }
   html {
     @apply font-sans;
+    scroll-padding-top: calc(4rem + env(safe-area-inset-top));
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  [data-slot="button"]:not([data-size^="icon"]):not([data-size="xs"]) {
+    min-height: 2.75rem;
+  }
+
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-sm"],
+  [data-slot="button"][data-size="icon-lg"] {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  [data-slot="input"],
+  [data-slot="select-trigger"] {
+    min-height: 2.75rem;
+  }
+
+  [data-slot="select-item"],
+  [data-slot="dropdown-menu-item"] {
+    min-height: 2.5rem;
+  }
+
+  [data-slot="tabs-list"] {
+    height: auto !important;
+    min-height: 2.75rem;
+  }
+
+  [data-slot="tabs-trigger"] {
+    min-height: 2.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

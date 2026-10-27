@@ -95,15 +95,15 @@ export default function TaskTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
         <Input
           placeholder="Search tasks..."
           value={filters.search}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="max-w-sm"
+          className="w-full sm:max-w-sm"
         />
         <Select value={filters.status} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -116,7 +116,7 @@ export default function TaskTable({
           </SelectContent>
         </Select>
         <Select value={filters.priority} onValueChange={handlePriorityChange}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="All Priorities" />
           </SelectTrigger>
           <SelectContent>

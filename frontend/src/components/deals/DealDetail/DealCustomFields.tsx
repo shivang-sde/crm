@@ -29,7 +29,7 @@ export function DealCustomFields({ deal }: DealCustomFieldsProps) {
       <CardHeader>
         <CardTitle className="text-base font-semibold text-foreground">Custom Fields</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+      <CardContent className="grid grid-cols-1 sm:grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
         {activeFields.map((field) => (
           <div key={field.id} className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{field.fieldLabel}</p>

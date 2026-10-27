@@ -149,7 +149,7 @@ export function AccountWorkspace({ account, overviewPanels }: AccountWorkspacePr
               {account.industry || "No industry specified"}
             </p>
 
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-5">
               {[
                 { label: "Email", value: account.email || "—" },
                 { label: "Phone", value: account.phone || "—" },
@@ -221,7 +221,7 @@ export function AccountWorkspace({ account, overviewPanels }: AccountWorkspacePr
             ) : isError ? (
               <p className="text-sm text-destructive">{errorMessage}</p>
             ) : (
-              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+              <dl className="grid grid-cols-1 gap-4 sm:grid-cols-5">
                 {(
                   [
                     ["Contacts", data?.contacts.total],

@@ -154,7 +154,7 @@ export function SoftphonePanel(props: SoftphonePanelProps) {
             Incoming call
           </p>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">{ringingInbound.destination}</p>
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
             <Button
               type="button"
               disabled={busy}

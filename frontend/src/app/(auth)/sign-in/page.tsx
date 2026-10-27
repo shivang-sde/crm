@@ -4,7 +4,7 @@ import { Zap, Users, BarChart3 } from "lucide-react";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-background">
+    <div className="min-h-dvh grid grid-cols-1 bg-background lg:grid-cols-2">
       {/* Left Side - Branding / Hero (Hidden on mobile) */}
       <div className="relative hidden lg:flex flex-col justify-between bg-slate-900 p-10 text-white overflow-hidden">
         {/* Background Gradient */}
@@ -46,8 +46,8 @@ export default function LoginPage() {
            {/* Mobile Logo (Shown only on small screens) */}
            <div className="lg:hidden flex justify-center mb-8">
                <Link href="/" className="flex items-center gap-2 font-bold text-2xl">
-                  <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg">C</div>
-                  <span>YourCRM</span>
+                  <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg">S</div>
+                  <span>Sellspark CRM</span>
                </Link>
            </div>
            

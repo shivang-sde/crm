@@ -88,7 +88,7 @@ export default function NewCallPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Subject *</label>
                 <Input {...register('subject')} placeholder="Enter call subject" />
@@ -123,7 +123,7 @@ export default function NewCallPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Phone Number</label>
                 <Input {...register('phoneNumber')} placeholder="+1 (555) 123-4567" />
@@ -148,7 +148,7 @@ export default function NewCallPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Start Time</label>
                 <Input type="datetime-local" {...register('startTime')} />

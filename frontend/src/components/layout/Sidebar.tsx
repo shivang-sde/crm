@@ -5,6 +5,9 @@ import Link from "next/link";
 import { X, ChevronLeft, ChevronRight, LogOut, Building2, ShieldCheck } from "lucide-react";
 import type { NavItem } from "@/lib/constants/navigation";
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export interface SidebarProps {
   tenantName?: string;
   roleLabel?: string;
@@ -32,6 +35,55 @@ export function Sidebar({
   onLogout,
   isLoggingOut = false,
 }: SidebarProps) {
+  const asideRef = React.useRef<HTMLElement>(null);
+  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    const mobileQuery = window.matchMedia("(max-width: 767px)");
+
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (mobileQuery.matches) {
+        previouslyFocused?.focus();
+      }
+    };
+  }, [isOpen, onClose]);
+
+  const handleTabTrap = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab" || !isOpen) return;
+
+    const focusable = asideRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (!focusable?.length) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <>
       {/* 1. Mobile Backdrop Overlay */}
@@ -45,12 +97,17 @@ export function Sidebar({
 
       {/* 2. Primary Structural Sidebar Container */}
       <aside
+        ref={asideRef}
+        id="mobile-navigation"
+        onKeyDown={handleTabTrap}
         className={`
-          fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-slate-200 bg-slate-900 text-slate-400
-          transition-all duration-300 ease-in-out md:sticky md:top-0 md:z-30
-          ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          ${isCollapsed ? "w-20" : "w-64"}
+          fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,85vw)] flex-col border-r border-slate-200 bg-slate-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-slate-400
+          transition-all duration-300 ease-in-out md:sticky md:top-0 md:z-30 md:h-screen md:pt-0
+          ${isOpen ? "visible translate-x-0" : "invisible -translate-x-full md:visible md:translate-x-0"}
+          ${isCollapsed ? "md:w-20" : "md:w-64"}
         `}
+        role={isOpen ? "dialog" : undefined}
+        aria-modal={isOpen ? true : undefined}
         aria-label="Main Navigation"
       >
         {/* 3. Header Section (Context & Identity) */}
@@ -75,9 +132,10 @@ export function Sidebar({
           </div>
 
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
             aria-label="Close Mobile Menu"
           >
             <X className="h-5 w-5" />
@@ -95,7 +153,7 @@ export function Sidebar({
         </button>
 
         {/* 5. Gated Scrollable Navigation Element Container */}
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 custom-scrollbar">
+        <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-4 custom-scrollbar">
           {navigationItems
             .filter((item) => item.show) // FIX: Safeguard against hidden navigation states
             .map((item) => {
@@ -107,7 +165,7 @@ export function Sidebar({
                   key={item.name}
                   href={item.href}
                   onClick={onClose}
-                  className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 relative ${
+                  className={`group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/10"
                       : "hover:bg-slate-800 hover:text-slate-200"
@@ -136,7 +194,7 @@ export function Sidebar({
               type="button"
               onClick={onLogout}
               disabled={isLoggingOut}
-              className="flex items-center justify-center rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-50"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-50"
               aria-label="Log Out"
               title="Log Out"
             >

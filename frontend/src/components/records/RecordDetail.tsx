@@ -104,7 +104,7 @@ export function RecordDetail({ recordId }: Props) {
               {sec.fieldIds.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No fields in this section.</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-1 gap-4 sm:grid-cols-2">
                   {sec.fieldIds.map((fid) => {
                     const f = fieldById.get(fid);
                     if (!f) {

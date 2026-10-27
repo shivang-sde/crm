@@ -111,7 +111,7 @@ export default function DemoDataSettingsPage() {
               {status.counts && Object.keys(status.counts).length > 0 && (
                 <div className="space-y-4">
                   <h3 className="font-medium">Installation Summary</h3>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 md:grid-cols-4">
                     {Object.entries(status.counts).map(([key, count]) => (
                       <div key={key} className="flex flex-col rounded-md border p-4 text-sm">
                         <span className="text-muted-foreground">{getLabelForModule(key)}</span>

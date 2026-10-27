@@ -387,7 +387,7 @@ export default function AcquisitionEventDetailPage() {
                   <p className="text-green-600 dark:text-green-400">
                     {userMessage ?? `Lead ${event.leadId ? `#${truncateId(event.leadId)}` : "created"} and workflow event published.`}
                   </p>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
                     <div>
                       <p className="uppercase tracking-wide text-muted-foreground">Stage</p>
                       <p className="font-medium">Lead Creation</p>
@@ -416,7 +416,7 @@ export default function AcquisitionEventDetailPage() {
                   <p className="text-amber-600 dark:text-amber-400">
                     {userMessage ?? "This lead was not created because a matching lead already exists."}
                   </p>
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  <div className="mt-3 grid grid-cols-1 gap-3 text-xs md:grid-cols-2">
                     {matchLabel && (
                       <div>
                         <p className="uppercase tracking-wide text-muted-foreground">Match</p>

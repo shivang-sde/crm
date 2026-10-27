@@ -98,7 +98,7 @@ export function TaskDetail() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <h3 className="font-semibold">Due Date</h3>
               <p>{task.dueDate ? format(new Date(task.dueDate), 'MMM dd, yyyy') : 'Not set'}</p>
@@ -139,7 +139,7 @@ export function TaskDetail() {
 
           <div className="border-t pt-4">
             <h3 className="font-semibold">Audit Information</h3>
-            <div className="grid grid-cols-2 gap-4 mt-2 text-sm text-muted-foreground">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-2 text-sm text-muted-foreground">
               {/* <div>Created: {format(new Date(task.createdAt), 'MMM dd, yyyy HH:mm')} by {task.createdBy.name}</div> */}
               <div>Updated: {format(new Date(task.updatedAt), 'MMM dd, yyyy HH:mm')}</div>
             </div>

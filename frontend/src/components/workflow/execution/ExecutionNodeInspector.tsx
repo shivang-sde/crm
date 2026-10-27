@@ -353,7 +353,7 @@ export function ExecutionNodeInspector({ nodeKey, nodeType, nodeName, execution,
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+              <div className="mt-3 grid grid-cols-1 gap-3 text-xs md:grid-cols-2">
                 {leadLabel && (
                   <div>
                     <p className="uppercase tracking-wide text-muted-foreground text-[11px]">Lead / Entity</p>

@@ -85,7 +85,7 @@ export function DealList() {
         )}
 
         {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
+          <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-muted-foreground">Page {meta.page + 1} of {meta.totalPages} ({meta.total} deals)</div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>Previous</Button>

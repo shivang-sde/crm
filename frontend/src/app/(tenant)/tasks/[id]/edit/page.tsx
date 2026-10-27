@@ -97,7 +97,7 @@ export default function EditTaskPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Subject *</label>
                 <Input {...register('subject')} placeholder="Enter task subject" />
@@ -147,7 +147,7 @@ export default function EditTaskPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Due Date</label>
                 <Input type="datetime-local" {...register('dueDate')} />
@@ -159,7 +159,7 @@ export default function EditTaskPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
                 <Select

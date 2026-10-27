@@ -87,7 +87,7 @@ export default function MeetingDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Meeting Details</CardTitle>
@@ -181,7 +181,7 @@ export default function MeetingDetailPage() {
         <CardHeader>
           <CardTitle>Assignment & Linking</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
             <p className="text-sm">

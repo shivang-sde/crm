@@ -95,7 +95,7 @@ export function NotificationBell() {
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[360px] p-0">
+      <PopoverContent align="end" className="w-[min(360px,calc(100vw-2rem))] p-0">
         <div className="flex items-center justify-between px-4 py-3">
           <div>
             <p className="text-sm font-semibold">Notifications</p>
@@ -137,7 +137,7 @@ export function NotificationBell() {
                   key={notification.id}
                   type="button"
                   onClick={() => handleSelect(notification)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${notification.read ? "border-transparent bg-background/70" : "border-primary/20 bg-primary/5"}`}
+                  className={`min-h-11 w-full rounded-lg border px-3 py-2 text-left transition-colors ${notification.read ? "border-transparent bg-background/70" : "border-primary/20 bg-primary/5"}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">

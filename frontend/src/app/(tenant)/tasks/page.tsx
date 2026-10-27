@@ -21,7 +21,7 @@ export default function TasksPage() {
     priority: '',
   });
 
-  const { data, isLoading, error } = useTasks(filters as any);
+  const { data, isLoading } = useTasks(filters as Record<string, unknown>);
 
   console.log('TasksPage data:', data);
 
@@ -47,13 +47,13 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tasks</h1>
           <p className="text-muted-foreground">Manage your tasks and to-dos</p>
         </div>
         {canEditTasks && (
-          <Button onClick={handleCreateNew}>
+          <Button onClick={handleCreateNew} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" />
             New Task
           </Button>

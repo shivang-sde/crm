@@ -203,7 +203,7 @@ function PollingSettingsEditor({ config }: { config: { id: string; settings?: Re
             onChange={(e) => setEndpointUrl(e.target.value)}
           />
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           <label className="text-xs font-medium">
             Method
             <select
@@ -238,7 +238,7 @@ function PollingSettingsEditor({ config }: { config: { id: string; settings?: Re
             onChange={(e) => setConnectionId(e.target.value)}
           />
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           <label className="text-xs font-medium">
             Records path
             <input

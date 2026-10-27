@@ -166,7 +166,7 @@ export function DealAssignment({ deal }: DealAssignmentProps) {
         {/* Won / Lost Status Action Buttons */}
         <div className="border-t pt-4 space-y-2">
           <p className="text-sm font-medium text-muted-foreground mb-2">Outcome Actions</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             <Button
               variant="outline"
               size="sm"

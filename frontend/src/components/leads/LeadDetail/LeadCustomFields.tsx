@@ -27,7 +27,7 @@ export function LeadCustomFields({ lead }: LeadCustomFieldsProps) {
       <CardHeader>
         <CardTitle className="text-base">Custom Fields</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+      <CardContent className="grid grid-cols-1 sm:grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
         {activeFields.map((field) => (
           <div key={field.id}>
             <p className="text-muted-foreground">{field.fieldLabel}</p>
