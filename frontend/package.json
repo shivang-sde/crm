@@ -10,6 +10,7 @@
     "test:e2e": "playwright test",
     "test:contract:c360": "node tests/customer360-contract.check.cjs",
     "test:contract:customer-health": "node tests/customer-health-contract.check.cjs",
+    "test:contract:feedback-request": "node tests/feedback-request-contract.check.cjs",
     "test:voice-stats": "node tests/voice-stats.check.cjs",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:smoke": "playwright test --grep @smoke",

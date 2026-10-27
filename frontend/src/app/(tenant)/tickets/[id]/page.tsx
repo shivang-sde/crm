@@ -24,6 +24,7 @@ import { TicketAssignControl } from '../_components/TicketAssignControl';
 import { TicketMessages } from '../_components/TicketMessages';
 import { TicketTimeline } from '../_components/TicketTimeline';
 import { TicketFeedback } from '../_components/TicketFeedback';
+import { TicketFeedbackRequests } from '../_components/TicketFeedbackRequests';
 
 export default function TicketDetailPage() {
   const router = useRouter();
@@ -175,7 +176,10 @@ export default function TicketDetailPage() {
 
         {canViewFeedback && (
           <TabsContent value="feedback" className="pt-4">
-            <TicketFeedback ticketId={ticket.id} />
+            <div className="space-y-4">
+              <TicketFeedbackRequests ticketId={ticket.id} />
+              <TicketFeedback ticketId={ticket.id} />
+            </div>
           </TabsContent>
         )}
 

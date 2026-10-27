@@ -73,6 +73,57 @@ export const FEEDBACK_SCORE_RANGES: Partial<
   CES: { min: 1, max: 7, label: "1–7 (higher means more effort)" },
 };
 
+// L3.5: ticket feedback requests and the anonymous response contract.
+export type FeedbackRequestType = "NPS" | "CSAT" | "CES";
+
+export type FeedbackRequestStatus = "PENDING" | "SUBMITTED" | "EXPIRED" | "REVOKED";
+
+export interface FeedbackRequestResponse {
+  id: string;
+  ticketId: string;
+  accountId: string;
+  contactId?: string | null;
+  type: FeedbackRequestType;
+  status: FeedbackRequestStatus;
+  expiresAt: string;
+  submittedAt?: string | null;
+  revokedAt?: string | null;
+  feedbackId?: string | null;
+  createdAt: string;
+  token?: string;
+  tokenPath?: string;
+}
+
+export interface FeedbackRequestCreateRequest {
+  type?: FeedbackRequestType;
+}
+
+export interface PublicFeedbackRequestResponse {
+  status: FeedbackRequestStatus;
+  type: FeedbackRequestType;
+  minScore: number;
+  maxScore: number;
+  expiresAt: string;
+  submittedAt?: string | null;
+}
+
+export interface PublicFeedbackSubmitRequest {
+  score?: number;
+  comment?: string;
+}
+
+export interface PublicFeedbackSubmitResponse {
+  status: FeedbackRequestStatus;
+  submittedAt: string;
+}
+
+export const FEEDBACK_REQUEST_STATUS_LABELS: Record<FeedbackRequestStatus, string> = {
+  PENDING: "Awaiting response",
+  SUBMITTED: "Submitted",
+  EXPIRED: "Expired",
+  REVOKED: "Revoked",
+};
+
 export function feedbackSourceLabel(source: FeedbackSource | null): string {
   if (!source) {
     return "Unknown";

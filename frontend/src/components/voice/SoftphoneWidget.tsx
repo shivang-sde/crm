@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, ExternalLink, Loader2, Phone } from 'lucide-react';
+import { ChevronDown, ExternalLink, Loader2, Phone, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SoftphoneController } from '@/lib/voice/popup/controller';
 import type { PopupCommandPayloads, PopupCommandType } from '@/lib/voice/popup/protocol';
@@ -48,8 +48,6 @@ export function SoftphoneWidget() {
       .getConnectors()
       .then((list) => {
         if (cancelled) return;
-        // Explicit Generic SIP resolution: never the first CALLING
-        // connector (e.g. click2call stays with CLICK_TO_CALL).
         setHasConnectors(list.length > 0);
         setGenericConnectorId(resolveGenericSipConnectorId(list));
       })
@@ -61,14 +59,9 @@ export function SoftphoneWidget() {
     };
   }, []);
 
-  // Derived, not state: an inbound ring always forces the panel open so
-  // Answer/Reject are reachable. (No setState-in-effect needed.)
+  // An inbound ring always forces the panel open so Answer/Reject are reachable.
   const isOpen = expanded || ringingInbound !== null;
 
-  // Bounded attach retries: a cold popup may still be booting (JS load, host
-  // mount) when the first handshake deadline expires. Mirror the resilience
-  // harness strategy — every attempt reuses existing controller mechanisms
-  // (open + handshake); the now-warm popup answers the next round.
   const ensureLinked = useCallback(
     async (controller: SoftphoneController): Promise<void> => {
       if (controller.linkStateSnapshot === 'READY') return;
@@ -123,57 +116,55 @@ export function SoftphoneWidget() {
       toast.error('Could not open phone window', { description: message });
       return;
     }
-    // Best-effort sync: pull the authoritative snapshot so the widget
-    // reflects popup-owned state even if the user never connected here.
     void controller
       .handshake(genericConnectorId ?? undefined)
       .catch(() => {
-        /* popup may still be booting; later actions re-handshake */
+        /* popup may still be booting */
       });
   }, [genericConnectorId, getController]);
 
   const displayError = error ?? linkError;
   const busy = linkBusy || actionBusy;
+  const isRegistered = registration?.state === 'REGISTERED';
 
   return (
     <div
       data-testid="softphone-widget"
-      className="fixed right-4 bottom-4 z-40 w-[320px] max-w-[calc(100vw-2rem)]"
+      className="fixed right-4 bottom-4 z-40 flex flex-col items-end"
       aria-label="Softphone"
     >
-      <Card className="overflow-hidden shadow-xl">
-        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 px-3 py-2">
-          <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-            <Phone className="size-4" aria-hidden="true" />
-            Softphone
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={handlePopOut}
-              aria-label="Pop out phone window"
-              title="Pop out phone window"
-            >
-              <ExternalLink className="size-4" aria-hidden="true" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setExpanded((prev) => !prev)}
-              aria-label={isOpen ? 'Collapse phone' : 'Expand phone'}
-              aria-expanded={isOpen}
-              data-testid="softphone-toggle"
-            >
-              {isOpen ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronUp className="size-4" aria-hidden="true" />}
-            </Button>
-          </span>
-        </CardHeader>
+      {isOpen ? (
+        <Card className="overflow-hidden shadow-2xl w-[320px] max-w-[calc(100vw-2rem)] mb-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 px-3 py-2 bg-muted/30 border-b">
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              <Phone className="size-4 text-primary" aria-hidden="true" />
+              Softphone
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={handlePopOut}
+                aria-label="Pop out phone window"
+                title="Pop out phone window"
+              >
+                <ExternalLink className="size-4" aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setExpanded(false)}
+                aria-label="Close phone"
+                data-testid="softphone-toggle"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </Button>
+            </span>
+          </CardHeader>
 
-        {isOpen ? (
-          <CardContent className="max-h-[70vh] overflow-y-auto px-3 pt-0 pb-3">
+          <CardContent className="max-h-[70vh] overflow-y-auto px-3 pt-3 pb-3">
             {connectorsFailed || !genericConnectorId ? (
               <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3 text-center">
                 <p className="text-sm font-medium">Generic SIP · Not configured</p>
@@ -230,27 +221,37 @@ export function SoftphoneWidget() {
               />
             )}
           </CardContent>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            aria-label={`Expand phone, ${registration?.state === 'REGISTERED' ? 'connected' : 'not connected'}`}
-            className={cn(
-              'flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground',
-              'hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring',
-            )}
-          >
-            <span>
-              {registration?.state === 'REGISTERED'
-                ? `Connected${calls.length > 0 ? ` · ${calls.length} call${calls.length === 1 ? '' : 's'}` : ''}`
-                : registration?.state === 'RECONNECTING'
-                  ? 'Reconnecting…'
-                  : 'Phone · click to open'}
-            </span>
-            {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : null}
-          </button>
+        </Card>
+      ) : null}
+
+      {/* Floating Action Button */}
+      <Button
+        type="button"
+        size="icon"
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-label={isOpen ? 'Close softphone' : 'Open softphone'}
+        aria-expanded={isOpen}
+        data-testid="softphone-toggle"
+        className={cn(
+          'relative h-14 w-14 rounded-full shadow-lg transition-all duration-200 hover:scale-105',
+          isRegistered ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground border'
         )}
-      </Card>
+      >
+        {busy ? (
+          <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+        ) : (
+          <Phone className="size-6" aria-hidden="true" />
+        )}
+
+        {/* Status/Call Count Indicator Badge */}
+        {calls.length > 0 ? (
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground animate-pulse">
+            {calls.length}
+          </span>
+        ) : isRegistered ? (
+          <span className="absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full border-2 border-background bg-green-500" />
+        ) : null}
+      </Button>
     </div>
   );
 }

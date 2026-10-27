@@ -13,6 +13,19 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${backendProxyUrl}/api/:path*`,
       },
+      {
+        // Generated OpenAPI UI is linked from Settings > Integrations > Feedback Requests.
+        source: "/swagger-ui/:path*",
+        destination: `${backendProxyUrl}/swagger-ui/:path*`,
+      },
+      {
+        source: "/v3/api-docs",
+        destination: `${backendProxyUrl}/v3/api-docs`,
+      },
+      {
+        source: "/v3/api-docs/:path*",
+        destination: `${backendProxyUrl}/v3/api-docs/:path*`,
+      },
     ];
   },
 

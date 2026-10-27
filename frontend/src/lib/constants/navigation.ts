@@ -50,6 +50,7 @@ export const PUBLIC_ROUTES = [
   "/sign-up",
   "/forgot-password",
   "/reset-password",
+  "/feedback",
 ];
 
 /**

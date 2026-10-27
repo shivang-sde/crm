@@ -6,10 +6,13 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import jakarta.persistence.LockModeType;
 
 import com.shivang.crm.modules.ticket.entity.Ticket;
 import com.shivang.crm.modules.ticket.entity.TicketStatus;
@@ -27,6 +30,24 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID>, JpaSpecif
 
     /** Live, tenant-owned lookup. The only way a Ticket should ever be fetched. */
     Optional<Ticket> findByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
+
+    /**
+     * Live, tenant-owned lookup with a row lock.
+     *
+     * <p>L3.5 uses this to serialize feedback-request creation/regeneration per
+     * ticket, so two staff clicks cannot both observe "no pending request" and
+     * insert one. The database's expiry predicate cannot be expressed in a
+     * partial unique index, so the ticket row is the lock.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT t FROM Ticket t
+            WHERE t.id = :id
+              AND t.tenantId = :tenantId
+              AND t.deleted = false
+            """)
+    Optional<Ticket> findByIdAndTenantIdAndDeletedFalseForUpdate(
+            @Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     boolean existsByIdAndTenantIdAndDeletedFalse(UUID id, UUID tenantId);
 

@@ -90,12 +90,10 @@ public class FeedbackService {
      */
     @Transactional
     public FeedbackResponse submit(UUID tenantId, UUID userId, FeedbackCreateRequest request) {
-        FeedbackType type = request.getType();
-        Integer score = request.getScore();
         FeedbackSource source = resolveSource(request.getSource());
         String externalReference = normalize(request.getExternalReference());
 
-        requireValidScore(type, score);
+        requireValidScore(request.getType(), request.getScore());
 
         ResolvedCustomer customer = identityResolver.resolve(tenantId, request.getEmail());
 
@@ -109,6 +107,65 @@ public class FeedbackService {
                     "The submitted email does not belong to the account this feedback is being recorded against");
         }
 
+        return persist(
+                tenantId,
+                userId,
+                customer.accountId(),
+                customer.contactId(),
+                request.getTicketId(),
+                request.getType(),
+                request.getScore(),
+                request.getComment(),
+                source,
+                externalReference);
+    }
+
+    /**
+     * L3.5: submits feedback for a trusted caller that already resolved the
+     * customer ids. Only in-process paths (the token public form) use this; the
+     * authenticated email-based entry point remains {@link #submit}.
+     *
+     * <p>This exists so the public form cannot supply a customer identity. The
+     * account/contact/ticket come from the persisted request row, not the request
+     * body. Validation, deduplication, canonical event and timeline activity are
+     * shared with {@link #submit} through {@link #persist}.
+     */
+    @Transactional
+    public FeedbackResponse submitResolved(
+            UUID tenantId, UUID userId, TrustedFeedbackSubmission submission) {
+        if (submission.source() == null) {
+            throw new BusinessException("FEEDBACK_SOURCE_REQUIRED",
+                    "Feedback source is required for a resolved submission");
+        }
+        relationshipValidator.requireLiveAccount(submission.accountId(), tenantId);
+        return persist(
+                tenantId,
+                userId,
+                submission.accountId(),
+                submission.contactId(),
+                submission.ticketId(),
+                submission.type(),
+                submission.score(),
+                submission.comment(),
+                submission.source(),
+                normalize(submission.externalReference()));
+    }
+
+    /** The one persistence path shared by every feedback entry point. */
+    private FeedbackResponse persist(
+            UUID tenantId,
+            UUID userId,
+            UUID accountId,
+            UUID contactId,
+            UUID ticketId,
+            FeedbackType type,
+            Integer score,
+            String comment,
+            FeedbackSource source,
+            String externalReference) {
+
+        requireValidScore(type, score);
+
         // Idempotency before the ticket check: a resubmission of an already-accepted
         // response must return the accepted response, not fail a correlation that was
         // only relevant on first receipt.
@@ -117,7 +174,7 @@ public class FeedbackService {
                     .findByTenantIdAndSourceAndExternalReferenceAndDeletedFalse(
                             tenantId, source, externalReference);
             if (existing.isPresent()) {
-                if (!existing.get().getAccountId().equals(customer.accountId())) {
+                if (!existing.get().getAccountId().equals(accountId)) {
                     throw new BusinessException("FEEDBACK_EXTERNAL_REFERENCE_CONFLICT",
                             "This external reference is already used for a different customer");
                 }
@@ -128,15 +185,13 @@ public class FeedbackService {
         }
 
         // Ticket correlation is optional, and must belong to the resolved account.
-        relationshipValidator.requireTicketBelongsToAccount(
-                request.getTicketId(), customer.accountId(), tenantId);
+        relationshipValidator.requireTicketBelongsToAccount(ticketId, accountId, tenantId);
         // The resolver only returns contacts it read inside this tenant, so this is a
         // re-assertion of an invariant rather than new validation; it also documents
         // that contact and account must agree.
-        relationshipValidator.requireContactBelongsToAccount(
-                customer.contactId(), customer.accountId(), tenantId);
+        relationshipValidator.requireContactBelongsToAccount(contactId, accountId, tenantId);
 
-        UUID ownerUserId = resolveOwner(customer.accountId(), tenantId);
+        UUID ownerUserId = resolveOwner(accountId, tenantId);
 
         // Constructor + setters rather than the SuperBuilder, matching
         // TicketService.createTicket: TenantOwnedEntity declares the field as ownerId
@@ -147,12 +202,12 @@ public class FeedbackService {
         feedback.setOwnerId(ownerUserId);
         feedback.setCreatedBy(userId);
         feedback.setUpdatedBy(userId);
-        feedback.setAccountId(customer.accountId());
-        feedback.setContactId(customer.contactId());
-        feedback.setTicketId(request.getTicketId());
+        feedback.setAccountId(accountId);
+        feedback.setContactId(contactId);
+        feedback.setTicketId(ticketId);
         feedback.setType(type);
         feedback.setScore(score);
-        feedback.setComment(request.getComment());
+        feedback.setComment(comment);
         feedback.setSource(source);
         feedback.setExternalReference(externalReference);
         feedback.setDeleted(false);
@@ -168,22 +223,33 @@ public class FeedbackService {
 
         // L3.3-P3: the timeline enabler. The unified Customer 360 timeline reads the
         // activities table, so without this row a submitted feedback would never
-        // appear in it — the FEEDBACK branch of the timeline query would match
-        // nothing. This mirrors TicketService.createTicket writing TICKET_CREATED:
-        // the activity is the audit fact "this feedback was received", owned by the
-        // feedback's own visibility, not a second event system.
+        // appear in it. This mirrors TicketService.createTicket writing
+        // TICKET_CREATED: the activity is the audit fact "this feedback was
+        // received", owned by the feedback's own visibility, not a second event
+        // system.
         //
         // Deliberately the same vocabulary as the canonical event (RECEIVED, not
         // CREATED), so the activity row and the outbox row describe one fact. The
-        // actor is the authenticated submitting user, per the existing creator/actor
-        // semantics — no artificial actor is invented for external submissions,
-        // because here the submission always passes through an authenticated caller.
+        // actor is the submitting user; the public form passes the staff requester
+        // as that actor because BaseEntity.createdBy is a non-null FK to users.
         logFeedbackActivity(feedback, userId);
 
         log.info("Recorded {} feedback for account {} (contact {}, ticket {})",
-                type, customer.accountId(), customer.contactId(), feedback.getTicketId());
+                type, accountId, contactId, feedback.getTicketId());
 
         return feedbackMapper.toResponse(feedback);
+    }
+
+    /** L3.5: resolved customer identity for an in-process trusted submission. */
+    public record TrustedFeedbackSubmission(
+            UUID accountId,
+            UUID contactId,
+            UUID ticketId,
+            FeedbackType type,
+            Integer score,
+            String comment,
+            FeedbackSource source,
+            String externalReference) {
     }
 
     /**

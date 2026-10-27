@@ -64,6 +64,26 @@ public class GlobalExceptionHandler {
                     .status(HttpStatus.CONFLICT)
                     .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
         }
+        if ("TICKET_NOT_FOUND".equals(ex.getErrorCode())
+                || "FEEDBACK_REQUEST_NOT_FOUND".equals(ex.getErrorCode())) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
+        }
+        if ("FEEDBACK_REQUEST_EXPIRED".equals(ex.getErrorCode())
+                || "FEEDBACK_REQUEST_REVOKED".equals(ex.getErrorCode())
+                || "FEEDBACK_REQUEST_UNAVAILABLE".equals(ex.getErrorCode())) {
+            return ResponseEntity
+                    .status(HttpStatus.GONE)
+                    .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
+        }
+        if ("FEEDBACK_REQUEST_ALREADY_SUBMITTED".equals(ex.getErrorCode())
+                || "FEEDBACK_REQUEST_PENDING_EXISTS".equals(ex.getErrorCode())
+                || "FEEDBACK_REQUEST_NOT_REVOCABLE".equals(ex.getErrorCode())) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));
+        }
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ex.getErrorCode(), ex.getMessage()));

@@ -797,3 +797,119 @@ deal, cross-account SQL paging/filtering, owner scope, tenant isolation, and
 entitlement-expiry suppression paths are actually evaluated by SQL. The
 support-health and approaching-expiry rule branches still rely on
 controller-level tests plus the shared predicate definitions.
+
+## Ticket Feedback Requests (L3.5)
+
+A ticket feedback request is a single-use invitation to rate one support
+ticket. It is deliberately separate from a submitted `Feedback` row: the
+request records the ask and its lifecycle, while the answer remains immutable
+in `feedback`.
+
+### Lifecycle
+
+- A staff member creates a request from a ticket and chooses `CSAT` (1-5),
+  `NPS` (0-10) or `CES` (1-7). `CSAT` is the default. Unscored types
+  (`GENERAL_FEEDBACK`, `COMPLAINT`) are rejected.
+- At most one request can be `PENDING` for a ticket. Creation and regeneration
+  take a pessimistic lock on the ticket row before checking, because a partial
+  unique index cannot express "still unexpired". A conflicting request returns
+  `FEEDBACK_REQUEST_PENDING_EXISTS`.
+- A link is valid for 30 days. Regeneration revokes the old pending link and
+  issues a new one. Revocation is idempotent for an already-revoked request.
+  A submitted request cannot be revoked or regenerated.
+- `PENDING`, `EXPIRED`, `SUBMITTED` and `REVOKED` are derived at read time from
+  `expires_at`, `submitted_at` and `revoked_at`; there is no stored status
+  column to drift or need a scheduled expiry job.
+
+### Tokens and public exposure
+
+- The raw token is 32 random bytes, base64url encoded. It is returned only by
+  create and regenerate. The database stores only its SHA-256 hex hash, so a
+  list response cannot re-expose a link.
+- The public page receives only the lifecycle state, feedback type, score
+  scale and timestamps. It never receives the customer, contact, ticket
+  subject, email or internal ids.
+- The public submission body accepts only `score` and `comment`. The type,
+  customer, ticket and provenance come from the persisted request row.
+- A submitted public response is recorded with source `WEBSITE`, the request
+  creator as actor, and external reference `feedback-request:{id}`.
+- Invalid tokens return a generic `FEEDBACK_REQUEST_NOT_FOUND`. Expired or
+  revoked links return 410; an already-submitted link returns 409; a customer
+  or ticket deleted after issuance returns `FEEDBACK_REQUEST_UNAVAILABLE` 410.
+
+### Endpoints
+
+Staff endpoints (JWT, tenant-scoped, record-scope checked):
+
+```text
+POST /api/v1/tickets/{ticketId}/feedback-requests
+GET  /api/v1/tickets/{ticketId}/feedback-requests
+POST /api/v1/tickets/{ticketId}/feedback-requests/{requestId}/revoke
+POST /api/v1/tickets/{ticketId}/feedback-requests/{requestId}/regenerate
+```
+
+Create, revoke and regenerate require `ticket:write` plus `feedback:write`.
+List requires `ticket:read` plus `feedback:read`.
+
+Anonymous endpoints (the token is the credential):
+
+```text
+GET  /api/v1/public/feedback/{token}
+POST /api/v1/public/feedback/{token}
+```
+
+Trusted integration endpoint, reusing the tenant commercial API key:
+
+```text
+POST /api/v1/integrations/commercial/feedback
+```
+
+The integration path uses the same email-based submission contract as the
+authenticated feedback API, defaults the source to `API`, and is idempotent by
+`(tenant, source, externalReference)`.
+
+### Settings and UI
+
+The ticket Feedback tab shows the request history, creates links, and exposes
+copy/revoke/regenerate actions only when both ticket and feedback write
+permissions are present. `/feedback/{token}` is a public route. A documentation
+page lives at Settings > Integrations > Feedback Requests and links to the
+generated Swagger UI and OpenAPI JSON through the Next.js proxy.
+
+### Limits
+
+- The token URL is the only delivery mechanism; this phase does not send
+  email or WhatsApp messages.
+- Request creation and public submission are transactional, but delivery is
+  outside the CRM.
+- A public response cannot be edited after submission, matching the immutable
+  feedback contract.
+- Public retrieval and submission are not rate-limited: the repository has no
+  shared limiter, so edge/API-gateway throttling is still required in deployment.
+- Any live ticket may receive a request, including a reopened ticket. A ticket
+  or customer deleted after issuance returns the generic
+  `FEEDBACK_REQUEST_UNAVAILABLE` rather than resolving the link.
+- Request creation uses a pessimistic ticket lock. Concurrent public
+  submissions on the same token are serialized by a request-row lock; the
+  integration test proves exactly one feedback row and one
+  `FEEDBACK_REQUEST_ALREADY_SUBMITTED` loser.
+
+### Where the rules are verified
+
+- `FeedbackRequestServiceTest` covers the single-pending rule, unscored type
+  rejection, ticket tenant checks, token hashing, list redaction, revoke and
+  regenerate transitions, public metadata, submission provenance and terminal
+  error codes.
+- `FeedbackTokenServiceTest` pins URL-safe token shape and the SHA-256 vector.
+- `FeedbackRequestMigrationContractTest` pins the schema: hashed token only,
+  snapshot columns, derived lifecycle timestamps, indexes and foreign keys.
+- `FeedbackRequestContractTest` pins the staff controller paths and the
+  ticket/feedback permission pair on every staff operation.
+- `FeedbackRequestPersistenceIntegrationTest` proves token uniqueness,
+  soft-delete and tenant filtering, the live-pending predicate, locked lookups,
+  the persisted snapshot and the canonical public-feedback write.
+- `FeedbackRequestConcurrencyIntegrationTest` races two real public submissions
+  and proves exactly one feedback row is created.
+- `frontend/tests/feedback-request-contract.check.cjs` checks the frontend wire
+  types, API paths, permission gating, public route, documentation and error
+  mappings against the backend.

@@ -76,6 +76,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/public/direct/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/forms/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/public/forms/**").permitAll()
+                        // L3.5: the token is the credential for the anonymous feedback form.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/feedback/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/public/feedback/**").permitAll()
 
                         // Public endpoints
                         .requestMatchers(

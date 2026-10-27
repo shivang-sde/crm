@@ -36,6 +36,7 @@ const WORKSPACE_ITEMS: SettingsNavItemConfig[] = [
 
 const INTEGRATIONS_ITEMS: SettingsNavItemConfig[] = [
   { href: "/settings/integrations/commercial-integration", label: "Commercial Integration", description: "Connect quotation/invoice platform via API key." },
+  { href: "/settings/integrations/feedback-requests", label: "Feedback Requests", description: "Ticket feedback links and trusted feedback API documentation." },
 ];
 
 const ADMIN_ITEMS: SettingsNavItemConfig[] = [
